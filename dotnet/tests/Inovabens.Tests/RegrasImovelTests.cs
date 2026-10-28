@@ -49,6 +49,27 @@ public class RegrasImovelTests
     public void Codigo_sequencial_tem_6_digitos() => Assert.Equal("IMV-000123", RegrasImovel.FormatarCodigo(123));
 }
 
+public class ArquivoSeguroTests
+{
+    [Theory]
+    [InlineData("fachada.JPG", "image/jpeg", ".jpg", "image/jpeg", false, TipoMidia.FOTO)]
+    [InlineData("tour.mp4", "video/mp4", ".mp4", "video/mp4", false, TipoMidia.VIDEO)]
+    [InlineData("matricula.pdf", "application/pdf", ".pdf", "application/pdf", false, TipoMidia.DOCUMENTO)]
+    [InlineData("planta.dwg", "application/acad", ".dwg", "application/octet-stream", true, TipoMidia.DOCUMENTO)]
+    // podem conter script: viram download, nunca página
+    [InlineData("logo.svg", "image/svg+xml", ".svg", "application/octet-stream", true, TipoMidia.DOCUMENTO)]
+    [InlineData("pagina.html", "text/html; charset=utf-8", ".html", "application/octet-stream", true, TipoMidia.DOCUMENTO)]
+    [InlineData("foto.jpg", "text/html", ".jpg", "application/octet-stream", true, TipoMidia.DOCUMENTO)]
+    [InlineData("sem-extensao", "", "", "application/octet-stream", true, TipoMidia.DOCUMENTO)]
+    [InlineData("../../a.p<n>g\"/", "IMAGE/PNG", "", "image/png", false, TipoMidia.FOTO)]
+    [InlineData("a.p<n>g\"", "IMAGE/PNG", ".png", "image/png", false, TipoMidia.FOTO)]
+    public void Tipo_e_extensao_vem_de_lista_permitida(string nome, string tipo, string ext, string guardado, bool download, TipoMidia midia)
+    {
+        var a = RegrasImovel.ArquivoSeguro(nome, tipo);
+        Assert.Equal((ext, guardado, download, midia), (a.Extensao, a.ContentType, a.Download, a.Tipo));
+    }
+}
+
 public class ImovelFormTests
 {
     [Fact]

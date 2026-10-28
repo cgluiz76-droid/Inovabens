@@ -11,6 +11,7 @@ using Inovabens.Web.Components;
 using Inovabens.Web.Jobs;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,6 +28,12 @@ builder.Services.AddSingleton<RenovacaoSessao>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+// Chaves que assinam o cookie de sessão no banco: valem em todas as instâncias e sobrevivem a deploys/reinícios
+// (no disco do container elas se perderiam e todos os usuários seriam desconectados).
+builder.Services.AddDataProtection()
+    .SetApplicationName("Inovabens")
+    .PersistKeysToDbContext<InovabensDb>();
 
 // Autenticação por cookie (substitui JWT + refresh da API Node: o Blazor Server roda no servidor).
 builder.Services.AddCascadingAuthenticationState();
@@ -69,6 +76,19 @@ await app.Services.GetRequiredService<DadosIniciais>().GarantirAsync();
 if (args.Contains("migrar")) return;
 
 app.UseForwardedHeaders();
+
+// Cabeçalhos de segurança (papel do helmet na versão Node): sem iframe de outros sites (clickjacking), sem o
+// navegador "adivinhar" tipos de arquivo, formulários só para o próprio sistema. Sem script-src: o Blazor não muda.
+app.Use(async (c, next) =>
+{
+    var h = c.Response.Headers;
+    h.XContentTypeOptions = "nosniff";
+    h.XFrameOptions = "DENY";
+    h["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    h.ContentSecurityPolicy = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'";
+    await next();
+});
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);

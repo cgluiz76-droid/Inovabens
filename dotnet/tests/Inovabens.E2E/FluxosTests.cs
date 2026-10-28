@@ -20,6 +20,12 @@ public class FluxosTests(Aplicacao app)
         await p.GotoAsync("/imoveis");
         await Expect(p).ToHaveURLAsync(new Regex("/login\\?ReturnUrl=%2Fimoveis"));
 
+        // cabeçalhos de segurança (clickjacking, tipo de arquivo)
+        var h = (await p.GotoAsync("/login"))!.Headers;
+        Assert.Equal("DENY", h["x-frame-options"]);
+        Assert.Equal("nosniff", h["x-content-type-options"]);
+        Assert.Contains("frame-ancestors 'none'", h["content-security-policy"]);
+
         await p.GetByLabel("E-mail").FillAsync(AdminEmail);
         await p.GetByLabel("Senha").FillAsync("senha-errada");
         await p.Botao("Entrar").ClickAsync();
@@ -38,6 +44,19 @@ public class FluxosTests(Aplicacao app)
         await Expect(p).ToHaveURLAsync(new Regex("/login"));
         await p.GotoAsync("/imoveis");
         await Expect(p).ToHaveURLAsync(new Regex("/login"));
+    }
+
+    [Fact]
+    public async Task Sessao_continua_valida_depois_de_reiniciar_a_aplicacao()
+    {
+        // as chaves que assinam o cookie ficam no banco, não no disco do processo
+        var p = await app.NovaPaginaAsync();
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+        await app.ReiniciarAsync();
+        await p.GotoAsync("/imoveis");
+        await p.Interativa();
+        await Expect(p).ToHaveURLAsync(new Regex("/imoveis$"));
+        await Expect(p.Botao("Sair")).ToBeVisibleAsync();
     }
 
     [Fact]
@@ -114,8 +133,21 @@ public class FluxosTests(Aplicacao app)
         await p.Botao("Entrar").ClickAsync();
         await Expect(p.GetByRole(AriaRole.Alert)).ToHaveTextAsync("Código de verificação inválido.");
 
-        await p.EntrarAsync(email, senha, segredo);
+        // o código usado na ativação já foi consumido: entra com o do próximo intervalo
+        await Navegacao.ProximoCodigoAsync();
+        var codigo = Navegacao.CodigoTotp(segredo);
+        await p.EntrarAsync(email, senha, codigo);
         await Expect(p.Botao("Sair")).ToBeVisibleAsync();
+
+        // o mesmo código não serve para um segundo login (reuso/replay)
+        await p.Botao("Sair").ClickAsync();
+        await p.GetByLabel("E-mail").FillAsync(email);
+        await p.GetByLabel("Senha").FillAsync(senha);
+        await p.Botao("Entrar").ClickAsync();
+        await p.GetByLabel("Código 2FA").FillAsync(codigo);
+        await p.GetByLabel("Senha").FillAsync(senha);
+        await p.Botao("Entrar").ClickAsync();
+        await Expect(p.GetByRole(AriaRole.Alert)).ToHaveTextAsync("Código de verificação inválido.");
     }
 
     [Fact]

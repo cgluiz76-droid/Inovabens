@@ -195,9 +195,10 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         if (!storage.Habilitado) throw new ServicoIndisponivelException("Armazenamento de arquivos não configurado (S3_*).");
 
-        var ext = Path.GetExtension(nomeOriginal).ToLowerInvariant();
-        var chave = $"imoveis/{id}/{Guid.NewGuid()}{(ext.Length > 8 ? ext[..8] : ext)}";
-        await storage.EnviarAsync(chave, conteudo, contentType, ct);
+        var arquivo = RegrasImovel.ArquivoSeguro(nomeOriginal, contentType);
+        if (tipo != TipoMidia.DOCUMENTO && tipo != arquivo.Tipo) tipo = TipoMidia.DOCUMENTO; // "foto" que não é imagem permitida
+        var chave = $"imoveis/{id}/{Guid.NewGuid()}{arquivo.Extensao}";
+        await storage.EnviarAsync(chave, conteudo, arquivo.ContentType, arquivo.Download ? nomeOriginal : null, ct);
 
         var proximaOrdem = (await db.ImovelMidias.Where(m => m.ImovelId == id).MaxAsync(m => (int?)m.Ordem, ct) ?? -1) + 1;
         var temFoto = await db.ImovelMidias.AnyAsync(m => m.ImovelId == id && m.Tipo == TipoMidia.FOTO, ct);

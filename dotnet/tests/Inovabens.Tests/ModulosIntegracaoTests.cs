@@ -433,13 +433,19 @@ public class ModulosIntegracaoTests
         Assert.StartsWith("otpauth://totp/", cfg.OtpauthUrl);
         Assert.False(await auth.TotpAtivoAsync(uid));
         await Assert.ThrowsAsync<RegraNegocioException>(() => auth.TotpAtivarAsync(novo, "000000"));
+        // cada código vale uma vez: usa o do intervalo anterior, o atual e o próximo (todos dentro da tolerância de ±30 s)
         var totp = new Totp(Base32Encoding.ToBytes(cfg.Segredo));
-        await auth.TotpAtivarAsync(novo, totp.ComputeTotp());
+        if (DateTime.UtcNow.Second % 30 > 20) await Task.Delay(TimeSpan.FromSeconds(11)); // longe da virada do intervalo
+        var agora = DateTime.UtcNow;
+        await auth.TotpAtivarAsync(novo, totp.ComputeTotp(agora.AddSeconds(-30)));
         Assert.True(await auth.TotpAtivoAsync(uid));
         Assert.Equal(SituacaoLogin.PedeTotp, (await auth.LoginAsync(email, "OutraSenha123", null)).Situacao);
-        Assert.Equal(SituacaoLogin.Sucesso, (await auth.LoginAsync(email, "OutraSenha123", totp.ComputeTotp())).Situacao);
-        await Assert.ThrowsAsync<RegraNegocioException>(() => auth.TotpDesativarAsync(novo, "errada", totp.ComputeTotp()));
-        await auth.TotpDesativarAsync(novo, "OutraSenha123", totp.ComputeTotp());
+        Assert.Equal(SituacaoLogin.Sucesso, (await auth.LoginAsync(email, "OutraSenha123", totp.ComputeTotp(agora))).Situacao);
+        // reuso do mesmo código (ou de um anterior) é recusado
+        Assert.Equal(SituacaoLogin.Falha, (await auth.LoginAsync(email, "OutraSenha123", totp.ComputeTotp(agora))).Situacao);
+        Assert.Equal(SituacaoLogin.Falha, (await auth.LoginAsync(email, "OutraSenha123", totp.ComputeTotp(agora.AddSeconds(-30)))).Situacao);
+        await Assert.ThrowsAsync<RegraNegocioException>(() => auth.TotpDesativarAsync(novo, "errada", totp.ComputeTotp(agora.AddSeconds(30))));
+        await auth.TotpDesativarAsync(novo, "OutraSenha123", totp.ComputeTotp(agora.AddSeconds(30)));
         Assert.Equal(SituacaoLogin.Sucesso, (await auth.LoginAsync(email, "OutraSenha123", null)).Situacao);
         Assert.True((await usuarios.ListarAsync(a.Admin, email)).Itens.Single().UltimoLoginEm is not null);
     }

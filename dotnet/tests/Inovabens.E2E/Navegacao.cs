@@ -12,15 +12,15 @@ internal static class Navegacao
     /// <summary>Espera o circuito do Blazor assumir a página pré-renderizada; antes disso os cliques se perdem.</summary>
     public static Task Interativa(this IPage p) => Expect(p.Locator("[data-interativo=sim]")).ToBeVisibleAsync();
 
-    public static async Task EntrarAsync(this IPage p, string email, string senha, string? segredoTotp = null)
+    public static async Task EntrarAsync(this IPage p, string email, string senha, string? codigo2fa = null)
     {
         await p.GotoAsync("/login");
         await p.GetByLabel("E-mail").FillAsync(email);
         await p.GetByLabel("Senha").FillAsync(senha);
         await p.GetByRole(AriaRole.Button, new() { Name = "Entrar" }).ClickAsync();
-        if (segredoTotp is not null)
+        if (codigo2fa is not null)
         {
-            await p.GetByLabel("Código 2FA").FillAsync(CodigoTotp(segredoTotp));
+            await p.GetByLabel("Código 2FA").FillAsync(codigo2fa);
             await p.GetByLabel("Senha").FillAsync(senha);
             await p.GetByRole(AriaRole.Button, new() { Name = "Entrar" }).ClickAsync();
         }
@@ -28,6 +28,13 @@ internal static class Navegacao
     }
 
     public static string CodigoTotp(string segredo) => new Totp(Base32Encoding.ToBytes(segredo)).ComputeTotp();
+
+    /// <summary>Espera virar o intervalo de 30 s do TOTP: cada código só vale uma vez (até ~30 s de espera).</summary>
+    public static async Task ProximoCodigoAsync()
+    {
+        var atual = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+        while (DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30 == atual) await Task.Delay(250);
+    }
 
     public static ILocator Botao(this IPage p, string nome) => p.GetByRole(AriaRole.Button, new() { Name = nome, Exact = true });
 

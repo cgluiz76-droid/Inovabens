@@ -54,7 +54,7 @@ public sealed class AuthService(IDbContextFactory<InovabensDb> fabrica, AuditSer
         if (u.TotpAtivo)
         {
             if (string.IsNullOrWhiteSpace(totp)) return new ResultadoLogin(SituacaoLogin.PedeTotp, Mensagem: "Informe o código do aplicativo autenticador.");
-            if (u.TotpSecret is null || !TotpValido(u.TotpSecret, totp.Trim()))
+            if (!await CodigoTotpAceito(db, u, totp))
             {
                 await RegistrarFalha(db, u);
                 return Falha("Código de verificação inválido.");
@@ -136,6 +136,7 @@ public sealed class AuthService(IDbContextFactory<InovabensDb> fabrica, AuditSer
         if (usr.TotpAtivo) throw new RegraNegocioException("_", "2FA já está ativo");
         var segredo = Base32Encoding.ToString(KeyGeneration.GenerateRandomKey(20)).TrimEnd('=');
         usr.TotpSecret = Cripto.Cifrar(segredo, op.TokenEncKey);
+        usr.TotpUltimoPasso = null;
         await db.SaveChangesAsync();
         var url = $"otpauth://totp/Inovabens:{Uri.EscapeDataString(usr.Email)}?secret={segredo}&issuer=Inovabens";
         return new ConfiguracaoTotp(segredo, url);
@@ -145,7 +146,7 @@ public sealed class AuthService(IDbContextFactory<InovabensDb> fabrica, AuditSer
     {
         await using var db = await fabrica.CreateDbContextAsync();
         var usr = await db.Usuarios.SingleAsync(x => x.Id == u.Id);
-        if (usr.TotpSecret is null || !TotpValido(usr.TotpSecret, codigo.Trim()))
+        if (!await CodigoTotpAceito(db, usr, codigo))
             throw new RegraNegocioException("codigo", "Código inválido");
         usr.TotpAtivo = true;
         audit.Registrar(db, u.Id, "usuarios", u.Id, "2FA_ATIVAR");
@@ -157,23 +158,33 @@ public sealed class AuthService(IDbContextFactory<InovabensDb> fabrica, AuditSer
         await using var db = await fabrica.CreateDbContextAsync();
         var usr = await db.Usuarios.SingleAsync(x => x.Id == u.Id);
         if (!SenhaConfere(usr.SenhaHash, senha)) throw new RegraNegocioException("senha", "Senha incorreta");
-        if (usr.TotpAtivo && (string.IsNullOrWhiteSpace(codigo) || usr.TotpSecret is null || !TotpValido(usr.TotpSecret, codigo.Trim())))
+        if (usr.TotpAtivo && !await CodigoTotpAceito(db, usr, codigo))
             throw new RegraNegocioException("codigo", "Código inválido");
         usr.TotpAtivo = false;
         usr.TotpSecret = null;
+        usr.TotpUltimoPasso = null;
         audit.Registrar(db, u.Id, "usuarios", u.Id, "2FA_DESATIVAR");
         await db.SaveChangesAsync();
     }
 
-    private bool TotpValido(string segredoCifrado, string codigo)
+    /// <summary>
+    /// Confere o código (tolerância de ±1 intervalo de 30 s) e o "consome": um código só vale uma vez. A gravação do
+    /// intervalo é condicional e atômica, então dois logins simultâneos com o mesmo código não passam os dois.
+    /// </summary>
+    private async Task<bool> CodigoTotpAceito(InovabensDb db, Usuario usr, string? codigo)
     {
+        if (usr.TotpSecret is null || string.IsNullOrWhiteSpace(codigo)) return false;
+        long passo;
         try
         {
-            var segredo = Cripto.Decifrar(segredoCifrado, op.TokenEncKey);
-            var t = new Totp(Base32Encoding.ToBytes(segredo));
-            return t.VerifyTotp(codigo, out _, new VerificationWindow(previous: 1, future: 1));
+            var segredo = Cripto.Decifrar(usr.TotpSecret, op.TokenEncKey);
+            if (!new Totp(Base32Encoding.ToBytes(segredo)).VerifyTotp(codigo.Trim(), out passo, new VerificationWindow(previous: 1, future: 1)))
+                return false;
         }
         catch { return false; }
+        return await db.Usuarios
+            .Where(x => x.Id == usr.Id && (x.TotpUltimoPasso == null || x.TotpUltimoPasso < passo))
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.TotpUltimoPasso, passo)) == 1;
     }
 
     private static ResultadoLogin Falha(string msg) => new(SituacaoLogin.Falha, Mensagem: msg);

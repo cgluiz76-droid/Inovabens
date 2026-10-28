@@ -24,8 +24,10 @@ public sealed class Aplicacao : IAsyncLifetime
     public const string SenhaPadrao = "Trocar@123456";
 
     private PostgreSqlContainer? _banco;
+    private string _conexao = "";
     private Process? _processo;
     private readonly StringBuilder _log = new();
+    private readonly List<string> _perfis = [];
     private IPlaywright? _playwright;
 
     public string Url { get; private set; } = "";
@@ -49,6 +51,7 @@ public sealed class Aplicacao : IAsyncLifetime
         }
 
         Url = $"http://127.0.0.1:{PortaLivre()}";
+        _conexao = conexao;
         await IniciarAplicacao(conexao);
 
         // baixa o Chromium do Playwright na primeira execução (depois é instantâneo); no CI Linux, também as bibliotecas do sistema
@@ -78,6 +81,12 @@ public sealed class Aplicacao : IAsyncLifetime
                 ["Logging__LogLevel__Default"] = "Warning",
             },
         };
+        // perfil de usuário novo a cada subida, como num container: nada do disco local sobrevive ao reinício
+        var perfil = Directory.CreateTempSubdirectory("inovabens-e2e-").FullName;
+        _perfis.Add(perfil);
+        info.Environment["HOME"] = perfil;
+        info.Environment["USERPROFILE"] = perfil;
+        info.Environment["LOCALAPPDATA"] = perfil;
         _processo = Process.Start(info) ?? throw new InvalidOperationException("Não foi possível iniciar a aplicação.");
         _processo.OutputDataReceived += (_, e) => { lock (_log) _log.AppendLine(e.Data); };
         _processo.ErrorDataReceived += (_, e) => { lock (_log) _log.AppendLine(e.Data); };
@@ -101,6 +110,14 @@ public sealed class Aplicacao : IAsyncLifetime
     }
 
     public string Log { get { lock (_log) return _log.ToString(); } }
+
+    /// <summary>Encerra e sobe de novo a aplicação (mesma porta e banco), como num deploy ou reinício do container.</summary>
+    public async Task ReiniciarAsync()
+    {
+        _processo!.Kill(entireProcessTree: true);
+        await _processo.WaitForExitAsync();
+        await IniciarAplicacao(_conexao);
+    }
 
     /// <summary>A saída da compilação de Inovabens.Web, na mesma configuração (Debug/Release) destes testes.</summary>
     private static string LocalizarAplicacao()
@@ -137,5 +154,7 @@ public sealed class Aplicacao : IAsyncLifetime
             await _processo.WaitForExitAsync();
         }
         if (_banco is not null) await _banco.DisposeAsync();
+        foreach (var d in _perfis)
+            try { Directory.Delete(d, recursive: true); } catch (IOException) { }
     }
 }

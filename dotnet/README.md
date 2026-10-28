@@ -70,7 +70,8 @@ padrão é recusada). `dotnet Inovabens.Web.dll migrar` faz só essa parte e sai
   diário do Drizzle e não rodam de novo.
 - **Banco criado pelo .NET:** o diário do Drizzle também é preenchido, então o `migrate` do Node continua sem efeito
   enquanto as duas versões coexistirem.
-- **Nova alteração de esquema:** crie `Dados/Migracoes/0003_descricao.sql` (o próximo número). Nunca edite um script
+- **Nova alteração de esquema:** crie `Dados/Migracoes/0005_descricao.sql` (o próximo número; `0003` e `0004`
+  já são exclusivos do .NET: replay do 2FA e chaves de sessão, que a versão Node ignora). Nunca edite um script
   já aplicado; o migrador avisa no log se isso acontecer. A partir de agora, mudanças de esquema são feitas só no
   .NET: a versão Node não conhece scripts novos.
 
@@ -84,6 +85,9 @@ Configuração (mesmos nomes de variável do `.env` da versão Node; em desenvol
 (assina o `state` do OAuth e o token do webhook do Google — use o mesmo valor do Node). **Em produção** são
 obrigatórias uma `TOKEN_ENC_KEY` aleatória e uma `JWT_REFRESH_SECRET` com 32+ caracteres, diferente da `TOKEN_ENC_KEY`:
 sem elas a aplicação não sobe.
+As chaves que assinam o cookie de sessão ficam na tabela `data_protection_keys`: as sessões sobrevivem a deploys e
+valem em várias instâncias. Arquivos enviados só abrem no navegador se forem imagem, vídeo ou PDF; o resto (inclusive
+HTML/SVG) é servido como download. Respostas levam `X-Frame-Options`, `nosniff` e uma CSP mínima (papel do helmet).
 Sem `S3_*` o sistema funciona, só o envio de fotos/documentos fica desligado; sem `GOOGLE_*`, a agenda funciona
 sem a integração com o Google.
 

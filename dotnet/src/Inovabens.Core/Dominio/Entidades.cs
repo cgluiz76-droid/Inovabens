@@ -139,6 +139,8 @@ public class Usuario
     public bool Ativo { get; set; } = true;
     [JsonIgnore] public string? TotpSecret { get; set; }
     public bool TotpAtivo { get; set; }
+    /// <summary>Último intervalo TOTP (30 s) aceito: códigos desse intervalo ou anteriores são recusados.</summary>
+    [JsonIgnore] public long? TotpUltimoPasso { get; set; }
     public int TentativasFalhas { get; set; }
     public DateTime? BloqueadoAte { get; set; }
     public DateTime? UltimoLoginEm { get; set; }

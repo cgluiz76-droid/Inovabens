@@ -64,9 +64,7 @@
             Erro = "Arquivo maior que 25 MB.";
             return;
         }
-        var tipo = f.ContentType.StartsWith("image/") ? TipoMidia.FOTO
-            : f.ContentType.StartsWith("video/") ? TipoMidia.VIDEO
-            : TipoMidia.DOCUMENTO;
+        var tipo = RegrasImovel.ArquivoSeguro(f.Name, f.ContentType).Tipo;
         var ok = await Executar(async () =>
         {
             await using var origem = f.OpenReadStream(ImoveisService.TamanhoMaximoArquivo);

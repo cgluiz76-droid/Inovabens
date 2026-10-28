@@ -56,17 +56,20 @@ public sealed class StorageService : IDisposable
         }
     }
 
-    public async Task EnviarAsync(string chave, Stream conteudo, string contentType, CancellationToken ct = default)
+    /// <param name="baixarComo">Se informado, o arquivo é servido como download com este nome (nunca aberto no navegador).</param>
+    public async Task EnviarAsync(string chave, Stream conteudo, string contentType, string? baixarComo = null, CancellationToken ct = default)
     {
         if (_s3 is null) throw new InvalidOperationException("Armazenamento desabilitado.");
-        await _s3.PutObjectAsync(new PutObjectRequest
+        var req = new PutObjectRequest
         {
             BucketName = _bucket,
             Key = chave,
             InputStream = conteudo,
             ContentType = contentType,
             AutoCloseStream = false,
-        }, ct);
+        };
+        if (baixarComo is not null) req.Headers.ContentDisposition = $"attachment; filename*=UTF-8''{Uri.EscapeDataString(baixarComo)}";
+        await _s3.PutObjectAsync(req, ct);
     }
 
     public async Task RemoverAsync(string chave)

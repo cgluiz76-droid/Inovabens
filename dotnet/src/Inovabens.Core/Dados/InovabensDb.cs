@@ -1,5 +1,6 @@
 using System.Text;
 using Inovabens.Core.Dominio;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
@@ -11,8 +12,11 @@ namespace Inovabens.Core.Dados;
 /// Contexto do EF Core sobre o banco EXISTENTE. Não usamos migrations do EF: o esquema
 /// (tabelas, CHECKs, triggers, índices) vem dos scripts SQL de Dados/Migracoes, aplicados pelo <see cref="Migrador"/>.
 /// </summary>
-public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(options)
+public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(options), IDataProtectionKeyContext
 {
+    /// <summary>Chaves que assinam o cookie de sessão e os tokens antifalsificação, compartilhadas entre as instâncias.</summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+
     public DbSet<Imovel> Imoveis => Set<Imovel>();
     public DbSet<ImovelCaracteristica> ImovelCaracteristicas => Set<ImovelCaracteristica>();
     public DbSet<ImovelMidia> ImovelMidias => Set<ImovelMidia>();
@@ -157,6 +161,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         mb.Entity<CompromissoParticipante>().HasOne<Compromisso>().WithMany().HasForeignKey(x => x.CompromissoId);
         mb.Entity<LeadHistoricoEstagio>().HasOne<Lead>().WithMany().HasForeignKey(x => x.LeadId);
         mb.Entity<LeadInteracao>().HasOne<Lead>().WithMany().HasForeignKey(x => x.LeadId);
+
+        mb.Entity<DataProtectionKey>().ToTable("data_protection_keys");
 
         // Convenção: coluna = snake_case da propriedade (AreaTotalM2 -> area_total_m2).
         foreach (var entidade in mb.Model.GetEntityTypes())
