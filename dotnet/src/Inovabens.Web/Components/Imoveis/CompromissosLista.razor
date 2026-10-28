@@ -1,0 +1,113 @@
+@* Lista de compromissos com as ações de status; compromisso pendente já encerrado aparece destacado (não cumprido). *@
+@inherits ComponenteBase
+@inject AgendaService Servico
+@inject IJSRuntime JS
+
+<MensagemErro Texto="@Erro" />
+@if (Itens.Count == 0)
+{
+    <p class="vazio">@Vazio</p>
+}
+else
+{
+    <div class="tabela-container">
+        <table class="tabela">
+            <thead>
+                <tr>
+                    <th>Quando</th><th>Compromisso</th>
+                    @if (MostrarImovel)
+                    {
+                        <th>Imóvel</th>
+                    }
+                    <th>Responsável</th><th>Status</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in Itens)
+                {
+                    <tr class="@(c.Vencido ? "vencido" : "") @(c.Dados.Status == StatusCompromisso.CANCELADO ? "cancelado" : "")">
+                        <td class="sem-quebra">
+                            @Texto.DataHora(c.Dados.InicioEm)
+                            <p class="pequeno mudo">até @Hora(c)</p>
+                        </td>
+                        <td>
+                            <span class="badge">@Texto.Rotulo(c.Dados.Tipo)</span>
+                            <span class="forte">@c.Dados.Titulo</span>
+                            @if (c.Dados.GoogleEventId is not null)
+                            {
+                                <span class="pequeno mudo" title="Sincronizado com o Google Agenda">· Google</span>
+                            }
+                            @if (c.Dados.Local is not null)
+                            {
+                                <p class="pequeno mudo">📍 @c.Dados.Local</p>
+                            }
+                            @if (c.Participantes.Count > 0)
+                            {
+                                <p class="pequeno mudo">Convidados: @string.Join(", ", c.Participantes)</p>
+                            }
+                        </td>
+                        @if (MostrarImovel)
+                        {
+                            <td><a href="imoveis/@c.Dados.ImovelId" title="@c.ImovelTitulo">@c.ImovelCodigo</a></td>
+                        }
+                        <td>@c.ResponsavelNome</td>
+                        <td>
+                            @if (c.Vencido)
+                            {
+                                <span class="badge status-NAO_PAGO">Não cumprido</span>
+                            }
+                            else
+                            {
+                                <span class="badge status-@c.Dados.Status">@Texto.Rotulo(c.Dados.Status)</span>
+                            }
+                        </td>
+                        <td class="acoes-linha">
+                            @if (Usuario.Pode(Permissoes.AgendaEditar))
+                            {
+                                @if (c.Dados.Status == StatusCompromisso.PENDENTE)
+                                {
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Status(c, StatusCompromisso.CONCLUIDO)">Concluir</button>
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Status(c, StatusCompromisso.CANCELADO)">Cancelar</button>
+                                }
+                                else
+                                {
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Status(c, StatusCompromisso.PENDENTE)">Reabrir</button>
+                                }
+                                <button class="btn-ghost mini" @onclick="() => AoEditar.InvokeAsync(c)">Editar</button>
+                            }
+                            @if (Usuario.Pode(Permissoes.AgendaExcluir))
+                            {
+                                <button class="btn-ghost mini texto-erro" disabled="@Ocupado" @onclick="() => Excluir(c)">Excluir</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<CompromissoDetalhe> Itens { get; set; } = [];
+    [Parameter] public bool MostrarImovel { get; set; }
+    [Parameter] public string Vazio { get; set; } = "Nenhum compromisso.";
+    [Parameter] public EventCallback<CompromissoDetalhe> AoEditar { get; set; }
+    [Parameter] public EventCallback AoAlterar { get; set; }
+
+    private static string Hora(CompromissoDetalhe c)
+    {
+        var (i, f) = (DatasBR.DeUtc(c.Dados.InicioEm), DatasBR.DeUtc(c.Dados.FimEm));
+        return i.Date == f.Date ? f.ToString("HH:mm") : Texto.DataHora(c.Dados.FimEm);
+    }
+
+    private async Task Status(CompromissoDetalhe c, StatusCompromisso s)
+    {
+        if (await Executar(() => Servico.MudarStatusAsync(Usuario, c.Dados.Id, s))) await AoAlterar.InvokeAsync();
+    }
+
+    private async Task Excluir(CompromissoDetalhe c)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir \"{c.Dados.Titulo}\"? Ele também sai do Google Agenda.")) return;
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, c.Dados.Id))) await AoAlterar.InvokeAsync();
+    }
+}

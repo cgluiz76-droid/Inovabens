@@ -1,0 +1,431 @@
+@page "/crm"
+@attribute [Authorize(Policy = Permissoes.CrmVer)]
+@inherits ComponenteBase
+@inject CrmService Servico
+@inject OpcoesService Opcoes
+@inject IJSRuntime JS
+
+<PageTitle>CRM · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>CRM</h1>
+    @if (Usuario.Pode(Permissoes.CrmCriar))
+    {
+        <button class="btn-primary" @onclick="NovoLead">+ Novo lead</button>
+    }
+</div>
+
+<div class="abas">
+    <button class="aba @(funil == Funil.VENDA ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.VENDA)">Funil de vendas</button>
+    <button class="aba @(funil == Funil.LOCACAO ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.LOCACAO)">Funil de locação</button>
+</div>
+
+<MensagemErro Texto="@Erro" />
+
+@if (colunas is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else
+{
+    <div class="kanban">
+        @foreach (var col in colunas)
+        {
+            <div class="coluna" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")">
+                <div class="coluna-topo">
+                    <strong>@col.Estagio.Nome</strong>
+                    <span class="badge">@col.Leads.Count</span>
+                </div>
+                @foreach (var l in col.Leads)
+                {
+                    <div class="cartao-lead" @key="(l.Id, versao)">
+                        <button class="link-cartao" @onclick="() => Abrir(l.Id)">
+                            <span class="forte">@l.PessoaNome</span>
+                            <span class="pequeno mudo">@(l.Telefone ?? l.Email ?? "")</span>
+                        </button>
+                        <p class="pequeno">
+                            @if (l.OrcamentoMax is { } o)
+                            {
+                                <span>até @Texto.Moeda(o)</span>
+                            }
+                            @if (l.Origem is not null)
+                            {
+                                <span class="mudo"> · @l.Origem</span>
+                            }
+                        </p>
+                        @if (l.ProximaAcaoEm is { } p)
+                        {
+                            <p class="pequeno @(p < DateTime.UtcNow ? "texto-erro" : "mudo")">Próxima ação: @Texto.DataHora(p)</p>
+                        }
+                        @if (l.ResponsavelNome is not null)
+                        {
+                            <p class="pequeno mudo">👤 @l.ResponsavelNome</p>
+                        }
+                        @if (Usuario.Pode(Permissoes.CrmEditar))
+                        {
+                            <select class="input mini" value="@col.Estagio.Id" @onchange="e => Mover(l, e.Value?.ToString())" aria-label="Mover para">
+                                @foreach (var e in colunas)
+                                {
+                                    <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
+                                }
+                            </select>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (perda is not null)
+{
+    <Modal Titulo="Motivo da perda" AoFechar="() => perda = null">
+        <p class="pequeno mudo">@perda.Value.Lead.PessoaNome → @perda.Value.Estagio.Nome</p>
+        <label class="campo">
+            <span>Por que o negócio foi perdido? *</span>
+            <textarea class="input" rows="3" @bind="motivo"></textarea>
+        </label>
+        <MensagemErro Texto="@erroModal" />
+        <div class="acoes">
+            <button class="btn-primary" disabled="@Ocupado" @onclick="ConfirmarPerda">Confirmar</button>
+            <button class="btn-ghost" @onclick="() => perda = null">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@if (novo is not null)
+{
+    <Modal Titulo="Novo lead" Largo AoFechar="() => novo = null">
+        <EditForm Model="novo" OnValidSubmit="CriarLead" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="checks">
+                <label><input type="radio" name="contato" checked="@(!contatoNovo)" @onchange="() => contatoNovo = false" /> Pessoa já cadastrada</label>
+                <label><input type="radio" name="contato" checked="@contatoNovo" @onchange="() => contatoNovo = true" /> Novo contato</label>
+            </div>
+            <div class="grade-4">
+                @if (contatoNovo)
+                {
+                    <label class="campo col-2">
+                        <span>Nome *</span>
+                        <InputText class="input" @bind-Value="novo.NovoNome" />
+                    </label>
+                    <label class="campo">
+                        <span>Telefone</span>
+                        <InputText class="input" type="tel" @bind-Value="novo.NovoTelefone" />
+                    </label>
+                    <label class="campo">
+                        <span>E-mail</span>
+                        <InputText class="input" type="email" @bind-Value="novo.NovoEmail" />
+                        <ValidationMessage For="() => novo.NovoEmail" />
+                    </label>
+                }
+                else
+                {
+                    <label class="campo col-2">
+                        <span>Pessoa *</span>
+                        <InputSelect class="input" @bind-Value="novo.PessoaId">
+                            <option value="">Selecione…</option>
+                            @foreach (var p in pessoas)
+                            {
+                                <option value="@p.Id">@p.Nome</option>
+                            }
+                        </InputSelect>
+                    </label>
+                }
+            </div>
+            <CamposLead Form="novo" Responsaveis="responsaveis" Finalidade />
+            <MensagemErro Texto="@erroModal" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Criar lead</button>
+                <button type="button" class="btn-ghost" @onclick="() => novo = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (detalhe is not null && edicao is not null)
+{
+    <Modal Titulo="@detalhe.Pessoa.NomeRazao" Largo AoFechar="Fechar">
+        <p class="pequeno mudo">
+            @Texto.Rotulo(detalhe.Dados.Finalidade) · estágio <strong>@detalhe.Estagio.Nome</strong>
+            @(detalhe.Pessoa.Telefone is null ? "" : $" · {detalhe.Pessoa.Telefone}")
+            @(detalhe.Pessoa.Email is null ? "" : $" · {detalhe.Pessoa.Email}")
+        </p>
+        @if (detalhe.Dados.MotivoPerda is { } mp)
+        {
+            <p class="msg-erro">Motivo da perda: @mp</p>
+        }
+        <MensagemErro Texto="@erroModal" />
+
+        <h3>Dados do lead</h3>
+        <EditForm Model="edicao" OnValidSubmit="SalvarLead" class="formulario">
+            <DataAnnotationsValidator />
+            <CamposLead Form="edicao" Responsaveis="responsaveis" />
+            @if (Usuario.Pode(Permissoes.CrmEditar))
+            {
+                <div class="acoes">
+                    <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                    @if (Usuario.Pode(Permissoes.CrmExcluir))
+                    {
+                        <button type="button" class="btn-ghost texto-erro" disabled="@Ocupado" @onclick="ExcluirLead">Excluir lead</button>
+                    }
+                </div>
+            }
+        </EditForm>
+
+        <h3>Imóveis de interesse</h3>
+        @if (Usuario.Pode(Permissoes.CrmEditar) && imoveis.Count > 0)
+        {
+            <div class="checks lista-rolavel">
+                @foreach (var i in imoveis)
+                {
+                    <label>
+                        <input type="checkbox" checked="@interesse.Contains(i.Id)" @onchange="e => AlternarInteresse(i.Id, (bool)e.Value!)" />
+                        @i.Nome
+                    </label>
+                }
+            </div>
+            <div class="acoes">
+                <button class="btn-ghost" disabled="@Ocupado" @onclick="SalvarInteresse">Salvar imóveis de interesse</button>
+            </div>
+        }
+        else if (detalhe.ImoveisInteresse.Count == 0)
+        {
+            <p class="vazio">Nenhum imóvel marcado.</p>
+        }
+        else
+        {
+            <ul class="lista-simples">
+                @foreach (var i in detalhe.ImoveisInteresse)
+                {
+                    <li><a href="imoveis/@i.Id">@i.Codigo</a> · @i.Titulo <span class="badge">@Texto.Rotulo(i.Situacao)</span></li>
+                }
+            </ul>
+        }
+
+        <h3>Interações</h3>
+        @if (Usuario.Pode(Permissoes.CrmEditar))
+        {
+            <EditForm Model="interacao" OnValidSubmit="RegistrarInteracao">
+                <DataAnnotationsValidator />
+                <div class="linha-form">
+                    <InputSelect class="input w-tipo" @bind-Value="interacao.Canal">
+                        @foreach (var c in Enum.GetValues<CanalInteracao>())
+                        {
+                            <option value="@c">@Texto.Rotulo(c)</option>
+                        }
+                    </InputSelect>
+                    <InputText class="input w-desc" placeholder="Resumo do contato" @bind-Value="interacao.Resumo" />
+                    <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar</button>
+                </div>
+                <ValidationMessage For="() => interacao.Resumo" />
+            </EditForm>
+        }
+        @if (interacoes is { Count: > 0 })
+        {
+            <ul class="lista-simples">
+                @foreach (var i in interacoes)
+                {
+                    <li>
+                        <span class="badge">@Texto.Rotulo(i.Dados.Canal)</span> @i.Dados.Resumo
+                        <span class="pequeno mudo">· @(i.UsuarioNome ?? "—") · @Texto.DataHora(i.Dados.CriadoEm)</span>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="vazio">Nenhuma interação registrada.</p>
+        }
+
+        <h3>Histórico de estágios</h3>
+        @if (historico is { Count: > 0 })
+        {
+            <ul class="lista-simples">
+                @foreach (var h in historico)
+                {
+                    <li>
+                        @(h.EstagioAnterior is null ? "Criado em" : $"{h.EstagioAnterior} →") <strong>@h.EstagioNovo</strong>
+                        <span class="pequeno mudo">· @(h.Usuario ?? "—") · @Texto.DataHora(h.CriadoEm)</span>
+                    </li>
+                }
+            </ul>
+        }
+    </Modal>
+}
+
+@code {
+    private Funil funil = Funil.VENDA;
+    private IReadOnlyList<ColunaFunil>? colunas;
+    private IReadOnlyList<Opcao> pessoas = [];
+    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<Opcao>? responsaveis;
+    private string? erroModal;
+
+    private (LeadCartao Lead, FunilEstagio Estagio)? perda;
+    private string motivo = "";
+
+    private LeadForm? novo;
+    private bool contatoNovo = true;
+
+    private LeadDetalhe? detalhe;
+    private LeadForm? edicao;
+    private HashSet<Guid> interesse = [];
+    private IReadOnlyList<InteracaoDetalhe>? interacoes;
+    private IReadOnlyList<HistoricoEstagio>? historico;
+    private InteracaoForm interacao = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () =>
+        {
+            pessoas = await Opcoes.PessoasAsync(Usuario);
+            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
+        });
+        await Carregar();
+    }
+
+    /// <summary>Muda a cada recarga: recria os cartões para o select de estágio voltar ao valor real.</summary>
+    private int versao;
+
+    private Task Carregar() => Executar(async () =>
+    {
+        colunas = await Servico.PipelineAsync(Usuario, funil);
+        versao++;
+    });
+
+    private Task TrocarFunil(Funil f)
+    {
+        funil = f;
+        colunas = null;
+        return Carregar();
+    }
+
+    private async Task Mover(LeadCartao l, string? estagioId)
+    {
+        if (!Guid.TryParse(estagioId, out var id)) return;
+        var destino = colunas!.Select(c => c.Estagio).First(e => e.Id == id);
+        if (destino.Tipo == TipoEstagio.PERDIDO)
+        {
+            erroModal = null;
+            motivo = "";
+            perda = (l, destino);
+            await Carregar(); // volta o select para o estágio atual até confirmar
+            return;
+        }
+        if (await Executar(() => Servico.MoverAsync(Usuario, l.Id, id))) await Carregar();
+    }
+
+    private async Task ConfirmarPerda()
+    {
+        var (lead, estagio) = perda!.Value;
+        if (!await Executar(() => Servico.MoverAsync(Usuario, lead.Id, estagio.Id, motivo)))
+        {
+            erroModal = Erro;
+            Erro = null;
+            return;
+        }
+        perda = null;
+        await Carregar();
+    }
+
+    private void NovoLead()
+    {
+        erroModal = null;
+        contatoNovo = true;
+        novo = new LeadForm { Finalidade = funil == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO };
+    }
+
+    private async Task CriarLead()
+    {
+        if (contatoNovo) novo!.PessoaId = null;
+        else novo!.NovoNome = novo.NovoTelefone = novo.NovoEmail = null;
+        if (!await Executar(() => Servico.CriarAsync(Usuario, novo)))
+        {
+            erroModal = Erro;
+            Erro = null;
+            return;
+        }
+        var f = CrmService.FunilDa(novo.Finalidade);
+        novo = null;
+        if (f != funil) await TrocarFunil(f);
+        else await Carregar();
+        if (contatoNovo) pessoas = await Opcoes.PessoasAsync(Usuario);
+    }
+
+    private async Task Abrir(Guid id)
+    {
+        erroModal = null;
+        interacao = new InteracaoForm();
+        await Executar(async () =>
+        {
+            detalhe = await Servico.ObterAsync(Usuario, id);
+            interacoes = await Servico.InteracoesAsync(Usuario, id);
+            historico = await Servico.HistoricoAsync(Usuario, id);
+        });
+        if (detalhe is null) return;
+        var d = detalhe.Dados;
+        edicao = new LeadForm
+        {
+            Finalidade = d.Finalidade, Origem = d.Origem, ResponsavelId = d.ResponsavelId, OrcamentoMin = d.OrcamentoMin,
+            OrcamentoMax = d.OrcamentoMax, ProximaAcaoEm = d.ProximaAcaoEm is { } p ? DatasBR.DeUtc(p) : null, PessoaId = d.PessoaId,
+        };
+        interesse = [.. detalhe.ImoveisInteresse.Select(i => i.Id)];
+    }
+
+    private void Fechar()
+    {
+        detalhe = null;
+        edicao = null;
+    }
+
+    private async Task Executar(Func<Task> acao, bool noModal)
+    {
+        erroModal = null;
+        if (!await Executar(acao) && noModal)
+        {
+            erroModal = Erro;
+            Erro = null;
+        }
+    }
+
+    private async Task SalvarLead()
+    {
+        var id = detalhe!.Dados.Id;
+        await Executar(() => Servico.AtualizarAsync(Usuario, id, edicao!), noModal: true);
+        if (erroModal is not null) return;
+        await Abrir(id);
+        await Carregar();
+    }
+
+    private async Task ExcluirLead()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir este lead?")) return;
+        if (!await Executar(() => Servico.ExcluirAsync(Usuario, detalhe!.Dados.Id))) return;
+        Fechar();
+        await Carregar();
+    }
+
+    private void AlternarInteresse(Guid id, bool marcado)
+    {
+        if (marcado) interesse.Add(id);
+        else interesse.Remove(id);
+    }
+
+    private async Task SalvarInteresse()
+    {
+        var id = detalhe!.Dados.Id;
+        await Executar(() => Servico.DefinirInteresseAsync(Usuario, id, interesse), noModal: true);
+        if (erroModal is null) await Abrir(id);
+    }
+
+    private async Task RegistrarInteracao()
+    {
+        var id = detalhe!.Dados.Id;
+        await Executar(() => Servico.CriarInteracaoAsync(Usuario, id, interacao), noModal: true);
+        if (erroModal is not null) return;
+        interacao = new InteracaoForm { Canal = interacao.Canal };
+        interacoes = await Servico.InteracoesAsync(Usuario, id);
+    }
+}

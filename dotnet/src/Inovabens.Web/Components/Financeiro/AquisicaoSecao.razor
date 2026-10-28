@@ -1,0 +1,167 @@
+@inherits ComponenteBase
+@inject AquisicaoService Servico
+@inject IJSRuntime JS
+
+<section class="card">
+    <h2>Aquisição (CAPEX)</h2>
+    <MensagemErro Texto="@Erro" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
+
+    @if (carregando)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="grade-4">
+                <label class="campo">
+                    <span>Data da aquisição</span>
+                    <InputDate class="input" disabled="@(!Editar)" @bind-Value="form.DataAquisicao" />
+                    <ValidationMessage For="() => form.DataAquisicao" />
+                </label>
+                <label class="campo">
+                    <span>Valor pago (R$)</span>
+                    <InputNumber class="input" step="0.01" disabled="@(!Editar)" @bind-Value="form.ValorPago" />
+                    <ValidationMessage For="() => form.ValorPago" />
+                </label>
+                <label class="campo" title="@(ComItens ? "Calculado pelos itens detalhados" : "")">
+                    <span>Impostos (R$)</span>
+                    <InputNumber class="input" step="0.01" disabled="@(!Editar || ComItens)" @bind-Value="form.Impostos" />
+                    <ValidationMessage For="() => form.Impostos" />
+                </label>
+                <label class="campo">
+                    <span>Taxas (R$)</span>
+                    <InputNumber class="input" step="0.01" disabled="@(!Editar || ComItens)" @bind-Value="form.Taxas" />
+                    <ValidationMessage For="() => form.Taxas" />
+                </label>
+                <label class="campo">
+                    <span>Despesas diversas (R$)</span>
+                    <InputNumber class="input" step="0.01" disabled="@(!Editar || ComItens)" @bind-Value="form.DespesasDiversas" />
+                    <ValidationMessage For="() => form.DespesasDiversas" />
+                </label>
+                <label class="campo col-2">
+                    <span>Forma de pagamento</span>
+                    <InputText class="input" disabled="@(!Editar)" @bind-Value="form.FormaPagamento" />
+                    <ValidationMessage For="() => form.FormaPagamento" />
+                </label>
+                <div class="destaque">
+                    <p class="rotulo-kpi">Total de aquisição</p>
+                    <p class="valor-kpi">@Texto.Moeda(aquisicao?.Dados.TotalAquisicao ?? 0)</p>
+                </div>
+            </div>
+            <label class="campo">
+                <span>Observação</span>
+                <InputTextArea class="input" rows="2" disabled="@(!Editar)" @bind-Value="form.Observacao" />
+            </label>
+            @if (ComItens)
+            {
+                <p class="pequeno mudo">Impostos, taxas e despesas são somados dos itens detalhados abaixo.</p>
+            }
+            @if (Editar)
+            {
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar aquisição</button>
+            }
+        </EditForm>
+
+        @if (aquisicao is not null)
+        {
+            <h3 class="espaco-topo">Itens detalhados</h3>
+            @if (aquisicao.Itens.Count == 0)
+            {
+                <p class="pequeno mudo">Sem itens detalhados.</p>
+            }
+            else
+            {
+                <table class="tabela simples">
+                    <tbody>
+                        @foreach (var i in aquisicao.Itens)
+                        {
+                            <tr>
+                                <td><span class="badge">@Texto.Rotulo(i.Tipo)</span></td>
+                                <td>@i.Descricao</td>
+                                <td>@Texto.Data(i.DataPagamento)</td>
+                                <td class="numero">@Texto.Moeda(i.Valor)</td>
+                                <td class="acoes-linha">
+                                    @if (Editar)
+                                    {
+                                        <button class="btn-ghost mini" title="Remover" disabled="@Ocupado" @onclick="() => ExcluirItem(i.Id)">✕</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            @if (Editar)
+            {
+                <EditForm Model="item" OnValidSubmit="AdicionarItem" class="linha-form">
+                    <DataAnnotationsValidator />
+                    <InputSelect class="input w-tipo" @bind-Value="item.Tipo">
+                        @foreach (var t in Enum.GetValues<TipoItemAquisicao>())
+                        {
+                            <option value="@t">@Texto.Rotulo(t)</option>
+                        }
+                    </InputSelect>
+                    <InputText class="input w-desc" placeholder="Descrição (ex.: ITBI)" @bind-Value="item.Descricao" />
+                    <InputNumber class="input w-valor" step="0.01" placeholder="Valor" @bind-Value="item.Valor" />
+                    <InputDate class="input w-data" title="Data do pagamento (opcional)" @bind-Value="item.DataPagamento" />
+                    <button type="submit" class="btn-ghost" disabled="@Ocupado">Adicionar item</button>
+                    <ValidationSummary class="resumo-validacao" />
+                </EditForm>
+            }
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    [Parameter] public bool Editar { get; set; }
+    [Parameter] public Func<Task>? AoAlterar { get; set; }
+
+    private AquisicaoDetalhe? aquisicao;
+    private AquisicaoForm form = new();
+    private AquisicaoItemForm item = new();
+    private bool carregando = true;
+
+    private bool ComItens => aquisicao?.Itens.Count > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar();
+        carregando = false;
+    }
+
+    private Task Carregar() => Executar(async () =>
+    {
+        aquisicao = await Servico.ObterAsync(Usuario, ImovelId);
+        form = aquisicao is null ? new AquisicaoForm() : AquisicaoForm.De(aquisicao.Dados);
+    });
+
+    private async Task Salvar()
+    {
+        if (!await Executar(() => Servico.SalvarAsync(Usuario, ImovelId, form))) return;
+        await Depois("Aquisição salva.");
+    }
+
+    private async Task AdicionarItem()
+    {
+        if (!await Executar(() => Servico.CriarItemAsync(Usuario, ImovelId, item))) return;
+        item = new AquisicaoItemForm();
+        await Depois("Item adicionado.");
+    }
+
+    private async Task ExcluirItem(Guid id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Remover este item?")) return;
+        if (await Executar(() => Servico.ExcluirItemAsync(Usuario, id))) await Depois(null);
+    }
+
+    private async Task Depois(string? mensagem)
+    {
+        await Carregar();
+        Sucesso = mensagem;
+        if (AoAlterar is not null) await AoAlterar();
+    }
+}

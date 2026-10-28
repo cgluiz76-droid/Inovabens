@@ -1,0 +1,135 @@
+@page "/alertas"
+@inherits ComponenteBase
+@inject AlertasService Servico
+@inject AgendaService Agenda
+
+<PageTitle>Alertas · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Alertas</h1>
+    <label class="check">
+        <input type="checkbox" @bind="incluirResolvidos" @bind:after="Carregar" /> Mostrar resolvidos
+    </label>
+</div>
+
+<MensagemErro Texto="@Erro" />
+<MensagemErro Texto="@Sucesso" Sucesso />
+
+@if (itens is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else if (itens.Count == 0)
+{
+    <p class="vazio">Nenhum alerta. 🎉</p>
+}
+else
+{
+    <div class="lista-cartoes">
+        @foreach (var a in itens)
+        {
+            <div class="card alerta-item @(a.Dados.ResolvidoEm is null ? "aberto" : "resolvido") @(a.Dados.LidoEm is null ? "nao-lido" : "")">
+                <div class="titulo-secao">
+                    <div>
+                        <span class="badge">@Texto.Rotulo(a.Dados.Tipo)</span>
+                        <span class="pequeno mudo">@Texto.DataHora(a.Dados.GeradoEm)</span>
+                        @if (a.Dados.ResolvidoEm is { } r)
+                        {
+                            <span class="pequeno texto-ok">· resolvido em @Texto.DataHora(r)</span>
+                        }
+                    </div>
+                    <div class="acoes-topo">
+                        @if (a.Dados.ResolvidoEm is null && a.CompromissoId is { } cid && Usuario.Pode(Permissoes.AgendaEditar))
+                        {
+                            <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => Cumprido(cid)">Marcar como cumprido</button>
+                            <button class="btn-ghost mini" @onclick="() => AbrirReagendar(a)">Reagendar</button>
+                        }
+                        @if (a.Dados.LidoEm is null)
+                        {
+                            <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Lido(a.Dados.Id)">Marcar lido</button>
+                        }
+                    </div>
+                </div>
+                <p>@a.Dados.Mensagem</p>
+                @if (a.ImovelId is { } im)
+                {
+                    <a class="pequeno" href="imoveis/@im">Abrir imóvel</a>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (reagendando is not null)
+{
+    <Modal Titulo="Reagendar compromisso" AoFechar="() => reagendando = null">
+        <p class="pequeno mudo">@reagendando.CompromissoTitulo</p>
+        <div class="grade-2">
+            <label class="campo">
+                <span>Novo início</span>
+                <input class="input" type="datetime-local" @bind="inicio" @bind:after="AjustarFim" />
+            </label>
+            <label class="campo">
+                <span>Novo término</span>
+                <input class="input" type="datetime-local" @bind="fim" />
+            </label>
+        </div>
+        <MensagemErro Texto="@erroModal" />
+        <div class="acoes">
+            <button class="btn-primary" disabled="@Ocupado" @onclick="Reagendar">Reagendar</button>
+            <button class="btn-ghost" @onclick="() => reagendando = null">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<AlertaItem>? itens;
+    private bool incluirResolvidos;
+
+    private AlertaItem? reagendando;
+    private DateTime inicio, fim;
+    private string? erroModal;
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () => itens = await Servico.ListarAsync(Usuario, incluirResolvidos));
+
+    private async Task Lido(Guid id)
+    {
+        if (await Executar(() => Servico.MarcarLidoAsync(Usuario, id))) await Carregar();
+    }
+
+    private async Task Cumprido(Guid compromissoId)
+    {
+        if (!await Executar(() => Agenda.ConcluirAsync(Usuario, compromissoId))) return;
+        await Carregar();
+        Sucesso = "Compromisso marcado como concluído.";
+    }
+
+    private void AbrirReagendar(AlertaItem a)
+    {
+        erroModal = null;
+        var h = CompromissoForm.Novo();
+        inicio = h.Inicio!.Value;
+        fim = h.Fim!.Value;
+        reagendando = a;
+    }
+
+    private void AjustarFim()
+    {
+        if (fim <= inicio) fim = inicio.AddHours(1);
+    }
+
+    private async Task Reagendar()
+    {
+        if (!await Executar(() => Agenda.ReagendarPorAlertaAsync(Usuario, reagendando!.Dados.Id, inicio, fim)))
+        {
+            erroModal = Erro;
+            Erro = null;
+            return;
+        }
+        reagendando = null;
+        await Carregar();
+        Sucesso = "Compromisso reagendado.";
+    }
+}

@@ -1,0 +1,97 @@
+@inherits ComponenteBase
+@inject ReceitasService Servico
+@inject IJSRuntime JS
+
+<section class="card">
+    <h2>Receitas (venda / locação)</h2>
+    <MensagemErro Texto="@Erro" />
+
+    @if (receitas is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else if (receitas.Count == 0)
+    {
+        <p class="pequeno mudo">Nenhuma receita lançada.</p>
+    }
+    else
+    {
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Tipo</th><th>Data</th><th>Bruto</th><th>Custos</th><th>Tributos</th><th>Líquido</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in receitas)
+                    {
+                        <tr>
+                            <td>@Texto.Rotulo(r.Tipo)</td>
+                            <td>@Texto.Data(r.Data)</td>
+                            <td>@Texto.Moeda(r.ValorBruto)</td>
+                            <td>@Texto.Moeda(r.CustosVenda)</td>
+                            <td>@Texto.Moeda(r.Tributos)</td>
+                            <td><b>@Texto.Moeda(r.ValorLiquido)</b></td>
+                            <td class="acoes-linha">
+                                @if (Editar)
+                                {
+                                    <button class="btn-ghost mini" title="Excluir" disabled="@Ocupado" @onclick="() => Excluir(r.Id)">✕</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (Editar)
+    {
+        <EditForm Model="form" OnValidSubmit="Lancar" class="linha-form espaco-topo">
+            <DataAnnotationsValidator />
+            <InputSelect class="input w-tipo" @bind-Value="form.Tipo">
+                @foreach (var t in Enum.GetValues<TipoReceita>())
+                {
+                    <option value="@t">@Texto.Rotulo(t)</option>
+                }
+            </InputSelect>
+            <InputDate class="input w-data" @bind-Value="form.Data" />
+            <label class="campo-inline"><span>Bruto</span><InputNumber class="input w-valor" step="0.01" @bind-Value="form.ValorBruto" /></label>
+            <label class="campo-inline"><span>Custos da venda</span><InputNumber class="input w-valor" step="0.01" @bind-Value="form.CustosVenda" /></label>
+            <label class="campo-inline"><span>Tributos</span><InputNumber class="input w-valor" step="0.01" @bind-Value="form.Tributos" /></label>
+            <button type="submit" class="btn-primary" disabled="@Ocupado">Lançar</button>
+            <ValidationSummary class="resumo-validacao" />
+        </EditForm>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    [Parameter] public bool Editar { get; set; }
+    [Parameter] public Func<Task>? AoAlterar { get; set; }
+
+    private IReadOnlyList<Receita>? receitas;
+    private ReceitaForm form = NovoForm();
+
+    private static ReceitaForm NovoForm() => new() { Data = DatasBR.Hoje() };
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () => receitas = await Servico.ListarAsync(Usuario, ImovelId));
+
+    private async Task Lancar()
+    {
+        if (!await Executar(() => Servico.CriarAsync(Usuario, ImovelId, form))) return;
+        form = NovoForm();
+        await Depois();
+    }
+
+    private async Task Excluir(Guid id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir receita?")) return;
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, id))) await Depois();
+    }
+
+    private async Task Depois()
+    {
+        await Carregar();
+        if (AoAlterar is not null) await AoAlterar();
+    }
+}

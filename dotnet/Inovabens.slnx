@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Inovabens.Core/Inovabens.Core.csproj" />
+    <Project Path="src/Inovabens.Web/Inovabens.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Inovabens.Tests/Inovabens.Tests.csproj" />
+  </Folder>
+</Solution>

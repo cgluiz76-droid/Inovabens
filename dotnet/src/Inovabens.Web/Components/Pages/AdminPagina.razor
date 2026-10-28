@@ -1,0 +1,60 @@
+@page "/admin"
+@inherits ComponenteBase
+
+<PageTitle>Administração · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Administração</h1>
+</div>
+
+@if (!PodeAlgo(Usuario))
+{
+    <p class="msg-erro">Você não tem acesso à administração.</p>
+}
+else
+{
+    <div class="abas">
+        @foreach (var (a, nome, permitido) in Abas)
+        {
+            if (permitido)
+            {
+                <button class="aba @(aba == a ? "ativa" : "")" @onclick="() => aba = a">@nome</button>
+            }
+        }
+    </div>
+    @switch (aba)
+    {
+        case Aba.Usuarios:
+            <UsuariosAdmin />
+            break;
+        case Aba.Perfis:
+            <PerfisAdmin />
+            break;
+        case Aba.Configuracoes:
+            <ConfiguracoesAdmin />
+            break;
+        case Aba.Auditoria:
+            <AuditoriaAdmin />
+            break;
+    }
+}
+
+@code {
+    private enum Aba { Usuarios, Perfis, Configuracoes, Auditoria }
+
+    private Aba aba;
+
+    /// <summary>Mostra o item "Administração" no menu se o usuário puder usar ao menos uma aba.</summary>
+    public static bool PodeAlgo(UsuarioAtual u) =>
+        u.Pode(Permissoes.UsuariosGerir) || u.Pode(Permissoes.RbacGerir) || u.Pode(Permissoes.AdminConfig) || u.Pode(Permissoes.AuditoriaVer);
+
+    private IEnumerable<(Aba, string, bool)> Abas =>
+    [
+        (Aba.Usuarios, "Usuários", Usuario.Pode(Permissoes.UsuariosGerir)),
+        (Aba.Perfis, "Perfis e permissões", Usuario.Pode(Permissoes.RbacGerir)),
+        (Aba.Configuracoes, "Configurações", Usuario.Pode(Permissoes.AdminConfig)),
+        (Aba.Auditoria, "Auditoria", Usuario.Pode(Permissoes.AuditoriaVer)),
+    ];
+
+    protected override void OnInitialized() => aba = Abas.FirstOrDefault(x => x.Item3).Item1;
+}

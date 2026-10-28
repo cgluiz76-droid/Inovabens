@@ -1,0 +1,145 @@
+@inherits ComponenteBase
+@inject PerfisService Servico
+@inject IJSRuntime JS
+
+<section class="card">
+    <div class="titulo-secao">
+        <p class="pequeno mudo">O perfil Administrador é protegido. "Escopo próprio" limita o usuário aos imóveis, leads e compromissos dele.</p>
+        <button class="btn-primary" @onclick="Novo">+ Novo perfil</button>
+    </div>
+    <MensagemErro Texto="@Erro" />
+    @if (perfis is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Perfil</th><th>Escopo</th><th>Permissões</th><th>Usuários</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var p in perfis)
+                    {
+                        <tr>
+                            <td><span class="forte">@p.Nome</span><p class="pequeno mudo">@p.Descricao</p></td>
+                            <td>@(p.EscopoProprio ? "Próprio" : "Todos")</td>
+                            <td>@p.Permissoes.Count</td>
+                            <td>@p.Usuarios</td>
+                            <td class="acoes-linha">
+                                @if (p.Nome != Administrador)
+                                {
+                                    <button class="btn-ghost mini" @onclick="() => Editar(p)">Editar</button>
+                                    <button class="btn-ghost mini texto-erro" disabled="@Ocupado" @onclick="() => Excluir(p)">Excluir</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (form is not null)
+{
+    <Modal Titulo="@(editandoId is null ? "Novo perfil" : "Editar perfil")" Largo AoFechar="() => form = null">
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Nome *</span>
+                    <InputText class="input" @bind-Value="form.Nome" />
+                    <ValidationMessage For="() => form.Nome" />
+                </label>
+                <label class="campo">
+                    <span>Descrição</span>
+                    <InputText class="input" @bind-Value="form.Descricao" />
+                </label>
+            </div>
+            <label class="check"><InputCheckbox @bind-Value="form.EscopoProprio" /> Escopo próprio (vê só os registros pelos quais é responsável)</label>
+            <div class="grupos-permissao">
+                @foreach (var g in Permissoes.Todas.GroupBy(p => p.Split(':')[0]))
+                {
+                    <fieldset class="grupo-permissao">
+                        <legend>@NomeGrupo(g.Key)</legend>
+                        @foreach (var p in g)
+                        {
+                            <label class="check">
+                                <input type="checkbox" checked="@form.Permissoes.Contains(p)" @onchange="e => Alternar(p, (bool)e.Value!)" />
+                                @Texto.Rotulo(p.Split(':')[1])
+                            </label>
+                        }
+                    </fieldset>
+                }
+            </div>
+            <MensagemErro Texto="@erroForm" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                <button type="button" class="btn-ghost" @onclick="() => form = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    private const string Administrador = "Administrador";
+
+    private IReadOnlyList<PerfilItem>? perfis;
+    private PerfilForm? form;
+    private Guid? editandoId;
+    private string? erroForm;
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () => perfis = await Servico.ListarAsync(Usuario));
+
+    private static string NomeGrupo(string g) => g switch
+    {
+        "usuarios" => "Usuários", "rbac" => "Perfis (RBAC)", "admin" => "Administração", "auditoria" => "Auditoria",
+        "pessoas" => "Pessoas", "imoveis" => "Imóveis", "financeiro" => "Financeiro", "memorandos" => "Memorandos",
+        "agenda" => "Agenda", "crm" => "CRM", _ => Texto.Rotulo(g),
+    };
+
+    private void Novo()
+    {
+        erroForm = null;
+        editandoId = null;
+        form = new PerfilForm();
+    }
+
+    private void Editar(PerfilItem p)
+    {
+        erroForm = null;
+        editandoId = p.Id;
+        form = new PerfilForm { Nome = p.Nome, Descricao = p.Descricao, EscopoProprio = p.EscopoProprio, Permissoes = [.. p.Permissoes] };
+    }
+
+    private void Alternar(string p, bool marcado)
+    {
+        if (marcado) form!.Permissoes.Add(p);
+        else form!.Permissoes.Remove(p);
+    }
+
+    private async Task Salvar()
+    {
+        var ok = await Executar(async () =>
+        {
+            if (editandoId is { } id) await Servico.AtualizarAsync(Usuario, id, form!);
+            else await Servico.CriarAsync(Usuario, form!);
+        });
+        if (!ok)
+        {
+            erroForm = Erro;
+            Erro = null;
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+
+    private async Task Excluir(PerfilItem p)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir o perfil {p.Nome}?")) return;
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, p.Id))) await Carregar();
+    }
+}

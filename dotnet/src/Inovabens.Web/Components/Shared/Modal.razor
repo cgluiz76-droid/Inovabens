@@ -1,0 +1,18 @@
+<div class="modal-fundo" @onmousedown="Fundo" @onmousedown:stopPropagation>
+    <div class="modal @(Largo ? "largo" : "")" role="dialog" aria-modal="true" @onmousedown:stopPropagation>
+        <div class="modal-topo">
+            <h2>@Titulo</h2>
+            <button type="button" class="btn-ghost mini" aria-label="Fechar" @onclick="AoFechar">✕</button>
+        </div>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public bool Largo { get; set; }
+
+    private Task Fundo() => AoFechar.InvokeAsync();
+}

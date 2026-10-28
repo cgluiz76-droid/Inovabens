@@ -1,0 +1,47 @@
+# Ambiente completo local:  docker compose up --build   →  http://localhost:3000
+# (uso local/homologação; em produção use render.yaml ou equivalente com segredos reais)
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: inovabens, POSTGRES_PASSWORD: inovabens, POSTGRES_DB: inovabens }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U inovabens"], interval: 5s, timeout: 3s, retries: 10 }
+  # Arquivos (fotos/documentos) — OPCIONAL: só sobe com  docker compose --profile arquivos up
+  # (o MinIO não é mais publicado no Docker Hub; a imagem vem do quay.io)
+  minio:
+    profiles: [arquivos]
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment: { MINIO_ROOT_USER: minioadmin, MINIO_ROOT_PASSWORD: minioadmin }
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://inovabens:inovabens@db:5432/inovabens
+      JWT_ACCESS_SECRET: local-access-secret-troque-em-producao-0123456789
+      JWT_REFRESH_SECRET: local-refresh-secret-troque-em-producao-9876543210
+      TOKEN_ENC_KEY: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+      CORS_ORIGIN: http://localhost:3000
+      WEB_URL: http://localhost:3000
+      COOKIE_SECURE: "false"
+      # vazio = envio de fotos/documentos desligado. Para ligar, veja o README (perfil "arquivos").
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_BUCKET: inovabens
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_FORCE_PATH_STYLE: "true"
+      SEED_ADMIN_EMAIL: admin@inovabens.com.br
+      SEED_ADMIN_PASSWORD: Trocar@123456
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: http://localhost:3000/api/v1/integracoes/google/callback
+    ports: ["3001:3001"]
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    depends_on: [api]
+    environment: { API_INTERNAL_URL: "http://api:3001" }
+    ports: ["3000:3000"]
+volumes: { pgdata: {}, miniodata: {} }

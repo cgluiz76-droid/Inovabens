@@ -1,0 +1,167 @@
+@inherits ComponenteBase
+@inject ImoveisService Servico
+@inject OpcoesService Opcoes
+@inject IJSRuntime JS
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Regularização</h2>
+        @if (Editar && form is null)
+        {
+            <button class="btn-primary" @onclick="Nova">+ Nova regularização</button>
+        }
+    </div>
+    <MensagemErro Texto="@Erro" />
+
+    @if (form is not null)
+    {
+        <EditForm Model="form" OnValidSubmit="Salvar" class="card interno">
+            <DataAnnotationsValidator />
+            <h3>@(editandoId is null ? "Nova regularização" : "Editar regularização")</h3>
+            <div class="grade-4">
+                <label class="campo">
+                    <span>Tipo</span>
+                    <InputSelect class="input" @bind-Value="form.Tipo">
+                        @foreach (var t in Enum.GetValues<TipoRegularizacao>())
+                        {
+                            <option value="@t">@Texto.Rotulo(t)</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label class="campo">
+                    <span>Status</span>
+                    <InputSelect class="input" @bind-Value="form.Status">
+                        @foreach (var s in Enum.GetValues<StatusRegularizacao>())
+                        {
+                            <option value="@s">@Texto.Rotulo(s)</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label class="campo">
+                    <span>Profissional</span>
+                    <select class="input" @bind="ProfissionalSelecionado">
+                        <option value="">(nenhum)</option>
+                        @foreach (var p in pessoas)
+                        {
+                            <option value="@p.Id">@p.Nome</option>
+                        }
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>Custo estimado (R$)</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="form.CustoEstimado" />
+                    <ValidationMessage For="() => form.CustoEstimado" />
+                </label>
+                <label class="campo"><span>Prazo previsto</span><InputDate class="input" @bind-Value="form.PrazoPrevisto" /></label>
+                <label class="campo"><span>Concluída em</span><InputDate class="input" @bind-Value="form.ConcluidaEm" /></label>
+            </div>
+            <label class="campo">
+                <span>Descrição</span>
+                <InputTextArea class="input" rows="3" @bind-Value="form.Descricao" />
+            </label>
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                <button type="button" class="btn-ghost" @onclick="Cancelar">Cancelar</button>
+            </div>
+        </EditForm>
+    }
+
+    @if (itens is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else if (itens.Count == 0)
+    {
+        <p class="vazio">Nenhuma regularização cadastrada.</p>
+    }
+    else
+    {
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead>
+                    <tr><th>Tipo</th><th>Status</th><th>Profissional</th><th>Prazo</th><th>Concluída</th><th>Custo estimado</th><th>Descrição</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in itens)
+                    {
+                        <tr>
+                            <td>@Texto.Rotulo(r.Dados.Tipo)</td>
+                            <td><span class="badge">@Texto.Rotulo(r.Dados.Status)</span></td>
+                            <td>@(r.ProfissionalNome ?? "—")</td>
+                            <td>@Texto.Data(r.Dados.PrazoPrevisto)</td>
+                            <td>@Texto.Data(r.Dados.ConcluidaEm)</td>
+                            <td>@Texto.Moeda(r.Dados.CustoEstimado)</td>
+                            <td class="descricao">@(r.Dados.Descricao ?? "")</td>
+                            <td class="acoes-linha">
+                                @if (Editar)
+                                {
+                                    <button class="btn-ghost mini" @onclick="() => EditarItem(r.Dados)">Editar</button>
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Excluir(r.Dados.Id)">Excluir</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    [Parameter] public bool Editar { get; set; }
+
+    private IReadOnlyList<RegularizacaoDetalhe>? itens;
+    private IReadOnlyList<Opcao> pessoas = [];
+    private RegularizacaoForm? form;
+    private Guid? editandoId;
+
+    private string ProfissionalSelecionado
+    {
+        get => form?.ProfissionalId?.ToString() ?? "";
+        set { if (form is not null) form.ProfissionalId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        pessoas = await Opcoes.PessoasAsync(Usuario);
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () => itens = await Servico.ListarRegularizacoesAsync(Usuario, ImovelId));
+
+    private void Nova()
+    {
+        editandoId = null;
+        form = new RegularizacaoForm();
+    }
+
+    private void EditarItem(Regularizacao r)
+    {
+        editandoId = r.Id;
+        form = RegularizacaoForm.De(r);
+    }
+
+    private void Cancelar()
+    {
+        editandoId = null;
+        form = null;
+    }
+
+    private async Task Salvar()
+    {
+        var f = form!;
+        var ok = await Executar(() => editandoId is { } id
+            ? Servico.AtualizarRegularizacaoAsync(Usuario, id, f)
+            : Servico.CriarRegularizacaoAsync(Usuario, ImovelId, f));
+        if (!ok) return;
+        Cancelar();
+        await Carregar();
+    }
+
+    private async Task Excluir(Guid id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir esta regularização?")) return;
+        if (await Executar(() => Servico.ExcluirRegularizacaoAsync(Usuario, id))) await Carregar();
+    }
+}

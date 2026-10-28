@@ -1,0 +1,41 @@
+# Blueprint do Render (https://render.com/docs/blueprint-spec). New → Blueprint → aponte para este repositório.
+# Depois do primeiro deploy preencha as variáveis marcadas com sync:false (S3, Google, TOKEN_ENC_KEY, WEB_URL).
+databases:
+  - name: inovabens-db
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+services:
+  - type: web
+    name: inovabens-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    numInstances: 1            # os jobs agendados rodam dentro da API: mantenha 1 réplica
+    envVars:
+      - { key: NODE_ENV, value: production }
+      - { key: COOKIE_SECURE, value: "true" }
+      - { key: DATABASE_URL, fromDatabase: { name: inovabens-db, property: connectionString } }
+      - { key: JWT_ACCESS_SECRET, generateValue: true }
+      - { key: JWT_REFRESH_SECRET, generateValue: true }
+      - { key: TOKEN_ENC_KEY, sync: false }        # 64 hex: openssl rand -hex 32
+      - { key: WEB_URL, sync: false }              # https://SEU-WEB.onrender.com
+      - { key: CORS_ORIGIN, sync: false }          # mesma URL do web
+      - { key: SEED_ADMIN_EMAIL, sync: false }
+      - { key: SEED_ADMIN_PASSWORD, sync: false }  # senha forte (o seed recusa a padrão em produção)
+      - { key: S3_ENDPOINT, sync: false }
+      - { key: S3_REGION, value: auto }
+      - { key: S3_BUCKET, sync: false }
+      - { key: S3_ACCESS_KEY, sync: false }
+      - { key: S3_SECRET_KEY, sync: false }
+      - { key: GOOGLE_CLIENT_ID, sync: false }
+      - { key: GOOGLE_CLIENT_SECRET, sync: false }
+      - { key: GOOGLE_REDIRECT_URI, sync: false }  # https://SEU-WEB.onrender.com/api/v1/integracoes/google/callback
+      - { key: GOOGLE_WEBHOOK_URL, sync: false }   # https://SEU-WEB.onrender.com/api/v1/webhooks/google/calendar
+  - type: web
+    name: inovabens-web
+    runtime: docker
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: .
+    envVars:
+      - { key: API_INTERNAL_URL, fromService: { type: web, name: inovabens-api, property: hostport } }

@@ -1,0 +1,115 @@
+﻿@inherits ComponenteBase
+@inject RetornoService Servico
+@inject IndicesService Indices
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Retorno do investimento</h2>
+        <div class="acoes-topo">
+            <span class="pequeno">Índice de correção</span>
+            <select class="input w-indice" @bind="indice" @bind:after="RecarregarAsync">
+                @foreach (var c in Enum.GetValues<CodigoIndice>())
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+            @if (Usuario.Pode(Permissoes.FinanceiroExportar))
+            {
+                <a class="btn-ghost" href="imoveis/@ImovelId/ficha-financeira.pdf?indice=@indice" download>Ficha financeira PDF</a>
+                <a class="btn-ghost" href="imoveis/@ImovelId/ficha-financeira.xlsx?indice=@indice" download>Excel</a>
+            }
+            @if (Usuario.Pode(Permissoes.AdminConfig))
+            {
+                <button class="btn-ghost" disabled="@Ocupado" title="Busca IPCA, INCC, IGP-M e Selic no Banco Central" @onclick="SincronizarIndices">
+                    @(sincronizando ? "Atualizando…" : "Atualizar índices (BCB)")
+                </button>
+            }
+        </div>
+    </div>
+    <MensagemErro Texto="@Erro" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
+
+    @if (r is null)
+    {
+        @if (Erro is null)
+        {
+            <p class="carregando">Carregando…</p>
+        }
+    }
+    else
+    {
+        <div class="kpis">
+            <div class="kpi"><p class="rotulo-kpi">Custo total</p><p class="valor-kpi">@Texto.Moeda(r.CustoTotal)</p><p class="pequeno mudo">aquisição @Texto.Moeda(r.CustoAquisicao)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Custo corrigido (@r.Indice)</p><p class="valor-kpi">@Texto.Moeda(r.CustoCorrigido)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Receita líquida</p><p class="valor-kpi">@Texto.Moeda(r.ReceitaLiquida)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Resultado</p><p class="valor-kpi @(r.Resultado < 0 ? "texto-erro" : "")">@Texto.Moeda(r.Resultado)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">ROI</p><p class="valor-kpi">@Texto.Percentual(r.Roi)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">ROI real (descontada a inflação)</p><p class="valor-kpi">@Texto.Percentual(r.RoiReal)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">TIR anual</p><p class="valor-kpi">@Texto.Percentual(r.TirAnual)</p></div>
+            <div class="kpi">
+                <p class="rotulo-kpi">MOIC</p>
+                <p class="valor-kpi">@(r.Moic is { } m ? m.ToString("0.00", Texto.PtBr) + "x" : "—")</p>
+                @if (r.PrazoDias is { } dias)
+                {
+                    <p class="pequeno mudo">@dias dias</p>
+                }
+            </div>
+        </div>
+
+        @if (r.PassivoPendente > 0)
+        {
+            <p class="aviso-passivo">Passivo pendente (despesas não pagas, fora do custo): <b>@Texto.Moeda(r.PassivoPendente)</b></p>
+        }
+        @foreach (var a in r.Avisos)
+        {
+            <p class="pequeno mudo">⚠ @a</p>
+        }
+
+        @if (r.Fluxo.Count > 0)
+        {
+            <div class="tabela-container espaco-topo">
+                <table class="tabela">
+                    <thead><tr><th>Data</th><th>Movimento</th><th>Valor</th><th>Corrigido</th></tr></thead>
+                    <tbody>
+                        @foreach (var f in r.Fluxo)
+                        {
+                            <tr>
+                                <td>@Texto.Data(f.Data)</td>
+                                <td>@f.Descricao</td>
+                                <td class="@(f.Tipo == TipoMovimento.SAIDA ? "texto-erro" : "texto-ok")">@Texto.Moeda(f.Valor)</td>
+                                <td>@Texto.Moeda(f.ValorCorrigido)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private ResultadoRetorno? r;
+    private CodigoIndice indice = CodigoIndice.IPCA;
+    private bool sincronizando;
+
+    protected override Task OnInitializedAsync() => RecarregarAsync();
+
+    public async Task RecarregarAsync()
+    {
+        await Executar(async () => r = await Servico.CalcularAsync(Usuario, ImovelId, indice));
+        StateHasChanged();
+    }
+
+    private async Task SincronizarIndices()
+    {
+        sincronizando = true;
+        IReadOnlyDictionary<CodigoIndice, int>? res = null;
+        var ok = await Executar(async () => res = await Indices.SincronizarAsync(Usuario));
+        sincronizando = false;
+        if (!ok) return;
+        await RecarregarAsync();
+        Sucesso = "Índices atualizados: " + string.Join(", ", res!.Select(x => $"{x.Key} (+{x.Value} meses)"));
+    }
+}

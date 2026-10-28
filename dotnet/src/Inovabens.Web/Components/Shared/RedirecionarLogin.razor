@@ -1,0 +1,26 @@
+@attribute [AllowAnonymous]
+@inject NavigationManager Nav
+
+@if (semPermissao)
+{
+    <p class="msg-erro">Você não tem permissão para acessar esta página.</p>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool semPermissao;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = AuthState is null ? null : (await AuthState).User;
+        if (user?.Identity?.IsAuthenticated == true)
+        {
+            semPermissao = true;
+            return;
+        }
+        var voltar = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+        Nav.NavigateTo($"login?ReturnUrl={Uri.EscapeDataString(voltar)}", forceLoad: true);
+    }
+}

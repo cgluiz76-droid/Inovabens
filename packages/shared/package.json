@@ -1,0 +1,15 @@
+{
+  "name": "@inovabens/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "echo sem testes"
+  },
+  "dependencies": { "zod": "^3.24.0" },
+  "devDependencies": { "typescript": "^5.7.0" }
+}

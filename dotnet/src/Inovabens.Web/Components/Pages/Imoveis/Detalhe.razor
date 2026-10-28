@@ -1,0 +1,127 @@
+﻿@page "/imoveis/{Id:guid}"
+@attribute [Authorize(Policy = Permissoes.ImoveisVer)]
+@inherits ComponenteBase
+@inject ImoveisService Servico
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>@(detalhe?.Dados.Codigo ?? "Imóvel") · Inovabens</PageTitle>
+
+<a href="imoveis" class="voltar">← Imóveis</a>
+
+@if (detalhe is null)
+{
+    if (Erro is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <MensagemErro Texto="@Erro" />
+    }
+}
+else
+{
+    <div class="cabecalho-imovel">
+        <div>
+            <p class="codigo">@detalhe.Dados.Codigo</p>
+            <h1>@detalhe.Dados.Titulo</h1>
+            <span class="badge">@Texto.Rotulo(detalhe.Dados.Situacao)</span>
+        </div>
+        <div class="acoes-topo">
+            @if (Usuario.Pode(Permissoes.ImoveisExportar))
+            {
+                <a class="btn-ghost" href="imoveis/@Id/ficha.pdf" download>Ficha PDF</a>
+                <a class="btn-ghost" href="imoveis/@Id/ficha.xlsx" download>Ficha Excel</a>
+            }
+            @if (Usuario.Pode(Permissoes.ImoveisExcluir))
+            {
+                <button class="btn-perigo" disabled="@Ocupado" @onclick="Excluir">Excluir imóvel</button>
+            }
+        </div>
+    </div>
+    <MensagemErro Texto="@Erro" />
+
+    <div class="abas">
+        <button class="aba @(aba == Aba.Ficha ? "ativa" : "")" @onclick="() => aba = Aba.Ficha">Ficha</button>
+        @if (Usuario.Pode(Permissoes.FinanceiroVer))
+        {
+            <button class="aba @(aba == Aba.Financeiro ? "ativa" : "")" @onclick="() => aba = Aba.Financeiro">Financeiro</button>
+        }
+        <button class="aba @(aba == Aba.Regularizacao ? "ativa" : "")" @onclick="() => aba = Aba.Regularizacao">Regularização</button>
+        @if (Usuario.Pode(Permissoes.MemorandosVer))
+        {
+            <button class="aba @(aba == Aba.Memorandos ? "ativa" : "")" @onclick="() => aba = Aba.Memorandos">Memorandos</button>
+        }
+        @if (Usuario.Pode(Permissoes.AgendaVer))
+        {
+            <button class="aba @(aba == Aba.Agenda ? "ativa" : "")" @onclick="() => aba = Aba.Agenda">Agenda</button>
+        }
+    </div>
+
+    @if (aba == Aba.Ficha)
+    {
+        <section class="card">
+            <h2>Dados do imóvel</h2>
+            @if (Editar)
+            {
+                <ImovelFormulario Form="form" AoSalvar="Salvar" />
+            }
+            else
+            {
+                <p class="mudo">Você não tem permissão para editar este imóvel.</p>
+            }
+        </section>
+        <ProprietariosEditor Detalhe="detalhe" Editar="Editar" AoSalvar="Recarregar" />
+        <CaracteristicasEditor Detalhe="detalhe" Editar="Editar" AoSalvar="Recarregar" />
+        <MidiasEditor Detalhe="detalhe" Editar="Editar" AoSalvar="Recarregar" />
+    }
+    else if (aba == Aba.Financeiro)
+    {
+        <FinanceiroAba ImovelId="Id" />
+    }
+    else if (aba == Aba.Memorandos)
+    {
+        <MemorandosAba ImovelId="Id" />
+    }
+    else if (aba == Aba.Agenda)
+    {
+        <AgendaImovelAba ImovelId="Id" />
+    }
+    else
+    {
+        <RegularizacoesAba ImovelId="Id" Editar="Editar" />
+    }
+}
+
+@code {
+    private enum Aba { Ficha, Financeiro, Regularizacao, Memorandos, Agenda }
+
+    [Parameter] public Guid Id { get; set; }
+
+    private ImovelDetalhe? detalhe;
+    private ImovelForm form = new();
+    private Aba aba = Aba.Ficha;
+
+    private bool Editar => Usuario.Pode(Permissoes.ImoveisEditar);
+
+    protected override Task OnParametersSetAsync() => Recarregar();
+
+    private Task Recarregar() => Executar(async () =>
+    {
+        detalhe = await Servico.DetalheAsync(Usuario, Id);
+        form = ImovelForm.De(detalhe.Dados);
+    });
+
+    private async Task Salvar(ImovelForm f)
+    {
+        await Servico.AtualizarAsync(Usuario, Id, f);
+        await Recarregar();
+    }
+
+    private async Task Excluir()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir este imóvel? Ele deixa de aparecer nas listas (exclusão lógica).")) return;
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, Id))) Nav.NavigateTo("imoveis");
+    }
+}

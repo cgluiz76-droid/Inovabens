@@ -1,0 +1,97 @@
+@inherits ComponenteBase
+@inject ImoveisService Servico
+@inject IJSRuntime JS
+
+<section class="card">
+    <h2>Fotos e documentos</h2>
+    <MensagemErro Texto="@Erro" />
+
+    @if (!Servico.ArmazenamentoHabilitado)
+    {
+        <p class="pequeno mudo">Envio de arquivos desligado: armazenamento S3 não configurado (variáveis S3_*).</p>
+    }
+
+    <div class="midias">
+        @foreach (var m in Detalhe.Midias)
+        {
+            <div class="midia">
+                @if (m.Url is not null && m.Midia.Tipo == TipoMidia.FOTO)
+                {
+                    <img src="@m.Url" alt="@(m.Midia.Legenda ?? "")" />
+                }
+                else
+                {
+                    <a class="midia-arquivo" href="@(m.Url ?? "#")" target="_blank" rel="noreferrer">@Texto.Rotulo(m.Midia.Tipo)</a>
+                }
+                <p class="pequeno truncar">@(m.Midia.Legenda ?? m.Midia.NomeOriginal)@(m.Midia.Capa ? " · capa" : "")</p>
+                @if (Editar)
+                {
+                    <div class="acoes-midia">
+                        @if (m.Midia.Tipo == TipoMidia.FOTO && !m.Midia.Capa)
+                        {
+                            <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => DefinirCapa(m.Midia.Id)">Capa</button>
+                        }
+                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Remover(m.Midia.Id)">Excluir</button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    @if (Detalhe.Midias.Count == 0)
+    {
+        <p class="pequeno mudo">Nenhum arquivo enviado.</p>
+    }
+
+    @if (Editar && Servico.ArmazenamentoHabilitado)
+    {
+        <label class="btn-ghost enviar">
+            @(Ocupado ? "Enviando…" : "⤒ Enviar arquivo")
+            <InputFile OnChange="Enviar" class="oculto" disabled="@Ocupado" />
+        </label>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
+    [Parameter] public bool Editar { get; set; }
+    [Parameter] public Func<Task>? AoSalvar { get; set; }
+
+    private async Task Enviar(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f.Size > ImoveisService.TamanhoMaximoArquivo)
+        {
+            Erro = "Arquivo maior que 25 MB.";
+            return;
+        }
+        var tipo = f.ContentType.StartsWith("image/") ? TipoMidia.FOTO
+            : f.ContentType.StartsWith("video/") ? TipoMidia.VIDEO
+            : TipoMidia.DOCUMENTO;
+        var ok = await Executar(async () =>
+        {
+            await using var origem = f.OpenReadStream(ImoveisService.TamanhoMaximoArquivo);
+            using var buffer = new MemoryStream();
+            await origem.CopyToAsync(buffer);
+            buffer.Position = 0;
+            await Servico.EnviarMidiaAsync(Usuario, Detalhe.Dados.Id, buffer, f.Name,
+                string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType, tipo);
+        });
+        if (ok) await Atualizar();
+    }
+
+    private async Task DefinirCapa(Guid midiaId)
+    {
+        if (await Executar(() => Servico.AtualizarMidiaAsync(Usuario, midiaId, new MidiaAlteracao { Capa = true }))) await Atualizar();
+    }
+
+    private async Task Remover(Guid midiaId)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir arquivo?")) return;
+        if (await Executar(() => Servico.RemoverMidiaAsync(Usuario, midiaId))) await Atualizar();
+    }
+
+    private async Task Atualizar()
+    {
+        if (AoSalvar is not null) await AoSalvar();
+    }
+}

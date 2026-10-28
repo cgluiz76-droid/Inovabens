@@ -1,0 +1,13 @@
+@attribute [AllowAnonymous]
+
+@if (!string.IsNullOrEmpty(Texto))
+{
+    <p class="@(Sucesso ? "msg-sucesso" : "msg-erro")" role="@(Sucesso ? "status" : "alert")">@Texto</p>
+}
+
+@code {
+    [Parameter] public string? Texto { get; set; }
+
+    /// <summary>true = mensagem verde de confirmação.</summary>
+    [Parameter] public bool Sucesso { get; set; }
+}

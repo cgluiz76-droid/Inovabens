@@ -1,0 +1,133 @@
+@inherits ComponenteBase
+@inject MemorandosService Servico
+@inject IJSRuntime JS
+
+@if (Usuario.Pode(Permissoes.MemorandosCriar))
+{
+    <section class="card">
+        <h2>@(editandoId is null ? "Novo memorando / ação" : "Editar memorando")</h2>
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="grade-4">
+                <label class="campo">
+                    <span>Tipo</span>
+                    <InputSelect class="input" @bind-Value="form.Tipo">
+                        @foreach (var t in Enum.GetValues<TipoMemorando>())
+                        {
+                            <option value="@t">@Texto.Rotulo(t)</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label class="campo col-2">
+                    <span>Título *</span>
+                    <InputText class="input" @bind-Value="form.Titulo" />
+                    <ValidationMessage For="() => form.Titulo" />
+                </label>
+                <label class="check"><InputCheckbox @bind-Value="form.Fixado" /> Fixar no topo</label>
+            </div>
+            <label class="campo">
+                <span>Texto</span>
+                <InputTextArea class="input" rows="4" @bind-Value="form.Corpo" />
+            </label>
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">@(editandoId is null ? "Registrar" : "Salvar")</button>
+                @if (editandoId is not null)
+                {
+                    <button type="button" class="btn-ghost" @onclick="Limpar">Cancelar edição</button>
+                }
+            </div>
+        </EditForm>
+    </section>
+}
+
+<MensagemErro Texto="@Erro" />
+
+@if (itens is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else if (itens.Count == 0)
+{
+    <p class="vazio">Nenhum memorando registrado.</p>
+}
+else
+{
+    @foreach (var m in itens)
+    {
+        <article class="card memorando @(m.Dados.Fixado ? "fixado" : "")">
+            <div class="titulo-secao">
+                <div>
+                    @if (m.Dados.Fixado)
+                    {
+                        <span title="Fixado">📌</span>
+                    }
+                    <span class="badge">@Texto.Rotulo(m.Dados.Tipo)</span>
+                    <strong>@m.Dados.Titulo</strong>
+                </div>
+                <div class="acoes-topo">
+                    @if (Usuario.Pode(Permissoes.MemorandosEditar))
+                    {
+                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Fixar(m)">@(m.Dados.Fixado ? "Desafixar" : "Fixar")</button>
+                        <button class="btn-ghost mini" @onclick="() => Editar(m)">Editar</button>
+                    }
+                    @if (Usuario.Pode(Permissoes.MemorandosExcluir))
+                    {
+                        <button class="btn-ghost mini texto-erro" disabled="@Ocupado" @onclick="() => Excluir(m)">Excluir</button>
+                    }
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(m.Dados.Corpo))
+            {
+                <p class="texto-livre">@m.Dados.Corpo</p>
+            }
+            <p class="pequeno mudo">@m.AutorNome · @Texto.DataHora(m.Dados.CriadoEm)@(m.Dados.AtualizadoEm > m.Dados.CriadoEm.AddMinutes(1) ? $" · editado em {Texto.DataHora(m.Dados.AtualizadoEm)}" : "")</p>
+        </article>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private IReadOnlyList<MemorandoDetalhe>? itens;
+    private MemorandoForm form = new();
+    private Guid? editandoId;
+
+    protected override Task OnParametersSetAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () => itens = await Servico.ListarAsync(Usuario, ImovelId));
+
+    private void Limpar()
+    {
+        editandoId = null;
+        form = new MemorandoForm();
+    }
+
+    private void Editar(MemorandoDetalhe m)
+    {
+        editandoId = m.Dados.Id;
+        form = new MemorandoForm { Tipo = m.Dados.Tipo, Titulo = m.Dados.Titulo, Corpo = m.Dados.Corpo, Fixado = m.Dados.Fixado };
+    }
+
+    private async Task Salvar()
+    {
+        var ok = await Executar(async () =>
+        {
+            if (editandoId is { } id) await Servico.AtualizarAsync(Usuario, id, form);
+            else await Servico.CriarAsync(Usuario, ImovelId, form);
+        });
+        if (!ok) return;
+        Limpar();
+        await Carregar();
+    }
+
+    private async Task Fixar(MemorandoDetalhe m)
+    {
+        if (await Executar(() => Servico.FixarAsync(Usuario, m.Dados.Id, !m.Dados.Fixado))) await Carregar();
+    }
+
+    private async Task Excluir(MemorandoDetalhe m)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir \"{m.Dados.Titulo}\"?")) return;
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, m.Dados.Id))) await Carregar();
+    }
+}

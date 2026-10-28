@@ -1,0 +1,117 @@
+@page "/imoveis"
+@attribute [Authorize(Policy = Permissoes.ImoveisVer)]
+@inherits ComponenteBase
+@implements IDisposable
+@inject ImoveisService Servico
+
+<PageTitle>Imóveis · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Imóveis</h1>
+    @if (Usuario.Pode(Permissoes.ImoveisCriar))
+    {
+        <a class="btn-primary" href="imoveis/novo">+ Novo imóvel</a>
+    }
+</div>
+
+<div class="filtros">
+    <input class="input busca" placeholder="Buscar por código, título, endereço…"
+           @bind="termo" @bind:event="oninput" @bind:after="AoDigitar" />
+    <select class="input filtro" @bind="situacao" @bind:after="Filtrar">
+        <option value="">Todas as situações</option>
+        @foreach (var s in Enum.GetValues<SituacaoImovel>())
+        {
+            <option value="@s">@Texto.Rotulo(s)</option>
+        }
+    </select>
+</div>
+
+<MensagemErro Texto="@Erro" />
+
+@if (resultado is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else if (resultado.Itens.Count == 0)
+{
+    <p class="vazio">Nenhum imóvel encontrado.</p>
+}
+else
+{
+    <div class="tabela-container">
+        <table class="tabela">
+            <thead>
+                <tr><th>Código</th><th>Imóvel</th><th>Local</th><th>Situação</th><th>Preço</th><th>Corretor</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var i in resultado.Itens)
+                {
+                    <tr>
+                        <td class="codigo"><a href="imoveis/@i.Id">@i.Codigo</a></td>
+                        <td>
+                            <a class="forte" href="imoveis/@i.Id">@i.Titulo</a>
+                            <p class="pequeno mudo">@Texto.Rotulo(i.Tipo) · @Texto.Rotulo(i.Finalidade)</p>
+                        </td>
+                        <td>@Local(i)</td>
+                        <td><span class="badge">@Texto.Rotulo(i.Situacao)</span></td>
+                        <td>@Texto.Moeda(i.PrecoVenda ?? i.PrecoLocacao)</td>
+                        <td>@(i.CorretorNome ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+@if (resultado is not null)
+{
+    <Paginacao Pagina="pagina" Total="resultado.Total" TamanhoPagina="resultado.TamanhoPagina" AoMudar="IrPara" />
+}
+
+@code {
+    private Paginado<ImovelListaItem>? resultado;
+    private string termo = "";
+    private string situacao = "";
+    private int pagina = 1;
+    private CancellationTokenSource? espera;
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () =>
+        resultado = await Servico.ListarAsync(Usuario, new FiltroImoveis
+        {
+            Termo = termo,
+            Situacao = Enum.TryParse<SituacaoImovel>(situacao, out var s) ? s : null,
+            Pagina = pagina,
+        }));
+
+    /// <summary>Espera o usuário parar de digitar (300 ms) antes de consultar.</summary>
+    private async Task AoDigitar()
+    {
+        espera?.Cancel();
+        espera = new CancellationTokenSource();
+        try { await Task.Delay(300, espera.Token); }
+        catch (TaskCanceledException) { return; }
+        await Filtrar();
+    }
+
+    private Task Filtrar()
+    {
+        pagina = 1;
+        return Carregar();
+    }
+
+    private Task IrPara(int p)
+    {
+        pagina = p;
+        return Carregar();
+    }
+
+    private static string Local(ImovelListaItem i)
+    {
+        var cidade = i.Cidade is null ? null : i.Cidade + (i.Uf is null ? "" : "/" + i.Uf);
+        var partes = new[] { i.Bairro, cidade }.Where(x => !string.IsNullOrEmpty(x));
+        return partes.Any() ? string.Join(" · ", partes) : "—";
+    }
+
+    public void Dispose() => espera?.Cancel();
+}

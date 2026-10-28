@@ -1,0 +1,17 @@
+node_modules
+dist
+.next
+.env
+*.log
+coverage
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+*.tsbuildinfo
+TestResults/
+
+# Claude Code (configuração local da máquina)
+.claude/settings.local.json

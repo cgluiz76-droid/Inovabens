@@ -1,0 +1,180 @@
+@inherits ComponenteBase
+@inject DespesasService Despesas
+@inject IndicesService Indices
+@inject CrmService Crm
+@inject IJSRuntime JS
+
+<MensagemErro Texto="@Erro" />
+<MensagemErro Texto="@Sucesso" Sucesso />
+
+<div class="grade-2">
+    <section class="card">
+        <h2>Categorias de despesa</h2>
+        @if (categorias is not null)
+        {
+            <table class="tabela">
+                <tbody>
+                    @foreach (var c in categorias)
+                    {
+                        <tr>
+                            <td><input class="input" value="@c.Nome" @onchange="e => RenomearCategoria(c, e.Value?.ToString())" /></td>
+                            <td class="acoes-linha">
+                                <label class="check">
+                                    <input type="checkbox" checked="@c.Ativo" @onchange="e => SalvarCategoria(c, c.Nome, (bool)e.Value!)" /> Ativa
+                                </label>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <div class="linha-form">
+            <input class="input w-desc" placeholder="Nova categoria" @bind="novaCategoria" />
+            <button class="btn-primary" disabled="@Ocupado" @onclick="CriarCategoria">Adicionar</button>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Índices de correção</h2>
+        <p class="pequeno mudo">
+            IPCA, INCC, IGP-M e Selic vêm do Banco Central (SGS). A busca automática roda todo dia 12 às 06:00;
+            use o botão para buscar agora.
+        </p>
+        <div class="acoes">
+            <button class="btn-primary" disabled="@Ocupado" @onclick="SincronizarIndices">Buscar índices no BCB</button>
+        </div>
+    </section>
+</div>
+
+<section class="card espaco-topo">
+    <div class="titulo-secao">
+        <h2>Estágios do funil</h2>
+        <select class="input filtro" @bind="funil" @bind:after="CarregarEstagios">
+            <option value="@Funil.VENDA">Vendas</option>
+            <option value="@Funil.LOCACAO">Locação</option>
+        </select>
+    </div>
+    @if (estagios is not null)
+    {
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Ordem</th><th>Nome</th><th>Cor</th><th>Tipo</th><th>Ativo</th><th></th></tr></thead>
+                <tbody>
+                    @for (var i = 0; i < estagios.Count; i++)
+                    {
+                        var idx = i;
+                        var e = estagios[i];
+                        <tr>
+                            <td class="sem-quebra">
+                                <button class="btn-ghost mini" disabled="@(idx == 0 || Ocupado)" @onclick="() => Trocar(idx, idx - 1)">↑</button>
+                                <button class="btn-ghost mini" disabled="@(idx == estagios.Count - 1 || Ocupado)" @onclick="() => Trocar(idx, idx + 1)">↓</button>
+                            </td>
+                            <td><input class="input" value="@e.Nome" @onchange="v => SalvarEstagio(e, f => f.Nome = v.Value?.ToString() ?? string.Empty)" /></td>
+                            <td><input type="color" value="@(e.Cor ?? "#64748b")" @onchange="v => SalvarEstagio(e, f => f.Cor = v.Value?.ToString() ?? f.Cor)" /></td>
+                            <td>
+                                <select class="input" value="@e.Tipo" @onchange="v => SalvarEstagio(e, f => f.Tipo = TipoDe(v))">
+                                    @foreach (var t in Enum.GetValues<TipoEstagio>())
+                                    {
+                                        <option value="@t">@Texto.Rotulo(t)</option>
+                                    }
+                                </select>
+                            </td>
+                            <td><input type="checkbox" checked="@e.Ativo" @onchange="v => SalvarEstagio(e, f => f.Ativo = (bool)v.Value!)" /></td>
+                            <td class="acoes-linha">
+                                <button class="btn-ghost mini texto-erro" disabled="@Ocupado" @onclick="() => ExcluirEstagio(e)">Excluir</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    <div class="linha-form">
+        <input class="input w-desc" placeholder="Novo estágio" @bind="novoEstagio.Nome" />
+        <input type="color" @bind="novoEstagio.Cor" />
+        <select class="input w-tipo" @bind="novoEstagio.Tipo">
+            @foreach (var t in Enum.GetValues<TipoEstagio>())
+            {
+                <option value="@t">@Texto.Rotulo(t)</option>
+            }
+        </select>
+        <button class="btn-primary" disabled="@Ocupado" @onclick="CriarEstagio">Adicionar</button>
+    </div>
+    <p class="pequeno mudo">Ganho/Perdido encerram o lead. Estágio com leads ou histórico não pode ser excluído: desative-o.</p>
+</section>
+
+@code {
+    private IReadOnlyList<DespesaCategoria>? categorias;
+    private string novaCategoria = "";
+    private Funil funil = Funil.VENDA;
+    private List<FunilEstagio>? estagios;
+    private EstagioForm novoEstagio = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarCategorias();
+        await CarregarEstagios();
+    }
+
+    private Task CarregarCategorias() => Executar(async () => categorias = await Despesas.CategoriasAsync(incluirInativas: true));
+
+    private Task CarregarEstagios() => Executar(async () => estagios = [.. await Crm.EstagiosAsync(funil)]);
+
+    private Task RenomearCategoria(DespesaCategoria c, string? nome) => SalvarCategoria(c, nome ?? "", c.Ativo);
+
+    private async Task SalvarCategoria(DespesaCategoria c, string nome, bool ativo)
+    {
+        await Executar(() => Despesas.AtualizarCategoriaAsync(Usuario, c.Id, new CategoriaForm { Nome = nome, Ativo = ativo }));
+        await CarregarCategorias();
+    }
+
+    private async Task CriarCategoria()
+    {
+        if (!await Executar(() => Despesas.CriarCategoriaAsync(Usuario, new CategoriaForm { Nome = novaCategoria }))) return;
+        novaCategoria = "";
+        await CarregarCategorias();
+    }
+
+    private async Task SincronizarIndices()
+    {
+        IReadOnlyDictionary<CodigoIndice, int>? r = null;
+        if (await Executar(async () => r = await Indices.SincronizarAsync(Usuario)))
+            Sucesso = "Índices atualizados: " + string.Join(", ", r!.Select(x => $"{x.Key} ({x.Value} mês(es))"));
+    }
+
+    private static TipoEstagio TipoDe(ChangeEventArgs v) => Enum.Parse<TipoEstagio>(v.Value?.ToString() ?? nameof(TipoEstagio.ABERTO));
+
+    private static EstagioForm FormDe(FunilEstagio e) =>
+        new() { Funil = e.Funil, Nome = e.Nome, Ordem = e.Ordem, Cor = e.Cor ?? "#64748b", Tipo = e.Tipo, Ativo = e.Ativo };
+
+    private async Task SalvarEstagio(FunilEstagio e, Action<EstagioForm> alterar)
+    {
+        var f = FormDe(e);
+        alterar(f);
+        await Executar(() => Crm.AtualizarEstagioAsync(Usuario, e.Id, f));
+        await CarregarEstagios();
+    }
+
+    /// <summary>Troca a posição de dois estágios e grava a ordem 1..N de todos.</summary>
+    private async Task Trocar(int a, int b)
+    {
+        (estagios![a], estagios[b]) = (estagios[b], estagios[a]);
+        await Executar(() => Crm.ReordenarAsync(Usuario, [.. estagios.Select((e, i) => (e.Id, i + 1))]));
+        await CarregarEstagios();
+    }
+
+    private async Task CriarEstagio()
+    {
+        novoEstagio.Funil = funil;
+        novoEstagio.Ordem = (estagios?.Count > 0 ? estagios.Max(e => e.Ordem) : 0) + 1;
+        if (!await Executar(() => Crm.CriarEstagioAsync(Usuario, novoEstagio))) return;
+        novoEstagio = new EstagioForm();
+        await CarregarEstagios();
+    }
+
+    private async Task ExcluirEstagio(FunilEstagio e)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir o estágio {e.Nome}?")) return;
+        if (await Executar(() => Crm.ExcluirEstagioAsync(Usuario, e.Id))) await CarregarEstagios();
+    }
+}

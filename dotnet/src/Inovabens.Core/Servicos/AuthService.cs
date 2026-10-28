@@ -1,0 +1,173 @@
+using Inovabens.Core.Comum;
+using Inovabens.Core.Dados;
+using Inovabens.Core.Dominio;
+using Microsoft.EntityFrameworkCore;
+using OtpNet;
+
+namespace Inovabens.Core.Servicos;
+
+public enum SituacaoLogin { Sucesso, Falha, PedeTotp }
+
+public sealed record ResultadoLogin(SituacaoLogin Situacao, UsuarioAtual? Usuario = null, string? Mensagem = null);
+
+public sealed record ConfiguracaoTotp(string Segredo, string OtpauthUrl);
+
+public sealed class AlterarSenhaForm
+{
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe a senha atual.")]
+    public string SenhaAtual { get; set; } = "";
+
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Informe a nova senha."), SenhaForte]
+    public string NovaSenha { get; set; } = "";
+}
+
+/// <summary>
+/// Login contra a tabela <c>usuarios</c> existente. As senhas foram gravadas pelo Node com Argon2id
+/// no formato PHC ($argon2id$v=19$...), que é verificado aqui sem precisar recriar senhas.
+/// </summary>
+public sealed class AuthService(IDbContextFactory<InovabensDb> fabrica, AuditService audit, InovabensOpcoes op)
+{
+    private const int MaxFalhas = 5;
+    // evita revelar (por tempo de resposta) se o e-mail existe
+    private static readonly Lazy<string> HashFicticio = new(() => Senhas.Hash("dummy-password"));
+
+    public async Task<ResultadoLogin> LoginAsync(string email, string senha, string? totp)
+    {
+        await using var db = await fabrica.CreateDbContextAsync();
+        var e = email.Trim().ToLowerInvariant();
+        var u = await db.Usuarios.Include(x => x.Perfil)
+            .SingleOrDefaultAsync(x => x.Email.ToLower() == e && x.ExcluidoEm == null);
+
+        if (u is null)
+        {
+            SenhaConfere(HashFicticio.Value, senha);
+            return Falha("Credenciais inválidas.");
+        }
+        if (u.BloqueadoAte > DateTime.UtcNow)
+            return Falha("Conta temporariamente bloqueada por excesso de tentativas. Tente novamente mais tarde.");
+
+        if (!SenhaConfere(u.SenhaHash, senha) || !u.Ativo)
+        {
+            if (u.Ativo) await RegistrarFalha(db, u);
+            return Falha("Credenciais inválidas.");
+        }
+        if (u.TotpAtivo)
+        {
+            if (string.IsNullOrWhiteSpace(totp)) return new ResultadoLogin(SituacaoLogin.PedeTotp, Mensagem: "Informe o código do aplicativo autenticador.");
+            if (u.TotpSecret is null || !TotpValido(u.TotpSecret, totp.Trim()))
+            {
+                await RegistrarFalha(db, u);
+                return Falha("Código de verificação inválido.");
+            }
+        }
+
+        u.TentativasFalhas = 0;
+        u.BloqueadoAte = null;
+        u.UltimoLoginEm = DateTime.UtcNow;
+        audit.Registrar(db, u.Id, "usuarios", u.Id, "LOGIN");
+        await db.SaveChangesAsync();
+        return new ResultadoLogin(SituacaoLogin.Sucesso, await Montar(db, u));
+    }
+
+    /// <summary>Relê usuário/perfil/permissões (usado para revalidar o cookie periodicamente). null = acesso revogado.</summary>
+    public async Task<UsuarioAtual?> RecarregarAsync(Guid usuarioId)
+    {
+        await using var db = await fabrica.CreateDbContextAsync();
+        var u = await db.Usuarios.AsNoTracking().Include(x => x.Perfil)
+            .SingleOrDefaultAsync(x => x.Id == usuarioId && x.ExcluidoEm == null && x.Ativo);
+        return u is null ? null : await Montar(db, u);
+    }
+
+    private static async Task<UsuarioAtual> Montar(InovabensDb db, Usuario u)
+    {
+        var perms = await db.PerfilPermissoes.Where(pp => pp.PerfilId == u.PerfilId)
+            .Select(pp => pp.Permissao!.Codigo).ToListAsync();
+        return new UsuarioAtual(u.Id, u.Nome, u.Email, u.PerfilId, u.Perfil!.Nome, u.Perfil.EscopoProprio, perms.ToHashSet(), Senhas.Selo(u.SenhaHash));
+    }
+
+    /// <summary>Bloqueio progressivo: a partir da 5ª falha, 5 min, 10, 20... (máx. 24 h).</summary>
+    private static async Task RegistrarFalha(InovabensDb db, Usuario u)
+    {
+        var n = u.TentativasFalhas + 1;
+        u.TentativasFalhas = n;
+        u.BloqueadoAte = n >= MaxFalhas
+            ? DateTime.UtcNow.AddMinutes(Math.Min(5 * Math.Pow(2, n - MaxFalhas), 1440))
+            : null;
+        await db.SaveChangesAsync();
+    }
+
+    private static bool SenhaConfere(string hash, string senha) => Senhas.Confere(hash, senha);
+
+    /* --------------------------- Minha conta --------------------------- */
+
+    /// <summary>Troca a própria senha. As demais sessões caem na próxima revalidação (o selo muda).</summary>
+    /// <summary>Troca a senha e devolve o novo selo (as sessões com o selo antigo são encerradas na revalidação).</summary>
+    public async Task<string> AlterarSenhaAsync(UsuarioAtual u, AlterarSenhaForm form)
+    {
+        Validacao.Validar(form);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var usr = await db.Usuarios.SingleAsync(x => x.Id == u.Id);
+        if (!SenhaConfere(usr.SenhaHash, form.SenhaAtual))
+            throw new RegraNegocioException(nameof(AlterarSenhaForm.SenhaAtual), "Senha atual incorreta");
+        usr.SenhaHash = Senhas.Hash(form.NovaSenha);
+        audit.Registrar(db, u.Id, "usuarios", u.Id, "SENHA");
+        await db.SaveChangesAsync();
+        return Senhas.Selo(usr.SenhaHash);
+    }
+
+    public async Task<bool> TotpAtivoAsync(Guid usuarioId)
+    {
+        await using var db = await fabrica.CreateDbContextAsync();
+        return await db.Usuarios.Where(x => x.Id == usuarioId).Select(x => x.TotpAtivo).SingleAsync();
+    }
+
+    /// <summary>Gera e guarda (cifrado) um novo segredo TOTP; só passa a valer depois de <see cref="TotpAtivarAsync"/>.</summary>
+    public async Task<ConfiguracaoTotp> TotpIniciarAsync(UsuarioAtual u)
+    {
+        await using var db = await fabrica.CreateDbContextAsync();
+        var usr = await db.Usuarios.SingleAsync(x => x.Id == u.Id);
+        if (usr.TotpAtivo) throw new RegraNegocioException("_", "2FA já está ativo");
+        var segredo = Base32Encoding.ToString(KeyGeneration.GenerateRandomKey(20)).TrimEnd('=');
+        usr.TotpSecret = Cripto.Cifrar(segredo, op.TokenEncKey);
+        await db.SaveChangesAsync();
+        var url = $"otpauth://totp/Inovabens:{Uri.EscapeDataString(usr.Email)}?secret={segredo}&issuer=Inovabens";
+        return new ConfiguracaoTotp(segredo, url);
+    }
+
+    public async Task TotpAtivarAsync(UsuarioAtual u, string codigo)
+    {
+        await using var db = await fabrica.CreateDbContextAsync();
+        var usr = await db.Usuarios.SingleAsync(x => x.Id == u.Id);
+        if (usr.TotpSecret is null || !TotpValido(usr.TotpSecret, codigo.Trim()))
+            throw new RegraNegocioException("codigo", "Código inválido");
+        usr.TotpAtivo = true;
+        audit.Registrar(db, u.Id, "usuarios", u.Id, "2FA_ATIVAR");
+        await db.SaveChangesAsync();
+    }
+
+    public async Task TotpDesativarAsync(UsuarioAtual u, string senha, string? codigo)
+    {
+        await using var db = await fabrica.CreateDbContextAsync();
+        var usr = await db.Usuarios.SingleAsync(x => x.Id == u.Id);
+        if (!SenhaConfere(usr.SenhaHash, senha)) throw new RegraNegocioException("senha", "Senha incorreta");
+        if (usr.TotpAtivo && (string.IsNullOrWhiteSpace(codigo) || usr.TotpSecret is null || !TotpValido(usr.TotpSecret, codigo.Trim())))
+            throw new RegraNegocioException("codigo", "Código inválido");
+        usr.TotpAtivo = false;
+        usr.TotpSecret = null;
+        audit.Registrar(db, u.Id, "usuarios", u.Id, "2FA_DESATIVAR");
+        await db.SaveChangesAsync();
+    }
+
+    private bool TotpValido(string segredoCifrado, string codigo)
+    {
+        try
+        {
+            var segredo = Cripto.Decifrar(segredoCifrado, op.TokenEncKey);
+            var t = new Totp(Base32Encoding.ToBytes(segredo));
+            return t.VerifyTotp(codigo, out _, new VerificationWindow(previous: 1, future: 1));
+        }
+        catch { return false; }
+    }
+
+    private static ResultadoLogin Falha(string msg) => new(SituacaoLogin.Falha, Mensagem: msg);
+}

@@ -1,0 +1,100 @@
+﻿@inherits LayoutComponentBase
+@implements IDisposable
+@inject AlertasService Alertas
+@inject NavigationManager Nav
+
+<div class="app">
+    <aside class="lateral">
+        <div class="marca">🏢 Inovabens</div>
+        <nav>
+            <NavLink class="nav-item" href="" Match="NavLinkMatch.All">Painel</NavLink>
+            @if (usuario?.Pode(Permissoes.ImoveisVer) == true)
+            {
+                <NavLink class="nav-item" href="imoveis">Imóveis</NavLink>
+            }
+            @if (usuario?.Pode(Permissoes.PessoasVer) == true)
+            {
+                <NavLink class="nav-item" href="pessoas">Pessoas</NavLink>
+            }
+            @if (usuario?.Pode(Permissoes.CrmVer) == true)
+            {
+                <NavLink class="nav-item" href="crm">CRM</NavLink>
+            }
+            @if (usuario?.Pode(Permissoes.AgendaVer) == true)
+            {
+                <NavLink class="nav-item" href="agenda">Agenda</NavLink>
+            }
+            @if (usuario is not null && Pages.AdminPagina.PodeAlgo(usuario))
+            {
+                <NavLink class="nav-item" href="admin">Administração</NavLink>
+            }
+        </nav>
+    </aside>
+
+    <div class="principal">
+        <header class="topo">
+            <a class="sino" href="alertas" title="Alertas">
+                🔔
+                @if (alertas > 0)
+                {
+                    <span class="contador">@(alertas > 99 ? "99+" : alertas.ToString())</span>
+                }
+            </a>
+            <a href="conta" class="usuario-topo" title="Minha conta">@usuario?.Nome · <span class="mudo">@usuario?.PerfilNome</span></a>
+            <form method="post" action="sair">
+                <AntiforgeryToken />
+                <button type="submit" class="btn-ghost">Sair</button>
+            </form>
+        </header>
+        <main class="conteudo">
+            @if (usuario is null)
+            {
+                @Body
+            }
+            else
+            {
+                <CascadingValue Value="usuario" IsFixed="true">
+                    @Body
+                </CascadingValue>
+            }
+        </main>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Ocorreu um erro inesperado.
+    <a href="." class="reload">Recarregar</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private UsuarioAtual? usuario;
+    private int alertas;
+
+    protected override void OnInitialized() => Nav.LocationChanged += AoNavegar;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthState is not null) usuario = UsuarioAtual.De((await AuthState).User);
+        await ContarAlertas();
+    }
+
+    /// <summary>O contador do sino é atualizado a cada navegação (marcar como lido em /alertas reflete aqui).</summary>
+    private async void AoNavegar(object? _, LocationChangedEventArgs e)
+    {
+        await ContarAlertas();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ContarAlertas()
+    {
+        if (usuario is null) return;
+        try { alertas = await Alertas.ContagemAsync(usuario); }
+        catch { /* o contador é auxiliar: falha no banco não derruba o layout */ }
+    }
+
+    public void Dispose() => Nav.LocationChanged -= AoNavegar;
+}

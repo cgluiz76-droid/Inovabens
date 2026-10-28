@@ -1,0 +1,80 @@
+@inherits ComponenteBase
+@inject AgendaService Servico
+@inject OpcoesService Opcoes
+
+@if (form is not null)
+{
+    <section class="card">
+        <h2>@(editandoId is null ? "Novo compromisso" : "Editar compromisso")</h2>
+        <CompromissoFormulario Form="form" Responsaveis="responsaveis" Erro="@erroForm" Ocupado="Ocupado"
+                               AoSalvar="Salvar" AoCancelar="() => form = null" />
+    </section>
+}
+else if (Usuario.Pode(Permissoes.AgendaCriar))
+{
+    <div class="acoes-topo espaco-baixo">
+        <button class="btn-primary" @onclick="Novo">+ Novo compromisso</button>
+    </div>
+}
+
+<MensagemErro Texto="@Erro" />
+@if (itens is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else
+{
+    <section class="card">
+        <h2>Compromissos do imóvel</h2>
+        <CompromissosLista Itens="itens" Vazio="Nenhum compromisso para este imóvel." AoEditar="Editar" AoAlterar="Carregar" />
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private IReadOnlyList<CompromissoDetalhe>? itens;
+    private IReadOnlyList<Opcao>? responsaveis;
+    private CompromissoForm? form;
+    private Guid? editandoId;
+    private string? erroForm;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () => itens = await Servico.DoImovelAsync(Usuario, ImovelId));
+
+    private void Novo()
+    {
+        erroForm = null;
+        editandoId = null;
+        form = CompromissoForm.Novo();
+    }
+
+    private void Editar(CompromissoDetalhe c)
+    {
+        erroForm = null;
+        editandoId = c.Dados.Id;
+        form = CompromissoForm.De(c);
+    }
+
+    private async Task Salvar()
+    {
+        var ok = await Executar(async () =>
+        {
+            if (editandoId is { } id) await Servico.AtualizarAsync(Usuario, id, form!);
+            else await Servico.CriarAsync(Usuario, ImovelId, form!);
+        });
+        if (!ok)
+        {
+            erroForm = Erro;
+            Erro = null;
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+}

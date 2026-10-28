@@ -1,0 +1,204 @@
+using System.ComponentModel.DataAnnotations;
+using Inovabens.Core.Comum;
+using Inovabens.Core.Dominio;
+
+namespace Inovabens.Core.Imoveis;
+
+/* ------------------------------ Consultas ------------------------------ */
+
+public sealed record FiltroImoveis
+{
+    public string? Termo { get; init; }
+    public SituacaoImovel? Situacao { get; init; }
+    public FinalidadeImovel? Finalidade { get; init; }
+    public string? Tipo { get; init; }
+    public string? Cidade { get; init; }
+    public Guid? CorretorId { get; init; }
+    public int Pagina { get; init; } = 1;
+    public int TamanhoPagina { get; init; } = 20;
+}
+
+public sealed record ImovelListaItem(
+    Guid Id, string Codigo, string Titulo, string Tipo, SituacaoImovel Situacao, FinalidadeImovel Finalidade,
+    string? Cidade, string? Bairro, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, string? CorretorNome);
+
+public sealed record MidiaDetalhe(ImovelMidia Midia, string? Url);
+
+public sealed record ProprietarioDetalhe(Guid PessoaId, string PessoaNome, decimal Percentual, bool Principal, DateOnly? InicioEm, DateOnly? FimEm);
+
+public sealed record EnvolvidoDetalhe(Guid PessoaId, string PessoaNome, PapelPessoa Papel, string? Observacao);
+
+public sealed record ImovelDetalhe(
+    Imovel Dados,
+    string? CorretorNome,
+    IReadOnlyList<ImovelCaracteristica> Caracteristicas,
+    IReadOnlyList<MidiaDetalhe> Midias,
+    IReadOnlyList<ProprietarioDetalhe> Proprietarios,
+    IReadOnlyList<EnvolvidoDetalhe> Envolvidos);
+
+public sealed record RegularizacaoDetalhe(Regularizacao Dados, string? ProfissionalNome);
+
+/* ------------------------------ Entradas ------------------------------ */
+
+/// <summary>Formulário do imóvel (mesmas regras do schema Zod imovelCriar da API Node).</summary>
+public sealed class ImovelForm : IValidatableObject
+{
+    public FinalidadeImovel Finalidade { get; set; } = FinalidadeImovel.VENDA;
+    public SituacaoImovel Situacao { get; set; } = SituacaoImovel.CAPTACAO;
+
+    [Required(ErrorMessage = "Informe o tipo.")]
+    [StringLength(40, MinimumLength = 2, ErrorMessage = "O tipo deve ter de 2 a 40 caracteres.")]
+    public string Tipo { get; set; } = "apartamento";
+
+    [StringLength(60)] public string? Subtipo { get; set; }
+
+    [Required(ErrorMessage = "Informe o título.")]
+    [StringLength(200, MinimumLength = 3, ErrorMessage = "O título deve ter de 3 a 200 caracteres.")]
+    public string Titulo { get; set; } = "";
+
+    public string? DescricaoPublica { get; set; }
+    public string? DescricaoInterna { get; set; }
+
+    [StringLength(12, ErrorMessage = "CEP muito longo.")] public string? Cep { get; set; }
+    [StringLength(200)] public string? Logradouro { get; set; }
+    [StringLength(20)] public string? Numero { get; set; }
+    [StringLength(100)] public string? Complemento { get; set; }
+    [StringLength(100)] public string? Bairro { get; set; }
+    [StringLength(100)] public string? Cidade { get; set; }
+
+    [RegularExpression(@"^\s*[A-Za-z]{2}\s*$", ErrorMessage = "UF deve ter 2 letras.")]
+    public string? Uf { get; set; }
+
+    [Range(-90, 90, ErrorMessage = "Latitude inválida.")] public double? Latitude { get; set; }
+    [Range(-180, 180, ErrorMessage = "Longitude inválida.")] public double? Longitude { get; set; }
+    public bool EnderecoPublico { get; set; }
+
+    [StringLength(40)] public string? Matricula { get; set; }
+    [StringLength(120)] public string? Cartorio { get; set; }
+    [StringLength(40)] public string? InscricaoMunicipal { get; set; }
+
+    public decimal? AreaTotalM2 { get; set; }
+    public decimal? AreaConstruidaM2 { get; set; }
+    public decimal? AreaUtilM2 { get; set; }
+
+    [Range(0, 999, ErrorMessage = "Use um número entre 0 e 999.")] public int? Quartos { get; set; }
+    [Range(0, 999, ErrorMessage = "Use um número entre 0 e 999.")] public int? Suites { get; set; }
+    [Range(0, 999, ErrorMessage = "Use um número entre 0 e 999.")] public int? Banheiros { get; set; }
+    [Range(0, 999, ErrorMessage = "Use um número entre 0 e 999.")] public int? Vagas { get; set; }
+
+    public decimal? PrecoVenda { get; set; }
+    public decimal? PrecoLocacao { get; set; }
+    public bool DivulgarSite { get; set; }
+    public Guid? CorretorResponsavelId { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext _)
+    {
+        // numeric(12,2) para medidas e numeric(15,2) para dinheiro; nunca negativos
+        foreach (var (nome, valor, max) in new (string, decimal?, decimal)[]
+                 {
+                     (nameof(AreaTotalM2), AreaTotalM2, 9_999_999_999.99m), (nameof(AreaConstruidaM2), AreaConstruidaM2, 9_999_999_999.99m),
+                     (nameof(AreaUtilM2), AreaUtilM2, 9_999_999_999.99m),
+                     (nameof(PrecoVenda), PrecoVenda, 9_999_999_999_999.99m), (nameof(PrecoLocacao), PrecoLocacao, 9_999_999_999_999.99m),
+                 })
+        {
+            if (valor is null) continue;
+            if (valor < 0) yield return new ValidationResult("O valor não pode ser negativo.", [nome]);
+            else if (valor > max) yield return new ValidationResult("Valor muito alto.", [nome]);
+            else if (decimal.Round(valor.Value, 2) != valor) yield return new ValidationResult("Use no máximo 2 casas decimais.", [nome]);
+        }
+    }
+
+    public static ImovelForm De(Imovel i) => new()
+    {
+        Finalidade = i.Finalidade, Situacao = i.Situacao, Tipo = i.Tipo, Subtipo = i.Subtipo, Titulo = i.Titulo,
+        DescricaoPublica = i.DescricaoPublica, DescricaoInterna = i.DescricaoInterna,
+        Cep = i.Cep, Logradouro = i.Logradouro, Numero = i.Numero, Complemento = i.Complemento, Bairro = i.Bairro, Cidade = i.Cidade, Uf = i.Uf,
+        Latitude = i.Latitude, Longitude = i.Longitude, EnderecoPublico = i.EnderecoPublico,
+        Matricula = i.Matricula, Cartorio = i.Cartorio, InscricaoMunicipal = i.InscricaoMunicipal,
+        AreaTotalM2 = i.AreaTotalM2, AreaConstruidaM2 = i.AreaConstruidaM2, AreaUtilM2 = i.AreaUtilM2,
+        Quartos = i.Quartos, Suites = i.Suites, Banheiros = i.Banheiros, Vagas = i.Vagas,
+        PrecoVenda = i.PrecoVenda, PrecoLocacao = i.PrecoLocacao, DivulgarSite = i.DivulgarSite,
+        CorretorResponsavelId = i.CorretorResponsavelId,
+    };
+
+    /// <summary>Copia para a entidade normalizando: texto vazio vira null, UF em maiúsculas.</summary>
+    internal void AplicarEm(Imovel i)
+    {
+        i.Finalidade = Finalidade; i.Situacao = Situacao;
+        i.Tipo = Tipo.Trim(); i.Subtipo = Texto.Limpo(Subtipo); i.Titulo = Titulo.Trim();
+        i.DescricaoPublica = Texto.Limpo(DescricaoPublica); i.DescricaoInterna = Texto.Limpo(DescricaoInterna);
+        i.Cep = Texto.Limpo(Cep); i.Logradouro = Texto.Limpo(Logradouro); i.Numero = Texto.Limpo(Numero);
+        i.Complemento = Texto.Limpo(Complemento); i.Bairro = Texto.Limpo(Bairro); i.Cidade = Texto.Limpo(Cidade);
+        i.Uf = Texto.Limpo(Uf)?.ToUpperInvariant();
+        i.Latitude = Latitude; i.Longitude = Longitude; i.EnderecoPublico = EnderecoPublico;
+        i.Matricula = Texto.Limpo(Matricula); i.Cartorio = Texto.Limpo(Cartorio); i.InscricaoMunicipal = Texto.Limpo(InscricaoMunicipal);
+        i.AreaTotalM2 = AreaTotalM2; i.AreaConstruidaM2 = AreaConstruidaM2; i.AreaUtilM2 = AreaUtilM2;
+        i.Quartos = Quartos; i.Suites = Suites; i.Banheiros = Banheiros; i.Vagas = Vagas;
+        i.PrecoVenda = PrecoVenda; i.PrecoLocacao = PrecoLocacao; i.DivulgarSite = DivulgarSite;
+    }
+}
+
+public sealed class CaracteristicaEntrada
+{
+    [Required(ErrorMessage = "Informe a característica.")]
+    [StringLength(80, ErrorMessage = "Característica muito longa (máx. 80).")]
+    public string Chave { get; set; } = "";
+
+    [StringLength(200, ErrorMessage = "Valor muito longo (máx. 200).")]
+    public string? Valor { get; set; }
+
+    public bool Publico { get; set; } = true;
+}
+
+public sealed class ProprietarioEntrada
+{
+    public Guid? PessoaId { get; set; }
+    public decimal? Percentual { get; set; }
+    public bool Principal { get; set; }
+    public DateOnly? InicioEm { get; set; }
+    public DateOnly? FimEm { get; set; }
+}
+
+public sealed class EnvolvidoEntrada
+{
+    public Guid PessoaId { get; set; }
+    public PapelPessoa Papel { get; set; }
+    public string? Observacao { get; set; }
+}
+
+public sealed class MidiaAlteracao
+{
+    [StringLength(200)] public string? Legenda { get; set; }
+    public int? Ordem { get; set; }
+    public bool? Capa { get; set; }
+    public bool? Publica { get; set; }
+}
+
+public sealed class RegularizacaoForm : IValidatableObject
+{
+    public TipoRegularizacao Tipo { get; set; } = TipoRegularizacao.DOCUMENTACAO;
+    public StatusRegularizacao Status { get; set; } = StatusRegularizacao.NAO_INICIADA;
+    public Guid? ProfissionalId { get; set; }
+    public DateOnly? PrazoPrevisto { get; set; }
+    public DateOnly? ConcluidaEm { get; set; }
+    public decimal? CustoEstimado { get; set; }
+    public string? Descricao { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext _)
+    {
+        if (CustoEstimado < 0) yield return new ValidationResult("O valor não pode ser negativo.", [nameof(CustoEstimado)]);
+        else if (CustoEstimado is { } c && decimal.Round(c, 2) != c) yield return new ValidationResult("Use no máximo 2 casas decimais.", [nameof(CustoEstimado)]);
+    }
+
+    public static RegularizacaoForm De(Regularizacao r) => new()
+    {
+        Tipo = r.Tipo, Status = r.Status, ProfissionalId = r.ProfissionalId, PrazoPrevisto = r.PrazoPrevisto,
+        ConcluidaEm = r.ConcluidaEm, CustoEstimado = r.CustoEstimado, Descricao = r.Descricao,
+    };
+
+    internal void AplicarEm(Regularizacao r)
+    {
+        r.Tipo = Tipo; r.Status = Status; r.ProfissionalId = ProfissionalId; r.PrazoPrevisto = PrazoPrevisto;
+        r.ConcluidaEm = ConcluidaEm; r.CustoEstimado = CustoEstimado; r.Descricao = Texto.Limpo(Descricao);
+    }
+}

@@ -1,0 +1,90 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout LoginLayout
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Entrar · Inovabens</PageTitle>
+
+<EditForm Model="Entrada" method="post" OnValidSubmit="Entrar" FormName="login" class="login-cartao">
+    <DataAnnotationsValidator />
+    <div class="marca-login">🏢 Inovabens</div>
+    <p class="mudo">Gestão imobiliária e financeira</p>
+    <MensagemErro Texto="@erro" />
+
+    <label class="campo">
+        <span>E-mail</span>
+        <InputText type="email" class="input" autocomplete="username" @bind-Value="Entrada!.Email" />
+        <ValidationMessage For="() => Entrada!.Email" />
+    </label>
+    <label class="campo">
+        <span>Senha</span>
+        <InputText type="password" class="input" autocomplete="current-password" @bind-Value="Entrada!.Senha" />
+        <ValidationMessage For="() => Entrada!.Senha" />
+    </label>
+    @if (Entrada!.PedeTotp)
+    {
+        <input type="hidden" name="Entrada.PedeTotp" value="true" />
+        <label class="campo">
+            <span>Código 2FA</span>
+            <InputText class="input" inputmode="numeric" maxlength="6" autocomplete="one-time-code" autofocus @bind-Value="Entrada.Totp" />
+        </label>
+    }
+    <button type="submit" class="btn-primary largo">Entrar</button>
+</EditForm>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private LoginEntrada? Entrada { get; set; }
+
+    [SupplyParameterFromQuery(Name = "ReturnUrl")]
+    private string? ReturnUrl { get; set; }
+
+    private string? erro;
+
+    protected override void OnInitialized() => Entrada ??= new();
+
+    private async Task Entrar()
+    {
+        var r = await Auth.LoginAsync(Entrada!.Email, Entrada.Senha, Entrada.PedeTotp ? Entrada.Totp : null);
+        switch (r.Situacao)
+        {
+            case SituacaoLogin.Sucesso:
+                await HttpContext.SignInAsync(UsuarioAtual.Esquema, r.Usuario!.ParaPrincipal());
+                Nav.NavigateTo(DestinoSeguro(), forceLoad: true);
+                break;
+            case SituacaoLogin.PedeTotp:
+                Entrada.PedeTotp = true;
+                erro = r.Mensagem;
+                break;
+            default:
+                erro = r.Mensagem;
+                Entrada.Senha = "";
+                break;
+        }
+    }
+
+    /// <summary>Só redireciona para caminhos locais (evita open redirect).</summary>
+    private string DestinoSeguro() =>
+        ReturnUrl is { Length: > 0 } u && u.StartsWith('/') && !u.StartsWith("//") && !u.StartsWith("/\\") ? u : "/";
+
+    private sealed class LoginEntrada
+    {
+        [Required(ErrorMessage = "Informe o e-mail.")]
+        [EmailAddress(ErrorMessage = "E-mail inválido.")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Informe a senha.")]
+        [StringLength(200)]
+        public string Senha { get; set; } = "";
+
+        public string? Totp { get; set; }
+        public bool PedeTotp { get; set; }
+    }
+}

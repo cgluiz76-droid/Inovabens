@@ -1,0 +1,19 @@
+@inherits ComponenteBase
+
+<p class="pequeno mudo">Custo total = valor pago + impostos + taxas + despesas (calculado automaticamente pelo banco).</p>
+
+<AquisicaoSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AtualizarRetorno" />
+<DespesasSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AtualizarRetorno" />
+<ReceitasSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AtualizarRetorno" />
+<RetornoSecao @ref="retorno" ImovelId="ImovelId" />
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private RetornoSecao? retorno;
+
+    private bool Editar => Usuario.Pode(Permissoes.FinanceiroEditar);
+
+    /// <summary>Qualquer lançamento muda o retorno: recalcula o quadro de indicadores.</summary>
+    private Task AtualizarRetorno() => retorno?.RecarregarAsync() ?? Task.CompletedTask;
+}

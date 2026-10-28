@@ -1,0 +1,100 @@
+@page "/"
+@inherits ComponenteBase
+@inject PainelService Servico
+
+<PageTitle>Painel · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Painel</h1>
+</div>
+
+<MensagemErro Texto="@Erro" />
+
+@if (resumo is null)
+{
+    if (Erro is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+}
+else
+{
+    <div class="kpis">
+        <a class="kpi link-kpi" href="alertas">
+            <span class="rotulo-kpi">Alertas em aberto</span>
+            <span class="valor-kpi @(resumo.AlertasAbertos > 0 ? "texto-erro" : "")">@resumo.AlertasAbertos</span>
+        </a>
+        @if (resumo.LancamentosNaoPagos is { } naoPagos)
+        {
+            <div class="kpi">
+                <span class="rotulo-kpi">Despesas não pagas</span>
+                <span class="valor-kpi @(naoPagos > 0 ? "texto-erro" : "")">@naoPagos</span>
+            </div>
+        }
+        @if (Usuario.Pode(Permissoes.ImoveisVer))
+        {
+            <a class="kpi link-kpi" href="imoveis">
+                <span class="rotulo-kpi">Imóveis</span>
+                <span class="valor-kpi">@resumo.ImoveisPorSituacao.Sum(x => x.Total)</span>
+            </a>
+        }
+        @if (Usuario.Pode(Permissoes.CrmVer))
+        {
+            <a class="kpi link-kpi" href="crm">
+                <span class="rotulo-kpi">Leads ativos</span>
+                <span class="valor-kpi">@resumo.LeadsPorEstagio.Sum(x => x.Total)</span>
+            </a>
+        }
+    </div>
+
+    <div class="grade-2 espaco-topo">
+        @if (Usuario.Pode(Permissoes.ImoveisVer))
+        {
+            <section class="card">
+                <h2>Imóveis por situação</h2>
+                <Barras Itens="@resumo.ImoveisPorSituacao.Select(x => (Texto.Rotulo(x.Situacao), (string?)null, x.Total)).ToList()" />
+            </section>
+        }
+        @if (Usuario.Pode(Permissoes.CrmVer))
+        {
+            <section class="card">
+                <h2>Leads por estágio</h2>
+                <Barras Itens="@resumo.LeadsPorEstagio.Select(x => (x.Estagio, x.Cor, x.Total)).ToList()" />
+            </section>
+        }
+    </div>
+
+    @if (Usuario.Pode(Permissoes.AgendaVer))
+    {
+        <section class="card espaco-topo">
+            <div class="titulo-secao">
+                <h2>Próximos compromissos</h2>
+                <a class="btn-ghost" href="agenda">Abrir agenda</a>
+            </div>
+            @if (resumo.ProximosCompromissos.Count == 0)
+            {
+                <p class="vazio">Nenhum compromisso pendente.</p>
+            }
+            else
+            {
+                <ul class="lista-simples">
+                    @foreach (var c in resumo.ProximosCompromissos)
+                    {
+                        <li class="@(c.Vencido ? "vencido" : "")">
+                            <span class="forte">@Texto.DataHora(c.Dados.InicioEm)</span>
+                            · @Texto.Rotulo(c.Dados.Tipo): @c.Dados.Titulo
+                            <a class="pequeno" href="imoveis/@c.Dados.ImovelId">@c.ImovelCodigo</a>
+                            <span class="pequeno mudo">· @c.ResponsavelNome</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+}
+
+@code {
+    private ResumoPainel? resumo;
+
+    protected override Task OnInitializedAsync() => Executar(async () => resumo = await Servico.ResumoAsync(Usuario));
+}

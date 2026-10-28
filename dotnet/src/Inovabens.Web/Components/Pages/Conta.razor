@@ -1,0 +1,136 @@
+@page "/conta"
+@inherits ComponenteBase
+@inject AuthService Auth
+@inject RenovacaoSessao Renovacao
+@inject NavigationManager Nav
+
+<PageTitle>Minha conta · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Minha conta</h1>
+</div>
+<p class="mudo">@Usuario.Nome · @Usuario.Email · perfil @Usuario.PerfilNome</p>
+
+<MensagemErro Texto="@Erro" />
+<MensagemErro Texto="@Sucesso" Sucesso />
+
+<div class="grade-2 espaco-topo">
+    <section class="card">
+        <h2>Alterar senha</h2>
+        <EditForm Model="senha" OnValidSubmit="AlterarSenha" class="formulario">
+            <DataAnnotationsValidator />
+            <label class="campo">
+                <span>Senha atual</span>
+                <InputText class="input" type="password" autocomplete="current-password" @bind-Value="senha.SenhaAtual" />
+                <ValidationMessage For="() => senha.SenhaAtual" />
+            </label>
+            <label class="campo">
+                <span>Nova senha</span>
+                <InputText class="input" type="password" autocomplete="new-password" @bind-Value="senha.NovaSenha" />
+                <ValidationMessage For="() => senha.NovaSenha" />
+                <span class="pequeno mudo">Mínimo de 10 caracteres, com letras e números.</span>
+            </label>
+            <p class="pequeno mudo">As outras sessões abertas com a senha antiga serão encerradas.</p>
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Alterar senha</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <h2>Verificação em duas etapas (2FA)</h2>
+        @if (totpAtivo is null)
+        {
+            <p class="carregando">Carregando…</p>
+        }
+        else if (totpAtivo == true)
+        {
+            <p><span class="badge status-PAGO">Ativa</span> O login pede o código do aplicativo autenticador.</p>
+            <p class="pequeno mudo">Para desativar, confirme sua senha e um código atual.</p>
+            <div class="formulario">
+                <label class="campo">
+                    <span>Senha</span>
+                    <input class="input" type="password" autocomplete="current-password" @bind="senhaDesativar" />
+                </label>
+                <label class="campo">
+                    <span>Código de 6 dígitos</span>
+                    <input class="input" inputmode="numeric" maxlength="6" autocomplete="one-time-code" @bind="codigo" />
+                </label>
+                <div class="acoes">
+                    <button class="btn-perigo" disabled="@Ocupado" @onclick="Desativar">Desativar 2FA</button>
+                </div>
+            </div>
+        }
+        else if (config is null)
+        {
+            <p>Proteja sua conta com um código gerado no celular (Google Authenticator, Microsoft Authenticator, Authy…).</p>
+            <div class="acoes">
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Iniciar">Configurar 2FA</button>
+            </div>
+        }
+        else
+        {
+            <ol class="passos">
+                <li>No aplicativo autenticador, adicione uma conta pela chave abaixo (ou toque no link pelo celular).</li>
+                <li>Digite o código de 6 dígitos que o aplicativo mostrar.</li>
+            </ol>
+            <p class="campo"><span>Chave</span><code class="segredo">@config.Segredo</code></p>
+            <p><a href="@config.OtpauthUrl">Abrir no aplicativo autenticador</a></p>
+            <div class="linha-form">
+                <label class="campo-inline">
+                    Código
+                    <input class="input w-num" inputmode="numeric" maxlength="6" autocomplete="one-time-code" @bind="codigo" />
+                </label>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Ativar">Ativar</button>
+                <button class="btn-ghost" @onclick="() => config = null">Cancelar</button>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "senha")] public string? SenhaQuery { get; set; }
+
+    private AlterarSenhaForm senha = new();
+    private bool? totpAtivo;
+    private ConfiguracaoTotp? config;
+    private string codigo = "";
+    private string senhaDesativar = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var ok = await Executar(async () => totpAtivo = await Auth.TotpAtivoAsync(Usuario.Id));
+        if (ok && SenhaQuery == "alterada") Sucesso = "Senha alterada com sucesso.";
+    }
+
+    private async Task AlterarSenha()
+    {
+        string? selo = null;
+        if (!await Executar(async () => selo = await Auth.AlterarSenhaAsync(Usuario, senha))) return;
+        // Reemite o cookie desta sessão com o novo selo; sem isso, ela também cairia na próxima revalidação.
+        Nav.NavigateTo($"conta/renovar-sessao?t={Uri.EscapeDataString(Renovacao.Gerar(Usuario.Id, selo!))}", forceLoad: true);
+    }
+
+    private Task Iniciar() => Executar(async () =>
+    {
+        codigo = "";
+        config = await Auth.TotpIniciarAsync(Usuario);
+    });
+
+    private async Task Ativar()
+    {
+        if (!await Executar(() => Auth.TotpAtivarAsync(Usuario, codigo.Trim()))) return;
+        config = null;
+        codigo = "";
+        totpAtivo = true;
+        Sucesso = "Verificação em duas etapas ativada.";
+    }
+
+    private async Task Desativar()
+    {
+        if (!await Executar(() => Auth.TotpDesativarAsync(Usuario, senhaDesativar, codigo.Trim()))) return;
+        senhaDesativar = codigo = "";
+        totpAtivo = false;
+        Sucesso = "Verificação em duas etapas desativada.";
+    }
+}

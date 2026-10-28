@@ -1,0 +1,23 @@
+﻿@inject ContextoConexao Conexao
+
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <RedirecionarLogin />
+            </NotAuthorized>
+            <Authorizing>
+                <p class="carregando">Carregando…</p>
+            </Authorizing>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>
+
+@code {
+    /// <summary>IP da requisição inicial, guardado para a auditoria do circuito.</summary>
+    [Parameter]
+    public string? IpCliente { get; set; }
+
+    protected override void OnInitialized() => Conexao.Ip ??= IpCliente;
+}

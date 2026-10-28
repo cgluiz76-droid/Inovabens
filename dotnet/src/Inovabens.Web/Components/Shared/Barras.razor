@@ -1,0 +1,23 @@
+@* Gráfico de barras horizontais simples (sem biblioteca de gráficos). *@
+@if (Itens.Count == 0)
+{
+    <p class="vazio">Sem dados.</p>
+}
+else
+{
+    var max = Math.Max(1, Itens.Max(i => i.Total));
+    <div class="barras">
+        @foreach (var (rotulo, cor, total) in Itens)
+        {
+            <div class="barra-linha">
+                <span class="barra-rotulo">@rotulo</span>
+                <span class="barra-trilho"><span class="barra" style="width:@(total * 100 / max)%; background:@(cor ?? "var(--marca-600)")"></span></span>
+                <span class="barra-valor">@total</span>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<(string Rotulo, string? Cor, int Total)> Itens { get; set; } = [];
+}

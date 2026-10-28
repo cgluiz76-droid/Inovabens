@@ -1,0 +1,93 @@
+@* Formulário de compromisso (datas no horário de Brasília). Usado na aba Agenda do imóvel e na página Agenda. *@
+<EditForm Model="Form" OnValidSubmit="() => AoSalvar.InvokeAsync()" class="formulario">
+    <DataAnnotationsValidator />
+    <div class="grade-4">
+        @Extra
+        <label class="campo">
+            <span>Tipo</span>
+            <InputSelect class="input" @bind-Value="Form.Tipo">
+                @foreach (var t in Enum.GetValues<TipoCompromisso>())
+                {
+                    <option value="@t">@Texto.Rotulo(t)</option>
+                }
+            </InputSelect>
+        </label>
+        <label class="campo col-2">
+            <span>Título *</span>
+            <InputText class="input" @bind-Value="Form.Titulo" />
+            <ValidationMessage For="() => Form.Titulo" />
+        </label>
+        <label class="campo">
+            <span>Local</span>
+            <InputText class="input" @bind-Value="Form.Local" />
+        </label>
+        <label class="campo">
+            <span>Início *</span>
+            <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="Form.Inicio" @bind-Value:after="AjustarFim" />
+            <ValidationMessage For="() => Form.Inicio" />
+        </label>
+        <label class="campo">
+            <span>Término *</span>
+            <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="Form.Fim" />
+            <ValidationMessage For="() => Form.Fim" />
+        </label>
+        @if (Responsaveis is not null)
+        {
+            <label class="campo col-2">
+                <span>Responsável</span>
+                <InputSelect class="input" @bind-Value="Form.ResponsavelId">
+                    <option value="">Eu mesmo</option>
+                    @foreach (var r in Responsaveis)
+                    {
+                        <option value="@r.Id">@r.Nome</option>
+                    }
+                </InputSelect>
+            </label>
+        }
+    </div>
+    <label class="campo">
+        <span>Descrição</span>
+        <InputTextArea class="input" rows="3" @bind-Value="Form.Descricao" />
+    </label>
+    <label class="campo">
+        <span>Convidados (e-mails separados por vírgula)</span>
+        <InputText class="input" @bind-Value="Form.Convidados" placeholder="cliente@exemplo.com, socio@exemplo.com" />
+        <ValidationMessage For="() => Form.Convidados" />
+    </label>
+    <MensagemErro Texto="@Erro" />
+    <div class="acoes">
+        <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+        @if (AoCancelar.HasDelegate)
+        {
+            <button type="button" class="btn-ghost" @onclick="() => AoCancelar.InvokeAsync()">Cancelar</button>
+        }
+    </div>
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired] public CompromissoForm Form { get; set; } = default!;
+    [Parameter] public IReadOnlyList<Opcao>? Responsaveis { get; set; }
+    [Parameter] public RenderFragment? Extra { get; set; }
+    [Parameter] public string? Erro { get; set; }
+    [Parameter] public bool Ocupado { get; set; }
+    [Parameter] public EventCallback AoSalvar { get; set; }
+    [Parameter] public EventCallback AoCancelar { get; set; }
+
+    /// <summary>Mantém a duração ao mudar o início (como a tela Node).</summary>
+    private DateTime? inicioAnterior;
+    private CompromissoForm? formAnterior;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(formAnterior, Form)) return;
+        formAnterior = Form;
+        inicioAnterior = Form.Inicio;
+    }
+
+    private void AjustarFim()
+    {
+        if (Form.Inicio is { } i && Form.Fim is { } f && inicioAnterior is { } a) Form.Fim = f + (i - a);
+        else if (Form.Inicio is { } ini && Form.Fim is null) Form.Fim = ini.AddHours(1);
+        inicioAnterior = Form.Inicio;
+    }
+}

@@ -1,0 +1,77 @@
+@inherits ComponenteBase
+@inject ImoveisService Servico
+@inject OpcoesService Opcoes
+
+<section class="card">
+    <h2>Proprietários</h2>
+    <p class="pequeno mudo">A soma dos percentuais vigentes (hoje) deve ser 100%. Início e fim são opcionais.</p>
+    <MensagemErro Texto="@Erro" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
+
+    @foreach (var it in itens)
+    {
+        <div class="linha-itens">
+            <select class="input w-pessoa" disabled="@(!Editar)" value="@(it.PessoaId?.ToString() ?? "")"
+                    @onchange="e => it.PessoaId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                <option value="">Selecione…</option>
+                @foreach (var p in pessoas)
+                {
+                    <option value="@p.Id">@p.Nome</option>
+                }
+            </select>
+            <input class="input w-num" type="number" step="0.01" min="0" max="100" disabled="@(!Editar)" @bind="it.Percentual" /> %
+            <label class="check"><input type="checkbox" disabled="@(!Editar)" @bind="it.Principal" /> Principal</label>
+            <input class="input w-data" type="date" title="Início" disabled="@(!Editar)" @bind="it.InicioEm" />
+            <input class="input w-data" type="date" title="Fim" disabled="@(!Editar)" @bind="it.FimEm" />
+            @if (Editar)
+            {
+                <button class="btn-ghost" title="Remover" @onclick="() => itens.Remove(it)">✕</button>
+            }
+        </div>
+    }
+    @if (itens.Count == 0)
+    {
+        <p class="pequeno mudo">Nenhum proprietário informado.</p>
+    }
+
+    @if (Editar)
+    {
+        <div class="acoes">
+            <button class="btn-ghost" @onclick="() => itens.Add(new ProprietarioEntrada())">+ Adicionar</button>
+            <button class="btn-primary" disabled="@Ocupado" @onclick="Salvar">Salvar proprietários</button>
+            <span class="@(SomaOk ? "ok" : "alerta")">Soma: @Soma.ToString("N2", Texto.PtBr)%</span>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
+    [Parameter] public bool Editar { get; set; }
+    [Parameter] public Func<Task>? AoSalvar { get; set; }
+
+    private List<ProprietarioEntrada> itens = [];
+    private IReadOnlyList<Opcao> pessoas = [];
+    private ImovelDetalhe? carregado;
+
+    private decimal Soma => itens.Sum(i => i.Percentual ?? 0);
+    private bool SomaOk => itens.Count == 0 || Soma == 100m;
+
+    protected override async Task OnInitializedAsync() => pessoas = await Opcoes.PessoasAsync(Usuario);
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(carregado, Detalhe)) return; // só recarrega a lista quando o imóvel foi relido
+        carregado = Detalhe;
+        itens = Detalhe.Proprietarios.Select(p => new ProprietarioEntrada
+        {
+            PessoaId = p.PessoaId, Percentual = p.Percentual, Principal = p.Principal, InicioEm = p.InicioEm, FimEm = p.FimEm,
+        }).ToList();
+    }
+
+    private async Task Salvar()
+    {
+        if (!await Executar(() => Servico.SalvarProprietariosAsync(Usuario, Detalhe.Dados.Id, itens))) return;
+        if (AoSalvar is not null) await AoSalvar();
+        Sucesso = "Proprietários salvos.";
+    }
+}

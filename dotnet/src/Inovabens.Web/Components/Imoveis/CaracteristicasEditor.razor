@@ -1,0 +1,57 @@
+@inherits ComponenteBase
+@inject ImoveisService Servico
+
+<section class="card">
+    <h2>Características</h2>
+    <MensagemErro Texto="@Erro" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
+
+    @foreach (var it in itens)
+    {
+        <div class="linha-itens">
+            <input class="input w-texto" placeholder="Ex.: Piscina" maxlength="80" disabled="@(!Editar)" @bind="it.Chave" />
+            <input class="input w-texto" placeholder="Valor (opcional)" maxlength="200" disabled="@(!Editar)" @bind="it.Valor" />
+            <label class="check"><input type="checkbox" disabled="@(!Editar)" @bind="it.Publico" /> Público</label>
+            @if (Editar)
+            {
+                <button class="btn-ghost" title="Remover" @onclick="() => itens.Remove(it)">✕</button>
+            }
+        </div>
+    }
+    @if (itens.Count == 0)
+    {
+        <p class="pequeno mudo">Nenhuma característica cadastrada.</p>
+    }
+
+    @if (Editar)
+    {
+        <div class="acoes">
+            <button class="btn-ghost" @onclick="() => itens.Add(new CaracteristicaEntrada())">+ Adicionar</button>
+            <button class="btn-primary" disabled="@Ocupado" @onclick="Salvar">Salvar características</button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
+    [Parameter] public bool Editar { get; set; }
+    [Parameter] public Func<Task>? AoSalvar { get; set; }
+
+    private List<CaracteristicaEntrada> itens = [];
+    private ImovelDetalhe? carregado;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(carregado, Detalhe)) return;
+        carregado = Detalhe;
+        itens = Detalhe.Caracteristicas.Select(c => new CaracteristicaEntrada { Chave = c.Chave, Valor = c.Valor, Publico = c.Publico }).ToList();
+    }
+
+    private async Task Salvar()
+    {
+        var preenchidas = itens.Where(i => !string.IsNullOrWhiteSpace(i.Chave)).ToList();
+        if (!await Executar(() => Servico.SalvarCaracteristicasAsync(Usuario, Detalhe.Dados.Id, preenchidas))) return;
+        if (AoSalvar is not null) await AoSalvar();
+        Sucesso = "Características salvas.";
+    }
+}

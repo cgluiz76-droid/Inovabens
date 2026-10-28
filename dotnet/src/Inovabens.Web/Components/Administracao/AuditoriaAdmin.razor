@@ -1,0 +1,110 @@
+@inherits ComponenteBase
+@inject AuditoriaService Servico
+
+<section class="card">
+    <div class="filtros">
+        <select class="input filtro" @bind="entidade" @bind:after="Filtrar">
+            <option value="">Todas as entidades</option>
+            @foreach (var e in entidades)
+            {
+                <option value="@e">@e</option>
+            }
+        </select>
+        <input class="input busca" placeholder="ID do registro (opcional)" @bind="entidadeId" @bind:after="Filtrar" />
+    </div>
+    <MensagemErro Texto="@Erro" />
+    @if (lista is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else if (lista.Itens.Count == 0)
+    {
+        <p class="vazio">Nenhum registro.</p>
+    }
+    else
+    {
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Entidade</th><th>IP</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var a in lista.Itens)
+                    {
+                        <tr>
+                            <td class="sem-quebra">@Texto.DataHora(a.Dados.CriadoEm)</td>
+                            <td>@(a.UsuarioNome ?? "—")</td>
+                            <td><span class="badge">@a.Dados.Acao</span></td>
+                            <td>@a.Dados.Entidade <p class="pequeno mudo">@a.Dados.EntidadeId</p></td>
+                            <td class="pequeno">@a.Dados.Ip</td>
+                            <td class="acoes-linha">
+                                @if (a.Dados.ValoresAntes is not null || a.Dados.ValoresDepois is not null)
+                                {
+                                    <button class="btn-ghost mini" @onclick="() => aberto = a">Detalhes</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <Paginacao Pagina="pagina" Total="lista.Total" TamanhoPagina="lista.TamanhoPagina" AoMudar="IrPara" />
+    }
+</section>
+
+@if (aberto is not null)
+{
+    <Modal Titulo="@($"{aberto.Dados.Acao} · {aberto.Dados.Entidade}")" Largo AoFechar="() => aberto = null">
+        <div class="grade-2">
+            <div>
+                <h3>Antes</h3>
+                <pre class="json">@Formatar(aberto.Dados.ValoresAntes)</pre>
+            </div>
+            <div>
+                <h3>Depois</h3>
+                <pre class="json">@Formatar(aberto.Dados.ValoresDepois)</pre>
+            </div>
+        </div>
+    </Modal>
+}
+
+@code {
+    private Paginado<AuditoriaItem>? lista;
+    private IReadOnlyList<string> entidades = [];
+    private string entidade = "";
+    private string entidadeId = "";
+    private int pagina = 1;
+    private AuditoriaItem? aberto;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () => entidades = await Servico.EntidadesAsync(Usuario));
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () =>
+        lista = await Servico.ListarAsync(Usuario, Texto.Limpo(entidade), Guid.TryParse(entidadeId.Trim(), out var id) ? id : null, pagina));
+
+    private Task Filtrar()
+    {
+        pagina = 1;
+        return Carregar();
+    }
+
+    private Task IrPara(int p)
+    {
+        pagina = p;
+        return Carregar();
+    }
+
+    private static string Formatar(string? json)
+    {
+        if (json is null) return "—";
+        try { return System.Text.Json.JsonSerializer.Serialize(System.Text.Json.JsonDocument.Parse(json).RootElement, Indentado); }
+        catch (System.Text.Json.JsonException) { return json; }
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions Indentado = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+}

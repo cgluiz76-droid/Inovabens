@@ -1,0 +1,27 @@
+{
+  "name": "inovabens",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:api": "pnpm build:shared && pnpm --filter @inovabens/api dev",
+    "dev:web": "pnpm build:shared && pnpm --filter @inovabens/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm build:shared && pnpm -r test",
+    "typecheck": "pnpm build:shared && pnpm -r typecheck",
+    "db:generate": "pnpm --filter @inovabens/api db:generate",
+    "db:migrate": "pnpm --filter @inovabens/api db:migrate",
+    "db:seed": "pnpm --filter @inovabens/api db:seed",
+    "build:shared": "pnpm --filter @inovabens/shared build"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@swc/core",
+      "@scarf/scarf"
+    ]
+  }
+}

@@ -1,0 +1,119 @@
+@inherits ComponenteBase
+@inject OpcoesService Opcoes
+
+<EditForm Model="Form" OnValidSubmit="Enviar" class="formulario">
+    <DataAnnotationsValidator />
+    <MensagemErro Texto="@Erro" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
+
+    <div class="grade-4">
+        <label class="campo col-2">
+            <span>Título *</span>
+            <InputText class="input" @bind-Value="Form.Titulo" />
+            <ValidationMessage For="() => Form.Titulo" />
+        </label>
+        <label class="campo">
+            <span>Tipo</span>
+            <InputText class="input" list="tipos-imovel" @bind-Value="Form.Tipo" />
+            <ValidationMessage For="() => Form.Tipo" />
+        </label>
+        <datalist id="tipos-imovel">
+            @foreach (var t in Tipos)
+            {
+                <option value="@t"></option>
+            }
+        </datalist>
+        <label class="campo">
+            <span>Corretor responsável</span>
+            <select class="input" @bind="CorretorSelecionado" disabled="@Usuario.EscopoProprio">
+                <option value="">(eu / automático)</option>
+                @foreach (var c in corretores)
+                {
+                    <option value="@c.Id">@c.Nome</option>
+                }
+            </select>
+        </label>
+        <label class="campo">
+            <span>Finalidade</span>
+            <InputSelect class="input" @bind-Value="Form.Finalidade">
+                @foreach (var f in Enum.GetValues<FinalidadeImovel>())
+                {
+                    <option value="@f">@Texto.Rotulo(f)</option>
+                }
+            </InputSelect>
+        </label>
+        <label class="campo">
+            <span>Situação</span>
+            <InputSelect class="input" @bind-Value="Form.Situacao">
+                @foreach (var s in Enum.GetValues<SituacaoImovel>())
+                {
+                    <option value="@s">@Texto.Rotulo(s)</option>
+                }
+            </InputSelect>
+        </label>
+    </div>
+
+    <div class="grade-4">
+        <label class="campo"><span>CEP</span><InputText class="input" @bind-Value="Form.Cep" /><ValidationMessage For="() => Form.Cep" /></label>
+        <label class="campo"><span>Logradouro</span><InputText class="input" @bind-Value="Form.Logradouro" /><ValidationMessage For="() => Form.Logradouro" /></label>
+        <label class="campo"><span>Número</span><InputText class="input" @bind-Value="Form.Numero" /><ValidationMessage For="() => Form.Numero" /></label>
+        <label class="campo"><span>Complemento</span><InputText class="input" @bind-Value="Form.Complemento" /><ValidationMessage For="() => Form.Complemento" /></label>
+        <label class="campo"><span>Bairro</span><InputText class="input" @bind-Value="Form.Bairro" /><ValidationMessage For="() => Form.Bairro" /></label>
+        <label class="campo"><span>Cidade</span><InputText class="input" @bind-Value="Form.Cidade" /><ValidationMessage For="() => Form.Cidade" /></label>
+        <label class="campo"><span>UF</span><InputText class="input" maxlength="2" @bind-Value="Form.Uf" /><ValidationMessage For="() => Form.Uf" /></label>
+        <label class="campo"><span>Matrícula</span><InputText class="input" @bind-Value="Form.Matricula" /><ValidationMessage For="() => Form.Matricula" /></label>
+        <label class="campo"><span>Cartório</span><InputText class="input" @bind-Value="Form.Cartorio" /><ValidationMessage For="() => Form.Cartorio" /></label>
+        <label class="campo"><span>Inscrição municipal</span><InputText class="input" @bind-Value="Form.InscricaoMunicipal" /><ValidationMessage For="() => Form.InscricaoMunicipal" /></label>
+    </div>
+
+    <div class="grade-4">
+        <label class="campo"><span>Área total (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaTotalM2" /><ValidationMessage For="() => Form.AreaTotalM2" /></label>
+        <label class="campo"><span>Área construída (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaConstruidaM2" /><ValidationMessage For="() => Form.AreaConstruidaM2" /></label>
+        <label class="campo"><span>Área útil (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaUtilM2" /><ValidationMessage For="() => Form.AreaUtilM2" /></label>
+        <label class="campo"><span>Quartos</span><InputNumber class="input" @bind-Value="Form.Quartos" /><ValidationMessage For="() => Form.Quartos" /></label>
+        <label class="campo"><span>Suítes</span><InputNumber class="input" @bind-Value="Form.Suites" /><ValidationMessage For="() => Form.Suites" /></label>
+        <label class="campo"><span>Banheiros</span><InputNumber class="input" @bind-Value="Form.Banheiros" /><ValidationMessage For="() => Form.Banheiros" /></label>
+        <label class="campo"><span>Vagas</span><InputNumber class="input" @bind-Value="Form.Vagas" /><ValidationMessage For="() => Form.Vagas" /></label>
+        <label class="campo"><span>Preço de venda (R$)</span><InputNumber class="input" step="0.01" @bind-Value="Form.PrecoVenda" /><ValidationMessage For="() => Form.PrecoVenda" /></label>
+        <label class="campo"><span>Preço de locação (R$)</span><InputNumber class="input" step="0.01" @bind-Value="Form.PrecoLocacao" /><ValidationMessage For="() => Form.PrecoLocacao" /></label>
+    </div>
+
+    <label class="campo">
+        <span>Descrição pública</span>
+        <InputTextArea class="input" rows="3" @bind-Value="Form.DescricaoPublica" />
+    </label>
+    <label class="campo">
+        <span>Observações internas (não aparecem no site)</span>
+        <InputTextArea class="input" rows="3" @bind-Value="Form.DescricaoInterna" />
+    </label>
+
+    <div class="checks">
+        <label><InputCheckbox @bind-Value="Form.DivulgarSite" /> Divulgar no site</label>
+        <label><InputCheckbox @bind-Value="Form.EnderecoPublico" /> Endereço público</label>
+    </div>
+
+    <button type="submit" class="btn-primary" disabled="@Ocupado">@(Ocupado ? "Salvando…" : RotuloBotao)</button>
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired] public ImovelForm Form { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<ImovelForm, Task> AoSalvar { get; set; } = default!;
+    [Parameter] public string RotuloBotao { get; set; } = "Salvar";
+
+    private static readonly string[] Tipos = ["apartamento", "casa", "terreno", "sala comercial", "galpão", "loja", "fazenda/sítio", "outro"];
+
+    private IReadOnlyList<Opcao> corretores = [];
+
+    private string CorretorSelecionado
+    {
+        get => Form.CorretorResponsavelId?.ToString() ?? "";
+        set => Form.CorretorResponsavelId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override async Task OnInitializedAsync() => corretores = await Opcoes.CorretoresAsync();
+
+    private async Task Enviar()
+    {
+        if (await Executar(() => AoSalvar(Form))) Sucesso = "Dados salvos.";
+    }
+}

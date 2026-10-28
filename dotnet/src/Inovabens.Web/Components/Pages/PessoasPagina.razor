@@ -1,0 +1,298 @@
+@page "/pessoas"
+@attribute [Authorize(Policy = Permissoes.PessoasVer)]
+@inherits ComponenteBase
+@implements IDisposable
+@inject PessoasService Servico
+@inject IJSRuntime JS
+
+<PageTitle>Pessoas · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Pessoas</h1>
+    @if (Usuario.Pode(Permissoes.PessoasCriar))
+    {
+        <button class="btn-primary" @onclick="Nova">+ Nova pessoa</button>
+    }
+</div>
+
+<div class="filtros">
+    <input class="input busca" placeholder="Buscar por nome, CPF/CNPJ, e-mail ou telefone…"
+           @bind="termo" @bind:event="oninput" @bind:after="AoDigitar" />
+    <select class="input filtro" @bind="papel" @bind:after="Filtrar">
+        <option value="">Todos os papéis</option>
+        @foreach (var p in Enum.GetValues<PapelPessoa>())
+        {
+            <option value="@p">@Texto.Rotulo(p)</option>
+        }
+    </select>
+</div>
+
+<MensagemErro Texto="@Erro" />
+
+@if (resultado is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else if (resultado.Itens.Count == 0)
+{
+    <p class="vazio">Nenhuma pessoa encontrada.</p>
+}
+else
+{
+    <div class="tabela-container">
+        <table class="tabela">
+            <thead>
+                <tr><th>Nome / Razão social</th><th>CPF/CNPJ</th><th>Contato</th><th>Papéis</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var p in resultado.Itens)
+                {
+                    <tr>
+                        <td>
+                            <span class="forte">@p.NomeRazao</span>
+                            <p class="pequeno mudo">@(p.Tipo == TipoPessoa.PF ? "Pessoa física" : "Pessoa jurídica")@(p.Cidade is null ? "" : $" · {p.Cidade}/{p.Uf}")</p>
+                        </td>
+                        <td>@Documento(p.CpfCnpj)</td>
+                        <td>
+                            @(p.Telefone ?? p.Whatsapp ?? "—")
+                            @if (p.Email is not null)
+                            {
+                                <p class="pequeno mudo">@p.Email</p>
+                            }
+                        </td>
+                        <td>
+                            @foreach (var x in p.Papeis)
+                            {
+                                <span class="badge" title="@x.Especialidade">@Texto.Rotulo(x.Papel)</span>
+                            }
+                        </td>
+                        <td class="acoes-linha">
+                            <button class="btn-ghost mini" @onclick="() => Editar(p)">@(PodeEditar ? "Editar" : "Ver")</button>
+                            @if (Usuario.Pode(Permissoes.PessoasExcluir))
+                            {
+                                <button class="btn-ghost mini texto-erro" disabled="@Ocupado" @onclick="() => Excluir(p)">Excluir</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <Paginacao Pagina="pagina" Total="resultado.Total" TamanhoPagina="resultado.TamanhoPagina" AoMudar="IrPara" />
+}
+
+@if (form is not null)
+{
+    <Modal Titulo="@(editandoId is null ? "Nova pessoa" : "Pessoa")" Largo AoFechar="() => form = null">
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="grade-4">
+                <label class="campo">
+                    <span>Tipo</span>
+                    <InputSelect class="input" @bind-Value="form.Tipo">
+                        <option value="@TipoPessoa.PF">Pessoa física</option>
+                        <option value="@TipoPessoa.PJ">Pessoa jurídica</option>
+                    </InputSelect>
+                </label>
+                <label class="campo col-2">
+                    <span>@(form.Tipo == TipoPessoa.PF ? "Nome completo" : "Razão social") *</span>
+                    <InputText class="input" @bind-Value="form.NomeRazao" />
+                    <ValidationMessage For="() => form.NomeRazao" />
+                </label>
+                <label class="campo">
+                    <span>@(form.Tipo == TipoPessoa.PF ? "CPF" : "CNPJ")</span>
+                    <InputText class="input" @bind-Value="form.CpfCnpj" inputmode="numeric" />
+                    <ValidationMessage For="() => form.CpfCnpj" />
+                </label>
+                @if (form.Tipo == TipoPessoa.PF)
+                {
+                    <label class="campo">
+                        <span>RG</span>
+                        <InputText class="input" @bind-Value="form.Rg" />
+                    </label>
+                }
+                <label class="campo">
+                    <span>E-mail</span>
+                    <InputText class="input" type="email" @bind-Value="form.Email" />
+                    <ValidationMessage For="() => form.Email" />
+                </label>
+                <label class="campo">
+                    <span>Telefone</span>
+                    <InputText class="input" type="tel" @bind-Value="form.Telefone" />
+                </label>
+                <label class="campo">
+                    <span>WhatsApp</span>
+                    <InputText class="input" type="tel" @bind-Value="form.Whatsapp" />
+                </label>
+                <label class="campo">
+                    <span>CEP</span>
+                    <InputText class="input" @bind-Value="form.Cep" />
+                </label>
+                <label class="campo col-2">
+                    <span>Logradouro</span>
+                    <InputText class="input" @bind-Value="form.Logradouro" />
+                </label>
+                <label class="campo">
+                    <span>Número</span>
+                    <InputText class="input" @bind-Value="form.Numero" />
+                </label>
+                <label class="campo">
+                    <span>Complemento</span>
+                    <InputText class="input" @bind-Value="form.Complemento" />
+                </label>
+                <label class="campo">
+                    <span>Bairro</span>
+                    <InputText class="input" @bind-Value="form.Bairro" />
+                </label>
+                <label class="campo">
+                    <span>Cidade</span>
+                    <InputText class="input" @bind-Value="form.Cidade" />
+                </label>
+                <label class="campo">
+                    <span>UF</span>
+                    <InputText class="input" maxlength="2" @bind-Value="form.Uf" />
+                    <ValidationMessage For="() => form.Uf" />
+                </label>
+            </div>
+
+            <fieldset class="campo">
+                <span>Papéis</span>
+                <div class="checks">
+                    @foreach (var p in Enum.GetValues<PapelPessoa>())
+                    {
+                        <label>
+                            <input type="checkbox" checked="@TemPapel(p)" @onchange="e => AlternarPapel(p, (bool)e.Value!)" />
+                            @Texto.Rotulo(p)
+                        </label>
+                    }
+                </div>
+            </fieldset>
+            @if (form.Papeis.FirstOrDefault(x => x.Papel == PapelPessoa.PRESTADOR) is { } prestador)
+            {
+                <label class="campo">
+                    <span>Especialidade do prestador</span>
+                    <InputText class="input" placeholder="Ex.: engenheiro, despachante, advogado" @bind-Value="prestador.Especialidade" />
+                </label>
+            }
+
+            <label class="campo">
+                <span>Observações</span>
+                <InputTextArea class="input" rows="3" @bind-Value="form.Observacoes" />
+            </label>
+            <label class="check">
+                <input type="checkbox" checked="@(form.LgpdConsentimentoEm is not null)"
+                       @onchange="e => form.LgpdConsentimentoEm = (bool)e.Value! ? (form.LgpdConsentimentoEm ?? DateTime.UtcNow) : null" />
+                Consentimento LGPD registrado
+                @if (form.LgpdConsentimentoEm is { } l)
+                {
+                    <span class="pequeno mudo">(@Texto.DataHora(l))</span>
+                }
+            </label>
+
+            <MensagemErro Texto="@erroForm" />
+            @if (PodeEditar || editandoId is null)
+            {
+                <div class="acoes">
+                    <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                    <button type="button" class="btn-ghost" @onclick="() => form = null">Cancelar</button>
+                </div>
+            }
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    private Paginado<Pessoa>? resultado;
+    private string termo = "";
+    private string papel = "";
+    private int pagina = 1;
+    private CancellationTokenSource? espera;
+
+    private PessoaForm? form;
+    private Guid? editandoId;
+    private string? erroForm;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.PessoasEditar);
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () =>
+        resultado = await Servico.ListarAsync(Usuario, new FiltroPessoas(termo,
+            Enum.TryParse<PapelPessoa>(papel, out var p) ? p : null, pagina)));
+
+    private async Task AoDigitar()
+    {
+        espera?.Cancel();
+        espera = new CancellationTokenSource();
+        try { await Task.Delay(300, espera.Token); }
+        catch (TaskCanceledException) { return; }
+        await Filtrar();
+    }
+
+    private Task Filtrar()
+    {
+        pagina = 1;
+        return Carregar();
+    }
+
+    private Task IrPara(int p)
+    {
+        pagina = p;
+        return Carregar();
+    }
+
+    private void Nova()
+    {
+        erroForm = null;
+        editandoId = null;
+        form = new PessoaForm();
+    }
+
+    private void Editar(Pessoa p)
+    {
+        erroForm = null;
+        editandoId = p.Id;
+        form = PessoaForm.De(p);
+    }
+
+    private bool TemPapel(PapelPessoa p) => form!.Papeis.Any(x => x.Papel == p);
+
+    private void AlternarPapel(PapelPessoa p, bool marcado)
+    {
+        form!.Papeis.RemoveAll(x => x.Papel == p);
+        if (marcado) form.Papeis.Add(new PapelEntrada { Papel = p });
+    }
+
+    private async Task Salvar()
+    {
+        var ok = await Executar(async () =>
+        {
+            if (editandoId is { } id) await Servico.AtualizarAsync(Usuario, id, form!);
+            else await Servico.CriarAsync(Usuario, form!);
+        });
+        if (!ok)
+        {
+            erroForm = Erro;
+            Erro = null;
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+
+    private async Task Excluir(Pessoa p)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir {p.NomeRazao}? (exclusão lógica)")) return;
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, p.Id))) await Carregar();
+    }
+
+    private static string Documento(string? d) => d switch
+    {
+        { Length: 11 } => $"{d[..3]}.{d[3..6]}.{d[6..9]}-{d[9..]}",
+        { Length: 14 } => $"{d[..2]}.{d[2..5]}.{d[5..8]}/{d[8..12]}-{d[12..]}",
+        null => "—",
+        _ => d,
+    };
+
+    public void Dispose() => espera?.Cancel();
+}

@@ -1,0 +1,228 @@
+@page "/agenda"
+@attribute [Authorize(Policy = Permissoes.AgendaVer)]
+@inherits ComponenteBase
+@inject AgendaService Servico
+@inject GoogleService Google
+@inject OpcoesService Opcoes
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Agenda · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Agenda</h1>
+    @if (Usuario.Pode(Permissoes.AgendaCriar))
+    {
+        <button class="btn-primary" @onclick="Novo">+ Novo compromisso</button>
+    }
+</div>
+
+<MensagemErro Texto="@Erro" />
+<MensagemErro Texto="@Sucesso" Sucesso />
+
+@if (google is not null)
+{
+    <section class="card google">
+        <div class="titulo-secao">
+            <div>
+                <strong>Google Agenda</strong>
+                @if (!google.Configurado)
+                {
+                    <p class="pequeno mudo">Integração não configurada no servidor (variáveis GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI).</p>
+                }
+                else if (google.Conectado)
+                {
+                    <p class="pequeno mudo">
+                        Conectado@(google.GoogleEmail is null ? "" : $" como {google.GoogleEmail}") ·
+                        última sincronização: @(google.UltimaSyncEm is { } u ? Texto.DataHora(u) : "ainda não")
+                    </p>
+                }
+                else
+                {
+                    <p class="pequeno mudo">Conecte sua conta para enviar os compromissos ao Google e trazer as alterações feitas por lá.</p>
+                }
+            </div>
+            @if (google.Configurado)
+            {
+                <div class="acoes-topo">
+                    @if (google.Conectado)
+                    {
+                        <button class="btn-ghost" disabled="@Ocupado" @onclick="Sincronizar">Sincronizar agora</button>
+                        <button class="btn-ghost texto-erro" disabled="@Ocupado" @onclick="Desconectar">Desconectar</button>
+                    }
+                    else
+                    {
+                        <button class="btn-primary" disabled="@Ocupado" @onclick="Conectar">Conectar Google Agenda</button>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+}
+
+<div class="filtros espaco-topo">
+    <button class="btn-ghost" @onclick="() => Mudar(-1)">‹</button>
+    <strong class="mes">@mes.ToString("MMMM 'de' yyyy", Texto.PtBr)</strong>
+    <button class="btn-ghost" @onclick="() => Mudar(1)">›</button>
+    <button class="btn-ghost" @onclick="Hoje">Hoje</button>
+    <select class="input filtro" @bind="status" @bind:after="Carregar">
+        <option value="">Todos os status</option>
+        @foreach (var s in Enum.GetValues<StatusCompromisso>())
+        {
+            <option value="@s">@Texto.Rotulo(s)</option>
+        }
+    </select>
+    <select class="input filtro" @bind="imovelFiltro" @bind:after="Carregar">
+        <option value="">Todos os imóveis</option>
+        @foreach (var i in imoveis)
+        {
+            <option value="@i.Id">@i.Nome</option>
+        }
+    </select>
+</div>
+
+@if (itens is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else
+{
+    <section class="card">
+        <CompromissosLista Itens="itens" MostrarImovel Vazio="Nenhum compromisso neste mês." AoEditar="Editar" AoAlterar="Carregar" />
+    </section>
+}
+
+@if (form is not null)
+{
+    <Modal Titulo="@(editandoId is null ? "Novo compromisso" : "Editar compromisso")" Largo AoFechar="() => form = null">
+        <CompromissoFormulario Form="form" Responsaveis="responsaveis" Erro="@erroForm" Ocupado="Ocupado"
+                               AoSalvar="Salvar" AoCancelar="() => form = null">
+            <Extra>
+                @if (editandoId is null)
+                {
+                    <label class="campo col-2">
+                        <span>Imóvel *</span>
+                        <select class="input" @bind="imovelNovo">
+                            <option value="">Selecione…</option>
+                            @foreach (var i in imoveis)
+                            {
+                                <option value="@i.Id">@i.Nome</option>
+                            }
+                        </select>
+                    </label>
+                }
+            </Extra>
+        </CompromissoFormulario>
+    </Modal>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "google")] public string? GoogleRetorno { get; set; }
+
+    private IReadOnlyList<CompromissoDetalhe>? itens;
+    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<Opcao>? responsaveis;
+    private StatusGoogle? google;
+    private DateTime mes = PrimeiroDia(DatasBR.Agora());
+    private string status = "";
+    private string imovelFiltro = "";
+
+    private CompromissoForm? form;
+    private Guid? editandoId;
+    private string imovelNovo = "";
+    private string? erroForm;
+
+    private static DateTime PrimeiroDia(DateTime d) => new(d.Year, d.Month, 1);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () =>
+        {
+            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
+            google = await Google.StatusAsync(Usuario.Id);
+        });
+        await Carregar();
+        Sucesso = GoogleRetorno switch
+        {
+            "ok" => "Google Agenda conectado. A primeira sincronização roda em segundo plano.",
+            _ => null,
+        };
+        if (GoogleRetorno is "erro") Erro = "Não foi possível conectar ao Google. Tente novamente.";
+    }
+
+    private Task Carregar() => Executar(async () =>
+        itens = await Servico.ListarAsync(Usuario, new FiltroAgenda(
+            De: DatasBR.ParaUtc(mes),
+            Ate: DatasBR.ParaUtc(mes.AddMonths(1)),
+            ImovelId: Guid.TryParse(imovelFiltro, out var im) ? im : null,
+            Status: Enum.TryParse<StatusCompromisso>(status, out var s) ? s : null)));
+
+    private Task Mudar(int meses)
+    {
+        mes = mes.AddMonths(meses);
+        return Carregar();
+    }
+
+    private Task Hoje()
+    {
+        mes = PrimeiroDia(DatasBR.Agora());
+        return Carregar();
+    }
+
+    private void Novo()
+    {
+        erroForm = null;
+        editandoId = null;
+        imovelNovo = imovelFiltro;
+        form = CompromissoForm.Novo();
+    }
+
+    private void Editar(CompromissoDetalhe c)
+    {
+        erroForm = null;
+        editandoId = c.Dados.Id;
+        form = CompromissoForm.De(c);
+    }
+
+    private async Task Salvar()
+    {
+        var ok = await Executar(async () =>
+        {
+            if (editandoId is { } id) await Servico.AtualizarAsync(Usuario, id, form!);
+            else if (Guid.TryParse(imovelNovo, out var im)) await Servico.CriarAsync(Usuario, im, form!);
+            else throw new RegraNegocioException("imovelId", "Selecione o imóvel.");
+        });
+        if (!ok)
+        {
+            erroForm = Erro;
+            Erro = null;
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+
+    private void Conectar()
+    {
+        string? url = null;
+        try { url = Google.UrlAutorizacao(Usuario); }
+        catch (Exception e) { Erro = Erros.Mensagem(e); }
+        if (url is not null) Nav.NavigateTo(url, forceLoad: true);
+    }
+
+    private async Task Sincronizar()
+    {
+        ResultadoSyncGoogle? r = null;
+        if (!await Executar(async () => r = await Google.SincronizarAsync(Usuario))) return;
+        google = await Google.StatusAsync(Usuario.Id);
+        await Carregar();
+        Sucesso = $"Sincronizado: {r!.Importados} importado(s), {r.Atualizados} atualizado(s), {r.Cancelados} cancelado(s).";
+    }
+
+    private async Task Desconectar()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Desconectar o Google Agenda? Os compromissos já enviados continuam lá.")) return;
+        if (await Executar(() => Google.DesconectarAsync(Usuario.Id))) google = await Google.StatusAsync(Usuario.Id);
+    }
+}

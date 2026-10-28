@@ -1,0 +1,23 @@
+@page "/imoveis/novo"
+@attribute [Authorize(Policy = Permissoes.ImoveisCriar)]
+@inherits ComponenteBase
+@inject ImoveisService Servico
+@inject NavigationManager Nav
+
+<PageTitle>Novo imóvel · Inovabens</PageTitle>
+
+<a href="imoveis" class="voltar">← Imóveis</a>
+<div class="titulo"><h1>Novo imóvel</h1></div>
+<div class="card">
+    <ImovelFormulario Form="form" AoSalvar="Criar" RotuloBotao="Cadastrar imóvel" />
+</div>
+
+@code {
+    private readonly ImovelForm form = new();
+
+    private async Task Criar(ImovelForm f)
+    {
+        var id = await Servico.CriarAsync(Usuario, f);
+        Nav.NavigateTo($"imoveis/{id}");
+    }
+}

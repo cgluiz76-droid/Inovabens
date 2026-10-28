@@ -1,0 +1,17 @@
+<div class="paginacao">
+    <span>@Total registro(s)</span>
+    <div>
+        <button class="btn-ghost" disabled="@(Pagina <= 1)" @onclick="() => AoMudar.InvokeAsync(Pagina - 1)">Anterior</button>
+        <span>@Pagina/@Ultima</span>
+        <button class="btn-ghost" disabled="@(Pagina >= Ultima)" @onclick="() => AoMudar.InvokeAsync(Pagina + 1)">Próxima</button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Pagina { get; set; }
+    [Parameter] public int Total { get; set; }
+    [Parameter] public int TamanhoPagina { get; set; } = 20;
+    [Parameter] public EventCallback<int> AoMudar { get; set; }
+
+    private int Ultima => Math.Max(1, (int)Math.Ceiling(Total / (double)TamanhoPagina));
+}

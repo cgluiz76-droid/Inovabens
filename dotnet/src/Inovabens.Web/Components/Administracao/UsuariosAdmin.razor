@@ -1,0 +1,135 @@
+@inherits ComponenteBase
+@inject UsuariosService Servico
+@inject PerfisService Perfis
+
+<section class="card">
+    <div class="titulo-secao">
+        <input class="input busca" placeholder="Buscar por nome ou e-mail…" @bind="termo" @bind:event="oninput" @bind:after="Carregar" />
+        <button class="btn-primary" @onclick="Novo">+ Novo usuário</button>
+    </div>
+    <MensagemErro Texto="@Erro" />
+    @if (lista is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Nome</th><th>Perfil</th><th>2FA</th><th>Último acesso</th><th>Situação</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var u in lista.Itens)
+                    {
+                        <tr>
+                            <td><span class="forte">@u.Nome</span><p class="pequeno mudo">@u.Email</p></td>
+                            <td>@u.PerfilNome</td>
+                            <td>@(u.TotpAtivo ? "Ativo" : "—")</td>
+                            <td>@Texto.DataHora(u.UltimoLoginEm)</td>
+                            <td><span class="badge @(u.Ativo ? "status-PAGO" : "status-NAO_PAGO")">@(u.Ativo ? "Ativo" : "Inativo")</span></td>
+                            <td class="acoes-linha">
+                                <button class="btn-ghost mini" @onclick="() => Editar(u)">Editar</button>
+                                @if (u.Id != Usuario.Id)
+                                {
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Ativar(u, !u.Ativo)">@(u.Ativo ? "Desativar" : "Reativar")</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (form is not null)
+{
+    <Modal Titulo="@(editandoId is null ? "Novo usuário" : "Editar usuário")" AoFechar="() => form = null">
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <label class="campo">
+                <span>Nome *</span>
+                <InputText class="input" @bind-Value="form.Nome" />
+                <ValidationMessage For="() => form.Nome" />
+            </label>
+            <label class="campo">
+                <span>E-mail *</span>
+                <InputText class="input" type="email" @bind-Value="form.Email" />
+                <ValidationMessage For="() => form.Email" />
+            </label>
+            <label class="campo">
+                <span>@(editandoId is null ? "Senha inicial *" : "Nova senha (em branco mantém a atual)")</span>
+                <InputText class="input" type="password" autocomplete="new-password" @bind-Value="form.Senha" />
+                <ValidationMessage For="() => form.Senha" />
+            </label>
+            <label class="campo">
+                <span>Perfil *</span>
+                <InputSelect class="input" @bind-Value="form.PerfilId" disabled="@(editandoId == Usuario.Id)">
+                    <option value="">Selecione…</option>
+                    @foreach (var p in perfis)
+                    {
+                        <option value="@p.Id">@p.Nome</option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => form.PerfilId" />
+            </label>
+            <MensagemErro Texto="@erroForm" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                <button type="button" class="btn-ghost" @onclick="() => form = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    private Paginado<UsuarioItem>? lista;
+    private IReadOnlyList<PerfilItem> perfis = [];
+    private string termo = "";
+    private UsuarioForm? form;
+    private Guid? editandoId;
+    private string? erroForm;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () => perfis = await Perfis.ListarAsync(Usuario));
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () => lista = await Servico.ListarAsync(Usuario, termo));
+
+    private void Novo()
+    {
+        erroForm = null;
+        editandoId = null;
+        form = new UsuarioForm();
+    }
+
+    private void Editar(UsuarioItem u)
+    {
+        erroForm = null;
+        editandoId = u.Id;
+        form = new UsuarioForm { Nome = u.Nome, Email = u.Email, PerfilId = u.PerfilId, Ativo = u.Ativo };
+    }
+
+    private async Task Salvar()
+    {
+        var ok = await Executar(async () =>
+        {
+            if (editandoId is { } id) await Servico.AtualizarAsync(Usuario, id, form!);
+            else await Servico.CriarAsync(Usuario, form!);
+        });
+        if (!ok)
+        {
+            erroForm = Erro;
+            Erro = null;
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+
+    private async Task Ativar(UsuarioItem u, bool ativo)
+    {
+        if (await Executar(() => Servico.DefinirAtivoAsync(Usuario, u.Id, ativo))) await Carregar();
+    }
+}

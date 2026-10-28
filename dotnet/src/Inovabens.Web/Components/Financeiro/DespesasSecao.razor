@@ -1,0 +1,297 @@
+@inherits ComponenteBase
+@inject DespesasService Servico
+@inject IJSRuntime JS
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Despesas recorrentes (OPEX) — checklist mensal</h2>
+        <div class="acoes-topo">
+            <input type="month" class="input w-mes" @bind="mes" @bind:after="Carregar" />
+            @if (Editar)
+            {
+                <button class="btn-ghost" @onclick="AbrirNova">Cadastrar despesa</button>
+            }
+        </div>
+    </div>
+    <MensagemErro Texto="@Erro" />
+
+    @if (checklist is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <p class="pequeno mudo">
+            Pago: <b>@checklist.Resumo.Pago</b> · Não pago: <b>@checklist.Resumo.NaoPago</b> ·
+            Não se aplica: <b>@checklist.Resumo.NaoSeAplica</b> · A marcar: <b>@checklist.Resumo.AMarcar</b>
+        </p>
+        @if (checklist.Itens.Count == 0)
+        {
+            <p class="vazio">Nenhuma despesa prevista para este mês.</p>
+        }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Despesa</th><th>Vencimento</th><th>Valor</th><th>Situação</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var i in checklist.Itens)
+                        {
+                            <tr>
+                                <td><b>@i.Descricao</b><p class="pequeno mudo">@i.Categoria · @Texto.Rotulo(i.Recorrencia)</p></td>
+                                <td>@Texto.Data(i.Vencimento)</td>
+                                <td>@Texto.Moeda(i.Valor)</td>
+                                <td>
+                                    @if (i.Status is { } s)
+                                    {
+                                        <span class="badge status-@s">@Texto.Rotulo(s)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="mudo">a marcar</span>
+                                    }
+                                    @if (i.Justificativa is not null)
+                                    {
+                                        <p class="pequeno justificativa">“@i.Justificativa”</p>
+                                    }
+                                </td>
+                                <td class="acoes-linha">
+                                    @if (Editar)
+                                    {
+                                        <button class="btn-ghost mini texto-ok" @onclick="() => AbrirStatus(i, StatusLancamento.PAGO)">Pago</button>
+                                        <button class="btn-ghost mini texto-erro" @onclick="() => AbrirStatus(i, StatusLancamento.NAO_PAGO)">Não pago</button>
+                                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => MarcarNaoSeAplica(i)">N/A</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+
+    @if (despesas.Count > 0)
+    {
+        <details class="espaco-topo">
+            <summary class="pequeno">Despesas cadastradas (@despesas.Count)</summary>
+            <table class="tabela simples">
+                <tbody>
+                    @foreach (var d in despesas)
+                    {
+                        <tr>
+                            <td><b>@d.Dados.Descricao</b><p class="pequeno mudo">@d.Categoria</p></td>
+                            <td>@Texto.Rotulo(d.Dados.Recorrencia)@(d.Dados.DiaVencimento is { } dia ? $" · dia {dia}" : "")</td>
+                            <td>@Texto.Moeda(d.Dados.ValorPrevisto)</td>
+                            <td>@Texto.Data(d.Dados.InicioEm) a @Texto.Data(d.Dados.FimEm)</td>
+                            <td class="acoes-linha">
+                                @if (Editar)
+                                {
+                                    <button class="btn-ghost mini" @onclick="() => AbrirEdicao(d.Dados)">Editar</button>
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Excluir(d.Dados.Id)">Excluir</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </details>
+    }
+</section>
+
+@if (marcando is not null)
+{
+    <Modal Titulo="@($"{(entrada.Status == StatusLancamento.NAO_PAGO ? "Marcar como NÃO PAGO" : "Marcar como PAGO")} — {marcando.Descricao}")" AoFechar="Fechar">
+        <EditForm Model="entrada" OnValidSubmit="ConfirmarStatus" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@ErroModal" />
+            @if (entrada.Status == StatusLancamento.NAO_PAGO)
+            {
+                <label class="campo">
+                    <span>Justificativa (obrigatória)</span>
+                    <InputTextArea class="input" rows="3" autofocus placeholder="Explique por que esta despesa não foi paga (mín. 10 caracteres)" @bind-Value="entrada.Justificativa" />
+                    <ValidationMessage For="() => entrada.Justificativa" />
+                </label>
+            }
+            else
+            {
+                <div class="grade-2">
+                    <label class="campo"><span>Data do pagamento</span><InputDate class="input" @bind-Value="entrada.DataPagamento" /></label>
+                    <label class="campo">
+                        <span>Valor pago (R$)</span>
+                        <InputNumber class="input" step="0.01" @bind-Value="entrada.Valor" />
+                        <ValidationMessage For="() => entrada.Valor" />
+                    </label>
+                </div>
+            }
+            <div class="acoes direita">
+                <button type="button" class="btn-ghost" @onclick="Fechar">Cancelar</button>
+                <button type="submit" class="@(entrada.Status == StatusLancamento.NAO_PAGO ? "btn-perigo" : "btn-primary")" disabled="@Ocupado">Confirmar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (despesaForm is not null)
+{
+    <Modal Titulo="@(editandoId is null ? "Cadastrar despesa" : "Editar despesa")" AoFechar="Fechar">
+        <EditForm Model="despesaForm" OnValidSubmit="SalvarDespesa" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@ErroModal" />
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Categoria</span>
+                    <select class="input" @bind="CategoriaSelecionada">
+                        <option value="">Selecione…</option>
+                        @foreach (var c in categorias)
+                        {
+                            <option value="@c.Id">@c.Nome</option>
+                        }
+                    </select>
+                    <ValidationMessage For="() => despesaForm.CategoriaId" />
+                </label>
+                <label class="campo">
+                    <span>Recorrência</span>
+                    <InputSelect class="input" @bind-Value="despesaForm.Recorrencia">
+                        @foreach (var r in Enum.GetValues<Recorrencia>())
+                        {
+                            <option value="@r">@Texto.Rotulo(r)</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label class="campo col-2">
+                    <span>Descrição</span>
+                    <InputText class="input" @bind-Value="despesaForm.Descricao" />
+                    <ValidationMessage For="() => despesaForm.Descricao" />
+                </label>
+                <label class="campo">
+                    <span>Valor previsto (R$)</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="despesaForm.ValorPrevisto" />
+                    <ValidationMessage For="() => despesaForm.ValorPrevisto" />
+                </label>
+                <label class="campo">
+                    <span>Dia de vencimento</span>
+                    <InputNumber class="input" min="1" max="31" @bind-Value="despesaForm.DiaVencimento" />
+                    <ValidationMessage For="() => despesaForm.DiaVencimento" />
+                </label>
+                <label class="campo">
+                    <span>Início</span>
+                    <InputDate class="input" @bind-Value="despesaForm.InicioEm" />
+                    <ValidationMessage For="() => despesaForm.InicioEm" />
+                </label>
+                <label class="campo">
+                    <span>Fim (opcional)</span>
+                    <InputDate class="input" @bind-Value="despesaForm.FimEm" />
+                    <ValidationMessage For="() => despesaForm.FimEm" />
+                </label>
+            </div>
+            <div class="acoes direita">
+                <button type="button" class="btn-ghost" @onclick="Fechar">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    [Parameter] public bool Editar { get; set; }
+    [Parameter] public Func<Task>? AoAlterar { get; set; }
+
+    private DateOnly mes = PrimeiroDia(DatasBR.Hoje());
+
+    private static DateOnly PrimeiroDia(DateOnly d) => new(d.Year, d.Month, 1);
+    private Checklist? checklist;
+    private IReadOnlyList<DespesaDetalhe> despesas = [];
+    private IReadOnlyList<DespesaCategoria> categorias = [];
+
+    // modal de status
+    private ChecklistItem? marcando;
+    private StatusLancamentoEntrada entrada = new();
+
+    // modal de despesa
+    private DespesaForm? despesaForm;
+    private Guid? editandoId;
+
+    /// <summary>Erro exibido dentro do modal aberto (o da seção fica atrás do fundo escuro).</summary>
+    private string? ErroModal => marcando is not null || despesaForm is not null ? Erro : null;
+
+    private string CategoriaSelecionada
+    {
+        get => despesaForm?.CategoriaId?.ToString() ?? "";
+        set { if (despesaForm is not null) despesaForm.CategoriaId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () =>
+    {
+        checklist = await Servico.ChecklistAsync(Usuario, ImovelId, PrimeiroDia(mes));
+        despesas = await Servico.ListarAsync(Usuario, ImovelId);
+    });
+
+    private void AbrirStatus(ChecklistItem i, StatusLancamento s)
+    {
+        Erro = null;
+        marcando = i;
+        entrada = new StatusLancamentoEntrada { Status = s, DataPagamento = DatasBR.Hoje(), Valor = i.Valor };
+    }
+
+    private async Task ConfirmarStatus()
+    {
+        if (!await Executar(() => Servico.AtualizarStatusAsync(Usuario, marcando!.LancamentoId, entrada))) return;
+        Fechar();
+        await Depois();
+    }
+
+    private async Task MarcarNaoSeAplica(ChecklistItem i)
+    {
+        var e = new StatusLancamentoEntrada { Status = StatusLancamento.NAO_SE_APLICA };
+        if (await Executar(() => Servico.AtualizarStatusAsync(Usuario, i.LancamentoId, e))) await Depois();
+    }
+
+    private async Task AbrirNova()
+    {
+        Erro = null;
+        if (categorias.Count == 0) categorias = await Servico.CategoriasAsync();
+        editandoId = null;
+        despesaForm = new DespesaForm { InicioEm = DatasBR.Hoje(), CategoriaId = categorias.FirstOrDefault()?.Id };
+    }
+
+    private async Task AbrirEdicao(Despesa d)
+    {
+        Erro = null;
+        if (categorias.Count == 0) categorias = await Servico.CategoriasAsync();
+        editandoId = d.Id;
+        despesaForm = DespesaForm.De(d);
+    }
+
+    private async Task SalvarDespesa()
+    {
+        var f = despesaForm!;
+        var ok = await Executar(() => editandoId is { } id ? Servico.AtualizarAsync(Usuario, id, f) : Servico.CriarAsync(Usuario, ImovelId, f));
+        if (!ok) return;
+        Fechar();
+        await Depois();
+    }
+
+    private async Task Excluir(Guid id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir esta despesa? Os lançamentos já marcados continuam no histórico.")) return;
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, id))) await Depois();
+    }
+
+    private void Fechar()
+    {
+        marcando = null;
+        despesaForm = null;
+        editandoId = null;
+        Erro = null;
+    }
+
+    private async Task Depois()
+    {
+        await Carregar();
+        if (AoAlterar is not null) await AoAlterar();
+    }
+}

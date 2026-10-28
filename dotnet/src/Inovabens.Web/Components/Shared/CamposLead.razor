@@ -1,0 +1,52 @@
+@* Campos comuns do lead (criação e edição). Precisa estar dentro de um EditForm. *@
+<div class="grade-4">
+    @if (Finalidade)
+    {
+        <label class="campo">
+            <span>Finalidade</span>
+            <InputSelect class="input" @bind-Value="Form.Finalidade">
+                <option value="@FinalidadeLead.COMPRA">Compra</option>
+                <option value="@FinalidadeLead.LOCACAO">Locação</option>
+            </InputSelect>
+        </label>
+    }
+    <label class="campo">
+        <span>Origem</span>
+        <InputText class="input" placeholder="Site, indicação, portal…" @bind-Value="Form.Origem" />
+    </label>
+    <label class="campo">
+        <span>Orçamento mínimo</span>
+        <InputNumber class="input" step="0.01" @bind-Value="Form.OrcamentoMin" />
+        <ValidationMessage For="() => Form.OrcamentoMin" />
+    </label>
+    <label class="campo">
+        <span>Orçamento máximo</span>
+        <InputNumber class="input" step="0.01" @bind-Value="Form.OrcamentoMax" />
+        <ValidationMessage For="() => Form.OrcamentoMax" />
+    </label>
+    <label class="campo">
+        <span>Próxima ação</span>
+        <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="Form.ProximaAcaoEm" />
+    </label>
+    @if (Responsaveis is not null)
+    {
+        <label class="campo">
+            <span>Responsável</span>
+            <InputSelect class="input" @bind-Value="Form.ResponsavelId">
+                <option value="">Eu mesmo</option>
+                @foreach (var r in Responsaveis)
+                {
+                    <option value="@r.Id">@r.Nome</option>
+                }
+            </InputSelect>
+        </label>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public LeadForm Form { get; set; } = default!;
+    [Parameter] public IReadOnlyList<Opcao>? Responsaveis { get; set; }
+
+    /// <summary>Mostra a escolha compra/locação (só na criação: o funil é definido por ela).</summary>
+    [Parameter] public bool Finalidade { get; set; }
+}
