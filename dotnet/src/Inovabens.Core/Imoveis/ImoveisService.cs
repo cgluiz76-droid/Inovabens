@@ -88,7 +88,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
 
         var im = new Imovel { Codigo = RegrasImovel.FormatarCodigo(n) };
         form.AplicarEm(im);
-        im.CorretorResponsavelId = u.EscopoProprio ? u.Id : (form.CorretorResponsavelId ?? u.Id);
+        im.CorretorResponsavelId = Acesso.ResponsavelAoCriar(u, form.CorretorResponsavelId);
         db.Imoveis.Add(im);
         audit.Registrar(db, u.Id, "imoveis", im.Id, "CRIAR", depois: im);
         await db.SaveChangesAsync();
@@ -104,8 +104,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         var im = await Acesso.ImovelComAcesso(db, u, id);
         var antes = im.Copia();
         form.AplicarEm(im);
-        // corretor (escopo próprio) não repassa o imóvel para outra pessoa
-        if (!u.EscopoProprio) im.CorretorResponsavelId = form.CorretorResponsavelId ?? im.CorretorResponsavelId;
+        if (Acesso.NovoResponsavel(u, form.CorretorResponsavelId) is { } r) im.CorretorResponsavelId = r;
         audit.Registrar(db, u.Id, "imoveis", id, "ATUALIZAR", antes, im);
         await db.SaveChangesAsync();
     }

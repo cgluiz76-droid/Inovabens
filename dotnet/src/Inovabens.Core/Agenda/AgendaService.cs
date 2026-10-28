@@ -68,20 +68,14 @@ public sealed class CompromissoForm : IValidatableObject
         LeadId = c.Dados.LeadId, Convidados = string.Join(", ", c.Participantes),
     };
 
-    public static DateTime ParaBR(DateTime utc) =>
-        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo"));
+    public static DateTime ParaBR(DateTime utc) => DatasBR.DeUtc(utc);
 }
 
 /// <summary>Compromissos dos imóveis (port de agenda.service.ts). Cada alteração é enviada ao Google em segundo plano.</summary>
 public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditService audit, GoogleService google)
 {
-    private static IQueryable<Compromisso> Visiveis(InovabensDb db, UsuarioAtual u)
-    {
-        var q = db.Compromissos.AsNoTracking().Where(c => c.ExcluidoEm == null && c.Imovel!.ExcluidoEm == null);
-        // Corretor: compromissos em que é responsável ou de imóveis sob sua responsabilidade
-        if (u.EscopoProprio) q = q.Where(c => c.ResponsavelId == u.Id || c.Imovel!.CorretorResponsavelId == u.Id);
-        return q;
-    }
+    private static IQueryable<Compromisso> Visiveis(InovabensDb db, UsuarioAtual u) =>
+        db.Compromissos.AsNoTracking().Where(c => c.ExcluidoEm == null && c.Imovel!.ExcluidoEm == null).VisiveisPara(u);
 
     private static async Task<List<CompromissoDetalhe>> Detalhar(InovabensDb db, IQueryable<Compromisso> q)
     {
@@ -143,7 +137,7 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
             Id = Guid.NewGuid(), ImovelId = imovelId, Tipo = form.Tipo, Titulo = form.Titulo.Trim(),
             Descricao = Texto.Limpo(form.Descricao), Local = Texto.Limpo(form.Local),
             InicioEm = Utc(form.Inicio!.Value), FimEm = Utc(form.Fim!.Value), LeadId = form.LeadId,
-            ResponsavelId = u.EscopoProprio ? u.Id : form.ResponsavelId ?? u.Id,
+            ResponsavelId = Acesso.ResponsavelAoCriar(u, form.ResponsavelId),
         };
         await using var tx = await db.Database.BeginTransactionAsync();
         db.Compromissos.Add(c);
@@ -168,7 +162,7 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
             c.InicioEm = Utc(form.Inicio!.Value);
             c.FimEm = Utc(form.Fim!.Value);
             c.LeadId = form.LeadId;
-            if (form.ResponsavelId is { } r && !u.EscopoProprio) c.ResponsavelId = r;
+            if (Acesso.NovoResponsavel(u, form.ResponsavelId) is { } r) c.ResponsavelId = r;
             await GravarParticipantes(db, id, form.Emails);
         });
     }

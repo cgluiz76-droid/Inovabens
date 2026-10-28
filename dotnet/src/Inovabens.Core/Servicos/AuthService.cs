@@ -85,22 +85,21 @@ public sealed class AuthService(IDbContextFactory<InovabensDb> fabrica, AuditSer
         return new UsuarioAtual(u.Id, u.Nome, u.Email, u.PerfilId, u.Perfil!.Nome, u.Perfil.EscopoProprio, perms.ToHashSet(), Senhas.Selo(u.SenhaHash));
     }
 
-    /// <summary>Bloqueio progressivo: a partir da 5ª falha, 5 min, 10, 20... (máx. 24 h).</summary>
     private static async Task RegistrarFalha(InovabensDb db, Usuario u)
     {
-        var n = u.TentativasFalhas + 1;
-        u.TentativasFalhas = n;
-        u.BloqueadoAte = n >= MaxFalhas
-            ? DateTime.UtcNow.AddMinutes(Math.Min(5 * Math.Pow(2, n - MaxFalhas), 1440))
-            : null;
+        u.TentativasFalhas++;
+        u.BloqueadoAte = DateTime.UtcNow + TempoDeBloqueio(u.TentativasFalhas);
         await db.SaveChangesAsync();
     }
+
+    /// <summary>Bloqueio progressivo: a partir da 5ª falha seguida, 5 min, 10, 20... (máx. 24 h); antes disso, nenhum.</summary>
+    internal static TimeSpan? TempoDeBloqueio(int falhas) =>
+        falhas < MaxFalhas ? null : TimeSpan.FromMinutes(Math.Min(5 * Math.Pow(2, falhas - MaxFalhas), 1440));
 
     private static bool SenhaConfere(string hash, string senha) => Senhas.Confere(hash, senha);
 
     /* --------------------------- Minha conta --------------------------- */
 
-    /// <summary>Troca a própria senha. As demais sessões caem na próxima revalidação (o selo muda).</summary>
     /// <summary>Troca a senha e devolve o novo selo (as sessões com o selo antigo são encerradas na revalidação).</summary>
     public async Task<string> AlterarSenhaAsync(UsuarioAtual u, AlterarSenhaForm form)
     {

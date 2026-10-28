@@ -33,8 +33,7 @@ public sealed class PainelService(IDbContextFactory<InovabensDb> fabrica, Agenda
         IReadOnlyList<ContagemEstagio> leads = [];
         if (u.Pode(P.CrmVer))
         {
-            var ql = db.Leads.Where(l => l.ExcluidoEm == null);
-            if (u.EscopoProprio) ql = ql.Where(l => l.ResponsavelId == u.Id);
+            var ql = db.Leads.Where(l => l.ExcluidoEm == null).VisiveisPara(u);
             leads = await db.FunilEstagios.Where(e => e.Funil == Funil.VENDA && e.Ativo).OrderBy(e => e.Ordem)
                 .Select(e => new ContagemEstagio(e.Nome, e.Cor, ql.Count(l => l.EstagioId == e.Id)))
                 .ToListAsync();

@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -118,28 +117,6 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
 
     /* ------------------------------- OAuth ------------------------------- */
 
-    public string Hmac(string valor) =>
-        Convert.ToHexStringLower(HMACSHA256.HashData(Encoding.UTF8.GetBytes(op.SegredoHmac), Encoding.UTF8.GetBytes(valor)));
-
-    /// <summary>state = usuário + validade (10 min), assinado com HMAC: identifica o usuário na volta do Google.</summary>
-    private string AssinarEstado(Guid usuarioId)
-    {
-        var corpo = $"{usuarioId:N}.{DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds()}";
-        return $"{corpo}.{Hmac("google-oauth:" + corpo)}";
-    }
-
-    private Guid? LerEstado(string state)
-    {
-        var p = state.Split('.');
-        if (p.Length != 3 || !Guid.TryParseExact(p[0], "N", out var id) || !long.TryParse(p[1], out var exp)) return null;
-        var esperado = Hmac($"google-oauth:{p[0]}.{p[1]}");
-        if (!IgualSeguro(esperado, p[2])) return null;
-        return DateTimeOffset.UtcNow.ToUnixTimeSeconds() > exp ? null : id;
-    }
-
-    private static bool IgualSeguro(string a, string b) =>
-        CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(a), Encoding.ASCII.GetBytes(b));
-
     public string UrlAutorizacao(UsuarioAtual u)
     {
         u.Exigir(Permissoes.AgendaVer);
@@ -148,7 +125,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
         {
             ["client_id"] = op.GoogleClientId!, ["redirect_uri"] = op.GoogleRedirectUri!, ["response_type"] = "code",
             ["scope"] = "https://www.googleapis.com/auth/calendar.events openid email", ["access_type"] = "offline",
-            ["prompt"] = "consent", ["state"] = AssinarEstado(u.Id),
+            ["prompt"] = "consent", ["state"] = AssinaturaGoogle.AssinarEstado(op.SegredoHmac, u.Id, DateTimeOffset.UtcNow),
         };
         return "https://accounts.google.com/o/oauth2/v2/auth?" + string.Join('&', q.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
     }
@@ -157,7 +134,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
     public async Task<string> CallbackAsync(string code, string state)
     {
         Exigir();
-        var usuarioId = LerEstado(state) ?? throw new RegraNegocioException("state", "Estado OAuth inválido ou expirado");
+        var usuarioId = AssinaturaGoogle.LerEstado(op.SegredoHmac, state, DateTimeOffset.UtcNow) ?? throw new RegraNegocioException("state", "Estado OAuth inválido ou expirado");
         using var r = await Http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["code"] = code, ["client_id"] = op.GoogleClientId!, ["client_secret"] = op.GoogleClientSecret!,
@@ -410,7 +387,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
         if (await ContaDe(db, usuarioId) is not { } conta) return;
         var canal = Guid.NewGuid().ToString();
         var r = await ChamarAsync<JsonElement>(conta, HttpMethod.Post, "/events/watch",
-            new { id = canal, type = "web_hook", address = op.GoogleWebhookUrl, token = Hmac(canal) });
+            new { id = canal, type = "web_hook", address = op.GoogleWebhookUrl, token = AssinaturaGoogle.TokenDoCanal(op.SegredoHmac, canal) });
         conta.CanalWatchId = canal;
         conta.CanalResourceId = r.Dados.ValueKind == JsonValueKind.Object && r.Dados.TryGetProperty("resourceId", out var rid) ? rid.GetString() : null;
         conta.CanalExpiraEm = r.Dados.ValueKind == JsonValueKind.Object && r.Dados.TryGetProperty("expiration", out var exp)
@@ -432,7 +409,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
     /// <summary>O Google chama sem autenticação nossa: o token do canal (HMAC do id) é conferido.</summary>
     public async Task WebhookAsync(string? canalId, string? token, string? estado)
     {
-        if (canalId is null || token is null || estado == "sync" || !IgualSeguro(token, Hmac(canalId))) return;
+        if (estado == "sync" || !AssinaturaGoogle.TokenDoCanalValido(op.SegredoHmac, canalId, token)) return;
         await using var db = await fabrica.CreateDbContextAsync();
         var usuarioId = await db.GoogleContas.Where(c => c.CanalWatchId == canalId).Select(c => (Guid?)c.UsuarioId).SingleOrDefaultAsync();
         if (usuarioId is { } id) EmSegundoPlano(() => SincronizarAsync(id), "webhook");

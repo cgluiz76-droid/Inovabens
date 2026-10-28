@@ -76,11 +76,8 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
     public static Funil FunilDa(FinalidadeLead f) => f == FinalidadeLead.COMPRA ? Funil.VENDA : Funil.LOCACAO;
     private static FinalidadeLead FinalidadeDo(Funil f) => f == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO;
 
-    private static IQueryable<Lead> Visiveis(InovabensDb db, UsuarioAtual u)
-    {
-        var q = db.Leads.Where(l => l.ExcluidoEm == null);
-        return u.EscopoProprio ? q.Where(l => l.ResponsavelId == u.Id) : q;
-    }
+    private static IQueryable<Lead> Visiveis(InovabensDb db, UsuarioAtual u) =>
+        db.Leads.Where(l => l.ExcluidoEm == null).VisiveisPara(u);
 
     /* ----------------------------- Pipeline ----------------------------- */
 
@@ -116,7 +113,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         var l = await Visiveis(db, u).AsNoTracking().Include(x => x.Pessoa).Include(x => x.Estagio).Include(x => x.Responsavel)
             .SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Lead não encontrado.");
         var interesse = await db.LeadImoveisInteresse.AsNoTracking().Where(i => i.LeadId == id)
-            .Join(db.Imoveis, i => i.ImovelId, im => im.Id, (i, im) => new ImovelInteresse(im.Id, im.Codigo, im.Titulo, im.Situacao))
+            .Join(db.Imoveis.Where(im => im.ExcluidoEm == null), i => i.ImovelId, im => im.Id, (i, im) => new ImovelInteresse(im.Id, im.Codigo, im.Titulo, im.Situacao))
             .ToListAsync();
         return new LeadDetalhe(l, l.Pessoa!, l.Estagio!, l.Responsavel?.Nome, interesse);
     }
@@ -166,7 +163,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         var l = new Lead
         {
             Id = Guid.NewGuid(), PessoaId = pessoaId, Finalidade = form.Finalidade, EstagioId = estagio.Id,
-            ResponsavelId = u.EscopoProprio ? u.Id : form.ResponsavelId ?? u.Id,
+            ResponsavelId = Acesso.ResponsavelAoCriar(u, form.ResponsavelId),
         };
         form.AplicarEm(l);
         db.Leads.Add(l);
@@ -186,7 +183,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         var l = await Visiveis(db, u).SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Lead não encontrado.");
         var antes = l.Copia();
         form.AplicarEm(l);
-        if (form.ResponsavelId is { } r && !u.EscopoProprio) l.ResponsavelId = r;
+        if (Acesso.NovoResponsavel(u, form.ResponsavelId) is { } r) l.ResponsavelId = r;
         audit.Registrar(db, u.Id, "leads", id, "ATUALIZAR", antes, l);
         await db.SaveChangesAsync();
     }
@@ -210,9 +207,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         var l = await Visiveis(db, u).Include(x => x.Estagio).SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new NaoEncontradoException("Lead não encontrado.");
         var novo = await EstagioDoFunil(db, estagioId, FunilDa(l.Finalidade));
-        var motivo = Texto.Limpo(motivoPerda);
-        if (novo.Tipo == TipoEstagio.PERDIDO && motivo is null) throw new RegraNegocioException("MotivoPerda", "Informe o motivo da perda");
-        if (motivo is { Length: > 500 }) throw new RegraNegocioException("MotivoPerda", "No máximo 500 caracteres");
+        var motivo = MotivoPerda(novo.Tipo, motivoPerda);
 
         var anterior = l.Estagio!;
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -220,12 +215,22 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         l.EstagioId = novo.Id;
         l.Estagio = novo;
         l.Ordem = ordem ?? prox;
-        l.MotivoPerda = novo.Tipo == TipoEstagio.PERDIDO ? motivo : null;
+        l.MotivoPerda = motivo;
         if (novo.Id != anterior.Id)
             db.LeadHistoricoEstagios.Add(new LeadHistoricoEstagio { LeadId = id, EstagioAnteriorId = anterior.Id, EstagioNovoId = novo.Id, UsuarioId = u.Id });
         audit.Registrar(db, u.Id, "leads", id, "ATUALIZAR", new { estagio = anterior.Nome }, new { estagio = novo.Nome, motivo_perda = motivo });
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+    }
+
+    /// <summary>REGRA: mover para um estágio de perda exige motivo (até 500 caracteres); nos demais ele é descartado.</summary>
+    internal static string? MotivoPerda(TipoEstagio destino, string? informado)
+    {
+        var motivo = Texto.Limpo(informado);
+        if (destino != TipoEstagio.PERDIDO) return null;
+        if (motivo is null) throw new RegraNegocioException("MotivoPerda", "Informe o motivo da perda");
+        if (motivo.Length > 500) throw new RegraNegocioException("MotivoPerda", "No máximo 500 caracteres");
+        return motivo;
     }
 
     public async Task<IReadOnlyList<HistoricoEstagio>> HistoricoAsync(UsuarioAtual u, Guid id)

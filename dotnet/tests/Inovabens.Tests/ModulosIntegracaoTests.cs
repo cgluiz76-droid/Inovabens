@@ -306,6 +306,9 @@ public class ModulosIntegracaoTests
         var im = await NovoImovel(a, a.Corretor, $"Interesse {sufixo}");
         await crm.DefinirInteresseAsync(a.Corretor, id, [im]);
         Assert.Equal(im, Assert.Single((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse).Id);
+        // imóvel excluído some da lista de interesse
+        await a.S<ImoveisService>().ExcluirAsync(a.Admin, im);
+        Assert.Empty((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse);
         await crm.DefinirInteresseAsync(a.Corretor, id, []);
         Assert.Empty((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse);
         await crm.AtualizarAsync(a.Corretor, id, new LeadForm { Origem = "Indicação", OrcamentoMax = 450000 });

@@ -32,7 +32,6 @@ public sealed class RelatoriosService(
     static RelatoriosService() => QuestPDF.Settings.License = LicenseType.Community;
 
     private static string Pct(double? v) => v is null ? "—" : (v.Value * 100).ToString("0.00", Texto.PtBr) + "%";
-    private static string Dh(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo")).ToString("dd/MM/yyyy HH:mm", Texto.PtBr);
     private static string Endereco(Imovel i) => string.Join(" · ", new[]
     {
         string.Join(", ", new[] { i.Logradouro, i.Numero }.Where(x => !string.IsNullOrWhiteSpace(x))), i.Complemento, i.Bairro,
@@ -73,7 +72,7 @@ public sealed class RelatoriosService(
             try { foto = Image.FromBinaryData(bytes); } catch { /* formato não suportado: segue sem foto */ }
         }
 
-        var pdf = NovoPdf("Ficha do Imóvel", $"{d.Codigo} · {d.Titulo}", $"Ficha do Imóvel {d.Codigo} · gerada em {Dh(DateTime.UtcNow)}", col =>
+        var pdf = NovoPdf("Ficha do Imóvel", $"{d.Codigo} · {d.Titulo}", $"Ficha do Imóvel {d.Codigo} · gerada em {Texto.DataHora(DateTime.UtcNow)}", col =>
         {
             if (foto is not null) col.Item().AlignRight().Width(155).Height(105).Image(foto).FitArea();
             Secao(col, "Identificação");
@@ -201,7 +200,7 @@ public sealed class RelatoriosService(
     {
         var (im, ret, lanc, aq) = await DadosFinanceiros(u, id, indice);
         var d = im.Dados;
-        var pdf = NovoPdf("Ficha Financeira", $"{d.Codigo} · {d.Titulo}", $"Ficha Financeira {d.Codigo} · gerada em {Dh(DateTime.UtcNow)}", col =>
+        var pdf = NovoPdf("Ficha Financeira", $"{d.Codigo} · {d.Titulo}", $"Ficha Financeira {d.Codigo} · gerada em {Texto.DataHora(DateTime.UtcNow)}", col =>
         {
             Secao(col, "Resumo do investimento");
             Campos(col, 3,

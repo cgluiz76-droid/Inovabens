@@ -120,4 +120,40 @@ public class AcessoTests
         Assert.Equal(["IMV-1"], imoveis.VisiveisPara(corretor).Select(i => i.Codigo));
         Assert.Equal(3, imoveis.VisiveisPara(Usuario(escopoProprio: false)).Count());
     }
+
+    [Fact]
+    public void Corretor_ve_leads_proprios_e_compromissos_seus_ou_dos_seus_imoveis()
+    {
+        var corretor = Usuario(escopoProprio: true);
+        var outro = Guid.NewGuid();
+        var leads = new[] { new Lead { ResponsavelId = corretor.Id }, new Lead { ResponsavelId = outro } }.AsQueryable();
+        Assert.Single(leads.VisiveisPara(corretor));
+
+        var meuImovel = new Imovel { CorretorResponsavelId = corretor.Id };
+        var outroImovel = new Imovel { CorretorResponsavelId = outro };
+        var compromissos = new[]
+        {
+            new Compromisso { Titulo = "meu, em imóvel alheio", ResponsavelId = corretor.Id, Imovel = outroImovel },
+            new Compromisso { Titulo = "alheio, no meu imóvel", ResponsavelId = outro, Imovel = meuImovel },
+            new Compromisso { Titulo = "alheio", ResponsavelId = outro, Imovel = outroImovel },
+        }.AsQueryable();
+        Assert.Equal(["meu, em imóvel alheio", "alheio, no meu imóvel"], compromissos.VisiveisPara(corretor).Select(c => c.Titulo));
+        Assert.Equal(3, compromissos.VisiveisPara(Usuario(escopoProprio: false)).Count());
+    }
+
+    [Fact]
+    public void Corretor_e_sempre_o_responsavel_e_nao_repassa()
+    {
+        var corretor = Usuario(escopoProprio: true);
+        var gestor = Usuario(escopoProprio: false);
+        var outro = Guid.NewGuid();
+
+        Assert.Equal(corretor.Id, Acesso.ResponsavelAoCriar(corretor, outro));
+        Assert.Equal(outro, Acesso.ResponsavelAoCriar(gestor, outro));
+        Assert.Equal(gestor.Id, Acesso.ResponsavelAoCriar(gestor, null));
+
+        Assert.Null(Acesso.NovoResponsavel(corretor, outro));
+        Assert.Equal(outro, Acesso.NovoResponsavel(gestor, outro));
+        Assert.Null(Acesso.NovoResponsavel(gestor, null));
+    }
 }
