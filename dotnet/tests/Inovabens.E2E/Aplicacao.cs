@@ -22,6 +22,7 @@ public sealed class Aplicacao : IAsyncLifetime
 {
     public const string AdminEmail = "admin@inovabens.com.br";
     public const string SenhaPadrao = "Trocar@123456";
+    public const int LimiteLogin = 60;
 
     private PostgreSqlContainer? _banco;
     private string _conexao = "";
@@ -78,6 +79,8 @@ public sealed class Aplicacao : IAsyncLifetime
                 ["ASPNETCORE_URLS"] = Url,
                 ["DATABASE_URL"] = conexao,
                 ["DISABLE_JOBS"] = "true",
+                // a suíte faz vários logins seguidos do mesmo IP; o teste do limite usa outro IP (X-Forwarded-For)
+                ["LOGIN_LIMITE_POR_MINUTO"] = LimiteLogin.ToString(),
                 ["Logging__LogLevel__Default"] = "Warning",
             },
         };

@@ -88,6 +88,8 @@ sem elas a aplicação não sobe.
 As chaves que assinam o cookie de sessão ficam na tabela `data_protection_keys`: as sessões sobrevivem a deploys e
 valem em várias instâncias. Arquivos enviados só abrem no navegador se forem imagem, vídeo ou PDF; o resto (inclusive
 HTML/SVG) é servido como download. Respostas levam `X-Frame-Options`, `nosniff` e uma CSP mínima (papel do helmet).
+O login aceita até `LOGIN_LIMITE_POR_MINUTO` tentativas por IP (padrão 10, como na versão Node); o IP vem do
+`X-Forwarded-For` do proxy (`TRUST_PROXY` = quantos proxies há na frente; padrão 1, o do Render).
 Sem `S3_*` o sistema funciona, só o envio de fotos/documentos fica desligado; sem `GOOGLE_*`, a agenda funciona
 sem a integração com o Google.
 

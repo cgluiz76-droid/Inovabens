@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -67,6 +68,21 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
     o.KnownProxies.Clear();
 });
 
+// Tentativas de login por IP (como o @Throttle da versão Node: 10/min). Complementa o bloqueio por conta, que não
+// impede testar uma senha comum em muitas contas. LOGIN_LIMITE_POR_MINUTO ajusta o limite.
+var limiteLogin = int.TryParse(builder.Configuration["LOGIN_LIMITE_POR_MINUTO"], out var l) && l > 0 ? l : 10;
+builder.Services.AddRateLimiter(o =>
+{
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(c =>
+        HttpMethods.IsPost(c.Request.Method) && c.Request.Path.Equals("/login", StringComparison.OrdinalIgnoreCase)
+            ? RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "?",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = limiteLogin, Window = TimeSpan.FromMinutes(1) })
+            : RateLimitPartition.GetNoLimiter(""));
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.OnRejected = (ctx, ct) => new ValueTask(ctx.HttpContext.Response.WriteAsync(
+        "Muitas tentativas de login a partir deste endereço. Aguarde um minuto e tente de novo.", ct));
+});
+
 var app = builder.Build();
 
 // Tabelas e dados-base: aplicados a cada subida (idempotente, com lock entre instâncias).
@@ -76,6 +92,7 @@ await app.Services.GetRequiredService<DadosIniciais>().GarantirAsync();
 if (args.Contains("migrar")) return;
 
 app.UseForwardedHeaders();
+app.UseRateLimiter(); // depois do UseForwardedHeaders: limita pelo IP real do cliente
 
 // Cabeçalhos de segurança (papel do helmet na versão Node): sem iframe de outros sites (clickjacking), sem o
 // navegador "adivinhar" tipos de arquivo, formulários só para o próprio sistema. Sem script-src: o Blazor não muda.

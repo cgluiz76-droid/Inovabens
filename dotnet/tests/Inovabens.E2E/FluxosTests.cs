@@ -47,6 +47,23 @@ public class FluxosTests(Aplicacao app)
     }
 
     [Fact]
+    public async Task Tentativas_de_login_sao_limitadas_por_IP()
+    {
+        var p = await app.NovaPaginaAsync();
+        // IP de documentação (RFC 5737), só deste teste; a aplicação confia no 1º proxy, como atrás do Render
+        var cabecalhos = new Dictionary<string, string> { ["X-Forwarded-For"] = "203.0.113.7" };
+        var status = new List<int>();
+        for (var i = 0; i <= LimiteLogin; i++)
+            status.Add((await p.Context.APIRequest.PostAsync("/login", new() { Headers = cabecalhos, Form = p.Context.APIRequest.CreateFormData()
+                .Set("Entrada.Email", AdminEmail).Set("Entrada.Senha", "errada").Set("_handler", "login") })).Status);
+
+        Assert.DoesNotContain(429, status.Take(LimiteLogin));
+        Assert.Equal(429, status[^1]);
+        // outros endereços continuam entrando normalmente
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+    }
+
+    [Fact]
     public async Task Sessao_continua_valida_depois_de_reiniciar_a_aplicacao()
     {
         // as chaves que assinam o cookie ficam no banco, não no disco do processo
