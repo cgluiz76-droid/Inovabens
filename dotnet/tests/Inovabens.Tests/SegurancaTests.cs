@@ -1,8 +1,10 @@
+using Inovabens.Core;
 using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Crm;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Servicos;
+using Microsoft.Extensions.Configuration;
 
 namespace Inovabens.Tests;
 
@@ -68,6 +70,30 @@ public class SegurancaTests
     [InlineData(5000, 1440.0)]
     public void Bloqueio_progressivo_do_login(int falhas, double? minutos) =>
         Assert.Equal(minutos is { } m ? TimeSpan.FromMinutes(m) : null, AuthService.TempoDeBloqueio(falhas));
+
+    private static InovabensOpcoes Opcoes(bool producao, string? segredo) => InovabensOpcoes.De(
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["DATABASE_URL"] = "Host=x;Database=y", ["TOKEN_ENC_KEY"] = new string('a', 64), ["JWT_REFRESH_SECRET"] = segredo,
+        }).Build(), producao);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("curto-demais")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")] // igual à TOKEN_ENC_KEY
+    public void Producao_exige_segredo_de_assinatura_proprio(string? segredo)
+    {
+        var erro = Assert.Throws<InvalidOperationException>(() => Opcoes(producao: true, segredo));
+        Assert.Contains("JWT_REFRESH_SECRET", erro.Message);
+        Assert.NotNull(Opcoes(producao: false, segredo)); // em desenvolvimento continua com o padrão
+    }
+
+    [Fact]
+    public void Producao_usa_o_segredo_informado()
+    {
+        var segredo = new string('s', 40);
+        Assert.Equal(segredo, Opcoes(producao: true, segredo).SegredoHmac);
+    }
 
     [Fact]
     public void Perda_exige_motivo_e_demais_estagios_descartam()

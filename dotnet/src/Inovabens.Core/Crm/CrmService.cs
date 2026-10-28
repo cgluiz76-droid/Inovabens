@@ -284,9 +284,16 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         if (imoveis.Count > 100) throw new RegraNegocioException("_", "No máximo 100 imóveis de interesse");
         await using var db = await fabrica.CreateDbContextAsync();
         await Detalhe(db, u, id);
+        // Novos vínculos só com imóveis que o usuário enxerga (Corretor: os seus); senão o vínculo revelaria código e
+        // título de imóvel alheio. Os já vinculados (por exemplo, por um gestor) podem continuar na lista.
+        var ids = imoveis.Distinct().ToList();
+        var atuais = await db.LeadImoveisInteresse.Where(i => i.LeadId == id).Select(i => i.ImovelId).ToListAsync();
+        var novos = ids.Except(atuais).ToList();
+        if (await db.Imoveis.Where(i => novos.Contains(i.Id) && i.ExcluidoEm == null).VisiveisPara(u).CountAsync() != novos.Count)
+            throw new NaoEncontradoException("Imóvel não encontrado.");
         await using var tx = await db.Database.BeginTransactionAsync();
         await db.LeadImoveisInteresse.Where(i => i.LeadId == id).ExecuteDeleteAsync();
-        db.LeadImoveisInteresse.AddRange(imoveis.Distinct().Select(im => new LeadImovelInteresse { LeadId = id, ImovelId = im }));
+        db.LeadImoveisInteresse.AddRange(ids.Select(im => new LeadImovelInteresse { LeadId = id, ImovelId = im }));
         await db.SaveChangesAsync();
         await tx.CommitAsync();
     }

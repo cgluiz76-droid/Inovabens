@@ -311,6 +311,15 @@ public class ModulosIntegracaoTests
         Assert.Empty((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse);
         await crm.DefinirInteresseAsync(a.Corretor, id, []);
         Assert.Empty((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse);
+        // a corretora não vincula imóvel alheio (veria código e título), mas mantém o que um gestor vinculou
+        var alheio = await NovoImovel(a, a.Admin, $"Alheio {sufixo}");
+        await Assert.ThrowsAsync<NaoEncontradoException>(() => crm.DefinirInteresseAsync(a.Corretor, id, [alheio]));
+        Assert.Empty((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse);
+        await crm.DefinirInteresseAsync(a.Admin, id, [alheio]);
+        var proprio = await NovoImovel(a, a.Corretor, $"Próprio {sufixo}");
+        await crm.DefinirInteresseAsync(a.Corretor, id, [alheio, proprio]);
+        Assert.Equal(2, (await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse.Count);
+        await Assert.ThrowsAsync<NaoEncontradoException>(() => crm.DefinirInteresseAsync(a.Corretor, id, [Guid.NewGuid()]));
         await crm.AtualizarAsync(a.Corretor, id, new LeadForm { Origem = "Indicação", OrcamentoMax = 450000 });
         Assert.Equal("Indicação", (await crm.ObterAsync(a.Corretor, id)).Dados.Origem);
 
@@ -343,6 +352,28 @@ public class ModulosIntegracaoTests
         Assert.Contains(aud.Itens, x => x.Dados.Acao != "CRIAR");
         Assert.Contains("leads", await a.S<AuditoriaService>().EntidadesAsync(a.Admin));
         await Assert.ThrowsAsync<AcessoNegadoException>(() => a.S<AuditoriaService>().ListarAsync(a.Corretor, null, null));
+    }
+
+    [Fact]
+    public async Task Falhas_de_login_simultaneas_sao_todas_contadas()
+    {
+        var sufixo = Guid.NewGuid().ToString("N")[..8];
+        await using var a = await new Ambiente().Entrar();
+        var email = $"forca.bruta.{sufixo}@inovabens.com.br";
+        var perfil = (await a.S<PerfisService>().ListarAsync(a.Admin)).Single(p => p.Nome == "Corretor");
+        var uid = await a.S<UsuariosService>().CriarAsync(a.Admin, new UsuarioForm { Nome = $"Alvo {sufixo}", Email = email, Senha = "SenhaBoa12345", PerfilId = perfil.Id });
+
+        var auth = a.S<AuthService>();
+        var resultados = await Task.WhenAll(Enumerable.Range(0, 10).Select(i => Task.Run(() => auth.LoginAsync(email, $"errada-{i}", null))));
+
+        // as recusadas por "conta bloqueada" não chegam a conferir a senha; todas as outras precisam ser contadas
+        var avaliadas = resultados.Count(r => r.Mensagem == "Credenciais inválidas.");
+        await using var db = await a.S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync();
+        var usr = await db.Usuarios.AsNoTracking().SingleAsync(x => x.Id == uid);
+        Assert.Equal(avaliadas, usr.TentativasFalhas);
+        Assert.True(usr.TentativasFalhas >= 5);
+        Assert.True(usr.BloqueadoAte > DateTime.UtcNow);
+        Assert.Equal(SituacaoLogin.Falha, (await auth.LoginAsync(email, "SenhaBoa12345", null)).Situacao);
     }
 
     [Fact]

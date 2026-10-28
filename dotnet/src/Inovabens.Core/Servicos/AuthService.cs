@@ -85,11 +85,19 @@ public sealed class AuthService(IDbContextFactory<InovabensDb> fabrica, AuditSer
         return new UsuarioAtual(u.Id, u.Nome, u.Email, u.PerfilId, u.Perfil!.Nome, u.Perfil.EscopoProprio, perms.ToHashSet(), Senhas.Selo(u.SenhaHash));
     }
 
+    /// <summary>
+    /// Incremento atômico no banco: tentativas simultâneas não se sobrescrevem (ler-e-gravar perderia falhas e
+    /// enfraqueceria o bloqueio). O bloqueio só é gravado se ninguém contou outra falha nesse meio-tempo; quem
+    /// contou depois grava o bloqueio maior.
+    /// </summary>
     private static async Task RegistrarFalha(InovabensDb db, Usuario u)
     {
-        u.TentativasFalhas++;
-        u.BloqueadoAte = DateTime.UtcNow + TempoDeBloqueio(u.TentativasFalhas);
-        await db.SaveChangesAsync();
+        var n = (await db.Database.SqlQuery<int>(
+            $"update usuarios set tentativas_falhas = tentativas_falhas + 1 where id = {u.Id} returning tentativas_falhas as \"Value\"")
+            .ToListAsync()).Single();
+        var ate = DateTime.UtcNow + TempoDeBloqueio(n);
+        await db.Usuarios.Where(x => x.Id == u.Id && x.TentativasFalhas == n)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.BloqueadoAte, ate));
     }
 
     /// <summary>Bloqueio progressivo: a partir da 5ª falha seguida, 5 min, 10, 20... (máx. 24 h); antes disso, nenhum.</summary>

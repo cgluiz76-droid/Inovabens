@@ -80,7 +80,9 @@ Configuração (mesmos nomes de variável do `.env` da versão Node; em desenvol
 `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `S3_FORCE_PATH_STYLE`, `TRUST_PROXY`,
 `DISABLE_JOBS`, `WEB_URL` (endereço público do sistema; padrão http://localhost:5051),
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_WEBHOOK_URL`, `JWT_REFRESH_SECRET`
-(assina o `state` do OAuth e o token do webhook do Google — use o mesmo valor do Node).
+(assina o `state` do OAuth e o token do webhook do Google — use o mesmo valor do Node). **Em produção** são
+obrigatórias uma `TOKEN_ENC_KEY` aleatória e uma `JWT_REFRESH_SECRET` com 32+ caracteres, diferente da `TOKEN_ENC_KEY`:
+sem elas a aplicação não sobe.
 Sem `S3_*` o sistema funciona, só o envio de fotos/documentos fica desligado; sem `GOOGLE_*`, a agenda funciona
 sem a integração com o Google.
 

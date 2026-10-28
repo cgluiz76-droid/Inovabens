@@ -63,6 +63,10 @@ public sealed class InovabensOpcoes
             throw new InvalidOperationException("Configuração inválida: TOKEN_ENC_KEY deve ter 64 caracteres hex.");
         if (producao && op.TokenEncKey.All(ch => ch == '0'))
             throw new InvalidOperationException("Configuração inválida: defina TOKEN_ENC_KEY aleatória em produção (openssl rand -hex 32).");
+        // Em produção o segredo das assinaturas não pode cair na chave de cifragem (como exige a versão Node).
+        if (producao && (Vazio(c["JWT_REFRESH_SECRET"]) is not { Length: >= 32 } segredo || segredo == op.TokenEncKey))
+            throw new InvalidOperationException(
+                "Configuração inválida: defina JWT_REFRESH_SECRET em produção (32+ caracteres aleatórios, diferente de TOKEN_ENC_KEY; use o mesmo valor da versão Node).");
         return op;
     }
 

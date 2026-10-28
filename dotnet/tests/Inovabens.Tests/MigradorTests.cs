@@ -78,6 +78,7 @@ public class MigradorTests
         {
             ["DATABASE_URL"] = banco.Conexao,
             ["TOKEN_ENC_KEY"] = new string('a', 64),
+            ["JWT_REFRESH_SECRET"] = new string('b', 40),
         }).Build(), producao: true);
         await new Migrador(op, NullLogger<Migrador>.Instance).AplicarAsync();
 
