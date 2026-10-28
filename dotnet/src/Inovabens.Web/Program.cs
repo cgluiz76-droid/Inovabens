@@ -1,6 +1,7 @@
 using Inovabens.Core;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Agenda;
+using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Financeiro;
 using Inovabens.Core.Relatorios;
@@ -60,6 +61,12 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 });
 
 var app = builder.Build();
+
+// Tabelas e dados-base: aplicados a cada subida (idempotente, com lock entre instâncias).
+// `dotnet Inovabens.Web.dll migrar` faz só isso e sai — use como passo de release, se preferir.
+await app.Services.GetRequiredService<Migrador>().AplicarAsync();
+await app.Services.GetRequiredService<DadosIniciais>().GarantirAsync();
+if (args.Contains("migrar")) return;
 
 app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())

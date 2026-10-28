@@ -9,7 +9,7 @@ namespace Inovabens.Core.Dados;
 
 /// <summary>
 /// Contexto do EF Core sobre o banco EXISTENTE. Não usamos migrations do EF: o esquema
-/// (tabelas, CHECKs, triggers, índices) continua vindo de apps/api/drizzle/*.sql.
+/// (tabelas, CHECKs, triggers, índices) vem dos scripts SQL de Dados/Migracoes, aplicados pelo <see cref="Migrador"/>.
 /// </summary>
 public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(options)
 {

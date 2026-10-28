@@ -29,6 +29,9 @@ public sealed class InovabensOpcoes
     public string WebUrl { get; init; } = "http://localhost:5051";
     /// <summary>Chave do HMAC dos tokens de canal do Google (JWT_REFRESH_SECRET na versão Node, para os canais continuarem válidos).</summary>
     public string SegredoHmac { get; init; } = "";
+    /// <summary>Administrador criado no banco novo (SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD, como no seed do Node).</summary>
+    public string SeedAdminEmail { get; init; } = "admin@inovabens.com.br";
+    public string SeedAdminSenha { get; init; } = Dados.DadosIniciais.SenhaPadrao;
 
     public bool GoogleConfigurado => GoogleClientId is not null && GoogleClientSecret is not null && GoogleRedirectUri is not null;
 
@@ -53,6 +56,8 @@ public sealed class InovabensOpcoes
             GoogleWebhookUrl = Vazio(c["GOOGLE_WEBHOOK_URL"]),
             WebUrl = (Vazio(c["WEB_URL"]) ?? "http://localhost:5051").TrimEnd('/'),
             SegredoHmac = Vazio(c["JWT_REFRESH_SECRET"]) ?? c["TOKEN_ENC_KEY"] ?? new string('0', 64),
+            SeedAdminEmail = Vazio(c["SEED_ADMIN_EMAIL"]) ?? "admin@inovabens.com.br",
+            SeedAdminSenha = Vazio(c["SEED_ADMIN_PASSWORD"]) ?? Dados.DadosIniciais.SenhaPadrao,
         };
         if (op.TokenEncKey.Length != 64)
             throw new InvalidOperationException("Configuração inválida: TOKEN_ENC_KEY deve ter 64 caracteres hex.");

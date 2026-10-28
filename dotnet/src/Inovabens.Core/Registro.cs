@@ -22,6 +22,8 @@ public static class Registro
         // Blazor Server: um DbContext por operação (o circuito vive muito; um contexto único acumularia estado).
         services.AddDbContextFactory<InovabensDb>(o => InovabensDb.ConfigurarNpgsql(o, conexao));
         services.AddSingleton(op);
+        services.AddSingleton<Migrador>();
+        services.AddSingleton<DadosIniciais>();
         services.AddSingleton<StorageService>();
         services.AddScoped<ContextoConexao>();
         services.AddScoped<AuditService>();

@@ -19,4 +19,8 @@
     <InternalsVisibleTo Include="Inovabens.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Dados\Migracoes\*.sql" />
+  </ItemGroup>
+
 </Project>
