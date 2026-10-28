@@ -3,7 +3,8 @@
 @inject AlertasService Alertas
 @inject NavigationManager Nav
 
-<div class="app">
+@* data-interativo: o circuito do Blazor já assumiu a página (usado pelos testes de ponta a ponta) *@
+<div class="app" data-interativo="@(RendererInfo.IsInteractive ? "sim" : "nao")">
     <aside class="lateral">
         <div class="marca">🏢 Inovabens</div>
         <nav>

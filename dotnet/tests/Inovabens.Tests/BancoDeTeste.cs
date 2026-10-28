@@ -19,7 +19,7 @@ public sealed class BancoDeTeste : ICollectionFixture<BancoFixture>
 /// Banco dos testes de integração. Por padrão sobe um PostgreSQL 16 descartável no Docker (Testcontainers);
 /// com INOVABENS_TEST_DB definida, usa esse banco. Nos dois casos aplica as migrações e os dados-base pelo
 /// próprio .NET e cria os usuários de teste. Sem Docker e sem INOVABENS_TEST_DB os testes FALHAM (antes eles
-/// passavam sem executar nada); para rodar só os de unidade: dotnet test --filter "Categoria!=Integracao".
+/// passavam sem executar nada); para rodar só os de unidade: dotnet test --filter "Categoria!=Integracao&Categoria!=E2E".
 /// </summary>
 public sealed class BancoFixture : IAsyncLifetime
 {
@@ -43,7 +43,7 @@ public sealed class BancoFixture : IAsyncLifetime
             {
                 throw new InvalidOperationException(
                     "Testes de integração precisam do Docker em execução (ou de INOVABENS_TEST_DB apontando para um banco de TESTE). " +
-                    "Para rodar só os testes de unidade: dotnet test --filter \"Categoria!=Integracao\".", e);
+                    "Para rodar só os testes de unidade: dotnet test --filter \"Categoria!=Integracao&Categoria!=E2E\".", e);
             }
             url = _container.GetConnectionString();
         }

@@ -34,7 +34,8 @@ dotnet/
     Pessoas/ Memorandos/ Agenda/ Crm/ Painel/ Admin/ Relatorios/   demais módulos (um Service por módulo)
     Servicos/                    Auth, Auditoria, escopo de acesso por imóvel, Armazenamento S3, listas de opções
   src/Inovabens.Web/             Blazor Server (telas .razor); Jobs/ = rotinas agendadas
-  tests/Inovabens.Tests/         xUnit
+  tests/Inovabens.Tests/         xUnit: unidade e integração (PostgreSQL no Docker)
+  tests/Inovabens.E2E/           Playwright: fluxos no navegador contra a aplicação real
 ```
 
 Equivalências com a versão Node:
@@ -102,10 +103,18 @@ use `DISABLE_JOBS=true` em uma delas.
 
 ```bash
 cd dotnet
-dotnet test                                    # tudo: unidade + integração (requer o Docker em execução)
-dotnet test --filter "Categoria!=Integracao"   # só os testes de unidade, sem Docker
-INOVABENS_TEST_BCB=1 dotnet test               # + consulta real ao Banco Central
+dotnet test                                                   # tudo: unidade + integração + navegador (requer o Docker)
+dotnet test --filter "Categoria!=Integracao&Categoria!=E2E"   # só os testes de unidade, sem Docker
+dotnet test tests/Inovabens.E2E                               # só os de ponta a ponta no navegador
+E2E_JANELA=1 dotnet test tests/Inovabens.E2E                  # idem, mostrando o navegador
+INOVABENS_TEST_BCB=1 dotnet test                              # + consulta real ao Banco Central
 ```
+
+**Ponta a ponta (`tests/Inovabens.E2E`, Playwright):** sobem a aplicação compilada como processo (como em produção),
+com um banco novo, e usam o sistema por um Chromium sem janela, achando os campos pelo rótulo visível: login e
+redirecionamento seguro, cadastro de imóvel, checklist financeiro (Não Pago exige justificativa), downloads de PDF/Excel,
+ativação e exigência do 2FA e o escopo do Corretor (tela e download direto). Na primeira execução o Chromium é baixado.
+O layout marca `data-interativo="sim"` quando o Blazor assume a página; os testes esperam por isso antes de clicar.
 
 Os testes de integração (todos os módulos, migrações, renderização das abas, PDF/Excel) sobem um **PostgreSQL 16
 descartável no Docker** (Testcontainers), aplicam as migrações e os dados-base pelo próprio .NET e criam a usuária de
