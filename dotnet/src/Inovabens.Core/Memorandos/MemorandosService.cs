@@ -30,7 +30,7 @@ public sealed class MemorandosService(IDbContextFactory<InovabensDb> fabrica, Au
     {
         u.Exigir(P.MemorandosVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         return await db.Memorandos.AsNoTracking()
             .Where(m => m.ImovelId == imovelId && m.ExcluidoEm == null)
             .OrderByDescending(m => m.Fixado).ThenByDescending(m => m.CriadoEm)
@@ -43,7 +43,7 @@ public sealed class MemorandosService(IDbContextFactory<InovabensDb> fabrica, Au
         u.Exigir(P.MemorandosCriar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var m = new Memorando
         {
             Id = Guid.NewGuid(), ImovelId = imovelId, AutorId = u.Id, Tipo = form.Tipo,
@@ -85,7 +85,7 @@ public sealed class MemorandosService(IDbContextFactory<InovabensDb> fabrica, Au
         await using var db = await fabrica.CreateDbContextAsync();
         var m = await db.Memorandos.SingleOrDefaultAsync(x => x.Id == id && x.ExcluidoEm == null)
             ?? throw new NaoEncontradoException("Memorando não encontrado.");
-        await ImoveisService.ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
         var antes = m.Copia();
         mudar(m);
         audit.Registrar(db, u.Id, "memorandos", id, acao, antes, acao == "EXCLUIR" ? null : m);

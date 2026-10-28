@@ -2,6 +2,7 @@ using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Imoveis;
+using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
 using P = Inovabens.Core.Dominio.Permissoes;
 
@@ -15,7 +16,7 @@ public sealed class RetornoService(IDbContextFactory<InovabensDb> fabrica, Indic
         u.Exigir(P.FinanceiroVer);
         var corte = ate ?? DatasBR.Hoje();
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
 
         var aq = await db.Aquisicoes.AsNoTracking().SingleOrDefaultAsync(a => a.ImovelId == imovelId);
         var itens = aq is null ? [] : await db.AquisicaoItens.AsNoTracking().Where(i => i.AquisicaoId == aq.Id).ToListAsync();

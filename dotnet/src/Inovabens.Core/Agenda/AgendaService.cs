@@ -112,7 +112,7 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
     {
         u.Exigir(P.AgendaVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         return await Detalhar(db, Visiveis(db, u).Where(c => c.ImovelId == imovelId));
     }
 
@@ -137,7 +137,7 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
         u.Exigir(P.AgendaCriar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var c = new Compromisso
         {
             Id = Guid.NewGuid(), ImovelId = imovelId, Tipo = form.Tipo, Titulo = form.Titulo.Trim(),

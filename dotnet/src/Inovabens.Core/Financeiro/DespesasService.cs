@@ -52,7 +52,7 @@ public sealed class DespesasService(IDbContextFactory<InovabensDb> fabrica, Audi
     {
         u.Exigir(P.FinanceiroVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         return await db.Despesas.AsNoTracking()
             .Where(d => d.ImovelId == imovelId && d.ExcluidoEm == null)
             .OrderBy(d => d.Categoria!.Nome).ThenBy(d => d.Descricao)
@@ -65,7 +65,7 @@ public sealed class DespesasService(IDbContextFactory<InovabensDb> fabrica, Audi
         u.Exigir(P.FinanceiroEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var d = new Despesa { ImovelId = imovelId };
         form.AplicarEm(d);
         db.Despesas.Add(d);
@@ -102,7 +102,7 @@ public sealed class DespesasService(IDbContextFactory<InovabensDb> fabrica, Audi
     {
         var d = await db.Despesas.SingleOrDefaultAsync(x => x.Id == id && x.ExcluidoEm == null)
             ?? throw new NaoEncontradoException("Despesa não encontrada.");
-        await ImoveisService.ImovelComAcesso(db, u, d.ImovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, d.ImovelId, rastrear: false);
         return d;
     }
 
@@ -143,7 +143,7 @@ public sealed class DespesasService(IDbContextFactory<InovabensDb> fabrica, Audi
         u.Exigir(P.FinanceiroVer);
         var competencia = new DateOnly(mes.Year, mes.Month, 1);
         await using (var db0 = await fabrica.CreateDbContextAsync())
-            await ImoveisService.ImovelComAcesso(db0, u, imovelId, rastrear: false);
+            await Acesso.ImovelComAcesso(db0, u, imovelId, rastrear: false);
         await GerarCompetenciaAsync(competencia, imovelId);
 
         await using var db = await fabrica.CreateDbContextAsync();
@@ -163,7 +163,7 @@ public sealed class DespesasService(IDbContextFactory<InovabensDb> fabrica, Audi
     {
         u.Exigir(P.FinanceiroVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var q = db.DespesaLancamentos.AsNoTracking().Where(l => l.Despesa!.ImovelId == imovelId && l.Despesa.ExcluidoEm == null);
         if (de is { } d1) { var c = new DateOnly(d1.Year, d1.Month, 1); q = q.Where(l => l.Competencia >= c); }
         if (ate is { } d2) { var c = new DateOnly(d2.Year, d2.Month, 1); q = q.Where(l => l.Competencia <= c); }
@@ -183,18 +183,13 @@ public sealed class DespesasService(IDbContextFactory<InovabensDb> fabrica, Audi
         await using var db = await fabrica.CreateDbContextAsync();
         var l = await db.DespesaLancamentos.Include(x => x.Despesa).SingleOrDefaultAsync(x => x.Id == lancamentoId)
             ?? throw new NaoEncontradoException("Lançamento não encontrado.");
-        await ImoveisService.ImovelComAcesso(db, u, l.Despesa!.ImovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, l.Despesa!.ImovelId, rastrear: false);
 
         var antes = l.Copia();
-        var comNota = e.Status is StatusLancamento.NAO_PAGO or StatusLancamento.NAO_SE_APLICA;
-        l.Status = e.Status;
-        l.Justificativa = comNota ? Texto.Limpo(e.Justificativa) : null;
-        l.DataPagamento = e.Status == StatusLancamento.PAGO ? e.DataPagamento ?? DatasBR.Hoje() : null;
-        if (e.Valor is { } v) l.Valor = v;
-        l.AtualizadoPor = u.Id;
+        e.AplicarEm(l, u.Id, DatasBR.Hoje());
 
         await using var tx = await db.Database.BeginTransactionAsync();
-        if (e.Status is StatusLancamento.PAGO or StatusLancamento.NAO_SE_APLICA)
+        if (e.ResolveAlerta)
             await db.Alertas.Where(a => a.LancamentoId == lancamentoId && a.ResolvidoEm == null)
                 .ExecuteUpdateAsync(s => s.SetProperty(a => a.ResolvidoEm, DateTime.UtcNow));
         audit.Registrar(db, u.Id, "despesa_lancamentos", lancamentoId, "ATUALIZAR", antes, l);

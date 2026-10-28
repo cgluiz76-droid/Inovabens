@@ -2,6 +2,7 @@ using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
+using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
 using P = Inovabens.Core.Dominio.Permissoes;
 
@@ -25,8 +26,7 @@ public sealed class PainelService(IDbContextFactory<InovabensDb> fabrica, Agenda
         IReadOnlyList<ContagemSituacao> imoveis = [];
         if (u.Pode(P.ImoveisVer))
         {
-            var q = db.Imoveis.Where(i => i.ExcluidoEm == null);
-            if (u.EscopoProprio) q = q.Where(i => i.CorretorResponsavelId == u.Id);
+            var q = db.Imoveis.Where(i => i.ExcluidoEm == null).VisiveisPara(u);
             imoveis = await q.GroupBy(i => i.Situacao).Select(g => new ContagemSituacao(g.Key, g.Count())).ToListAsync();
         }
 

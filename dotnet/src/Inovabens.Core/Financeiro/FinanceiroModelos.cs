@@ -172,6 +172,23 @@ public sealed class StatusLancamentoEntrada : IValidatableObject
                 $"Justificativa obrigatória (mínimo {MinimoJustificativa} caracteres) quando o status é Não Pago.", [nameof(Justificativa)]);
         foreach (var e in Dinheiro.Validar((nameof(Valor), Valor))) yield return e;
     }
+
+    /// <summary>Pago e Não se aplica encerram o alerta de despesa vencida do lançamento.</summary>
+    public bool ResolveAlerta => Status is StatusLancamento.PAGO or StatusLancamento.NAO_SE_APLICA;
+
+    /// <summary>
+    /// Justificativa só em Não Pago / Não se aplica; data de pagamento só em Pago (padrão: hoje);
+    /// valor só muda quando informado.
+    /// </summary>
+    internal void AplicarEm(DespesaLancamento l, Guid usuarioId, DateOnly hoje)
+    {
+        var comNota = Status is StatusLancamento.NAO_PAGO or StatusLancamento.NAO_SE_APLICA;
+        l.Status = Status;
+        l.Justificativa = comNota ? Texto.Limpo(Justificativa) : null;
+        l.DataPagamento = Status == StatusLancamento.PAGO ? DataPagamento ?? hoje : null;
+        if (Valor is { } v) l.Valor = v;
+        l.AtualizadoPor = usuarioId;
+    }
 }
 
 public sealed class ReceitaForm : IValidatableObject

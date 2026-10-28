@@ -35,8 +35,7 @@ public sealed class OpcoesService(IDbContextFactory<InovabensDb> fabrica)
     {
         if (!u.Pode(Dominio.Permissoes.ImoveisVer)) return [];
         await using var db = await fabrica.CreateDbContextAsync();
-        var q = db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null);
-        if (u.EscopoProprio) q = q.Where(i => i.CorretorResponsavelId == u.Id);
+        var q = db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null).VisiveisPara(u);
         return await q.OrderBy(i => i.Codigo)
             .Select(i => new Opcao(i.Id, i.Codigo + " · " + i.Titulo))
             .ToListAsync();

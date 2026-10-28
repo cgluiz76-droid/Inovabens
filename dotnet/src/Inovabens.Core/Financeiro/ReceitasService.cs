@@ -15,7 +15,7 @@ public sealed class ReceitasService(IDbContextFactory<InovabensDb> fabrica, Audi
     {
         u.Exigir(P.FinanceiroVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         return await db.Receitas.AsNoTracking()
             .Where(r => r.ImovelId == imovelId && r.ExcluidoEm == null)
             .OrderBy(r => r.Data)
@@ -27,7 +27,7 @@ public sealed class ReceitasService(IDbContextFactory<InovabensDb> fabrica, Audi
         u.Exigir(P.FinanceiroEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var r = new Receita { ImovelId = imovelId };
         form.AplicarEm(r);
         db.Receitas.Add(r);
@@ -62,7 +62,7 @@ public sealed class ReceitasService(IDbContextFactory<InovabensDb> fabrica, Audi
     {
         var r = await db.Receitas.SingleOrDefaultAsync(x => x.Id == id && x.ExcluidoEm == null)
             ?? throw new NaoEncontradoException("Receita não encontrada.");
-        await ImoveisService.ImovelComAcesso(db, u, r.ImovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, r.ImovelId, rastrear: false);
         return r;
     }
 

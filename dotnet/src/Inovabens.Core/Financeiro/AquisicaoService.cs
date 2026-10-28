@@ -16,7 +16,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
     {
         u.Exigir(P.FinanceiroVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var a = await db.Aquisicoes.AsNoTracking().SingleOrDefaultAsync(x => x.ImovelId == imovelId);
         if (a is null) return null;
         var itens = await db.AquisicaoItens.AsNoTracking().Where(i => i.AquisicaoId == a.Id).OrderBy(i => i.CriadoEm).ToListAsync();
@@ -28,7 +28,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
         u.Exigir(P.FinanceiroEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
 
         var a = await db.Aquisicoes.SingleOrDefaultAsync(x => x.ImovelId == imovelId);
         if (a is null)
@@ -54,7 +54,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
         u.Exigir(P.FinanceiroEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImoveisService.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var aquisicaoId = await db.Aquisicoes.Where(x => x.ImovelId == imovelId).Select(x => (Guid?)x.Id).SingleOrDefaultAsync()
             ?? throw new RegraNegocioException("itens", "Cadastre a aquisição (data e valor pago) antes de lançar itens.");
         var item = new AquisicaoItem { AquisicaoId = aquisicaoId };
@@ -90,7 +90,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
     {
         var item = await db.AquisicaoItens.Include(i => i.Aquisicao).SingleOrDefaultAsync(i => i.Id == itemId)
             ?? throw new NaoEncontradoException("Item não encontrado.");
-        await ImoveisService.ImovelComAcesso(db, u, item.Aquisicao!.ImovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, item.Aquisicao!.ImovelId, rastrear: false);
         return item;
     }
 

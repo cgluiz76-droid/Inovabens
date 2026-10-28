@@ -32,7 +32,7 @@ dotnet/
     Financeiro/                  Aquisição, Despesas (checklist), Receitas, Índices (BCB), Retorno;
                                  CalculoRetorno.cs é o cálculo puro (port de retorno.service.ts)
     Pessoas/ Memorandos/ Agenda/ Crm/ Painel/ Admin/ Relatorios/   demais módulos (um Service por módulo)
-    Servicos/                    Auth, Auditoria, Armazenamento S3, listas de opções
+    Servicos/                    Auth, Auditoria, escopo de acesso por imóvel, Armazenamento S3, listas de opções
   src/Inovabens.Web/             Blazor Server (telas .razor); Jobs/ = rotinas agendadas
   tests/Inovabens.Tests/         xUnit
 ```
@@ -46,7 +46,7 @@ Equivalências com a versão Node:
 | Zod | DataAnnotations + `IValidatableObject` (validados na tela **e** no serviço) |
 | JWT + refresh token | Cookie de autenticação; revalida usuário/permissões no banco a cada 15 min |
 | `@RequirePermission('imoveis:ver')` | `@attribute [Authorize(Policy = Permissoes.ImoveisVer)]` + `Usuario.Exigir(...)` no serviço |
-| `assertAcessoImovel` (escopo do Corretor) | `ImoveisService.ImovelComAcesso` |
+| `assertAcessoImovel` (escopo do Corretor) | `Acesso.ImovelComAcesso` e o filtro `consulta.VisiveisPara(usuario)` (Servicos/Acesso.cs) |
 | `audit_log` | `AuditService.Registrar` — gravado na mesma transação da operação |
 | `@Cron` (`@nestjs/schedule`) | `BackgroundService` em `Inovabens.Web/Jobs` |
 

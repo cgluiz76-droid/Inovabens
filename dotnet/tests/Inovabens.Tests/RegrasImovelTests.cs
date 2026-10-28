@@ -1,6 +1,7 @@
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Imoveis;
+using Inovabens.Core.Servicos;
 
 namespace Inovabens.Tests;
 
@@ -98,4 +99,25 @@ public class TextoTests
 
     [Fact]
     public void LikeLiteral_escapa_curingas() => Assert.Equal(@"50\% de \_x\\", Texto.LikeLiteral(@"50% de _x\"));
+}
+
+public class AcessoTests
+{
+    private static UsuarioAtual Usuario(bool escopoProprio) =>
+        new(Guid.NewGuid(), "Teste", "t@x.com", Guid.NewGuid(), "Perfil", escopoProprio, new HashSet<string>());
+
+    [Fact]
+    public void Corretor_so_ve_os_proprios_imoveis()
+    {
+        var corretor = Usuario(escopoProprio: true);
+        var imoveis = new[]
+        {
+            new Imovel { Codigo = "IMV-1", CorretorResponsavelId = corretor.Id },
+            new Imovel { Codigo = "IMV-2", CorretorResponsavelId = Guid.NewGuid() },
+            new Imovel { Codigo = "IMV-3" },
+        }.AsQueryable();
+
+        Assert.Equal(["IMV-1"], imoveis.VisiveisPara(corretor).Select(i => i.Codigo));
+        Assert.Equal(3, imoveis.VisiveisPara(Usuario(escopoProprio: false)).Count());
+    }
 }

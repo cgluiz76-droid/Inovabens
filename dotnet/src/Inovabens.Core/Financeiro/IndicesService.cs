@@ -70,9 +70,7 @@ public sealed class IndicesService(IDbContextFactory<InovabensDb> fabrica)
             {
                 throw new ServicoIndisponivelException($"Falha ao consultar o Banco Central ({codigo}): {e.Message}");
             }
-            var pontos = json.Select(j => (
-                new DateOnly(int.Parse(j.data[6..10]), int.Parse(j.data[3..5]), 1),
-                decimal.Parse(j.valor, NumberStyles.Number, CultureInfo.InvariantCulture))).ToList();
+            var pontos = LerPontos(json);
             await GravarAsync(codigo, pontos, "BCB-SGS", ct);
             resultado[codigo] = pontos.Count;
         }
@@ -98,5 +96,20 @@ public sealed class IndicesService(IDbContextFactory<InovabensDb> fabrica)
     }
 
     // formato do SGS: { "data": "01/01/2025", "valor": "0.16" }
-    private sealed record PontoBcb(string data, string valor);
+    internal sealed record PontoBcb(string data, string valor);
+
+    /// <summary>Converte a resposta do SGS em (competência = 1º dia do mês, variação %).</summary>
+    internal static List<(DateOnly Competencia, decimal Pct)> LerPontos(IEnumerable<PontoBcb> json)
+    {
+        try
+        {
+            return json.Select(j => (Data: j.data ?? "", Valor: j.valor ?? "")).Select(j => (
+                new DateOnly(int.Parse(j.Data[6..10]), int.Parse(j.Data[3..5]), 1),
+                decimal.Parse(j.Valor, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture))).ToList();
+        }
+        catch (Exception e) when (e is FormatException or ArgumentException or OverflowException)
+        {
+            throw new ServicoIndisponivelException($"Resposta inesperada do Banco Central: {e.Message}");
+        }
+    }
 }

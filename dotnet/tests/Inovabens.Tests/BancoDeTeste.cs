@@ -35,8 +35,7 @@ public sealed class BancoFixture : IAsyncLifetime
         var url = Environment.GetEnvironmentVariable("INOVABENS_TEST_DB");
         if (string.IsNullOrWhiteSpace(url))
         {
-            _container = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
+            _container = new PostgreSqlBuilder("postgres:16-alpine")
                 .WithDatabase("inovabens").WithUsername("inovabens").WithPassword("inovabens")
                 .Build();
             try { await _container.StartAsync(); }

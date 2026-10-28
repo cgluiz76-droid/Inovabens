@@ -25,9 +25,8 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         var tamanho = Math.Clamp(f.TamanhoPagina, 1, 100);
         await using var db = await fabrica.CreateDbContextAsync();
 
-        var q = db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null);
-        if (u.EscopoProprio) q = q.Where(i => i.CorretorResponsavelId == u.Id);
-        else if (f.CorretorId is { } c) q = q.Where(i => i.CorretorResponsavelId == c);
+        var q = db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null).VisiveisPara(u);
+        if (!u.EscopoProprio && f.CorretorId is { } c) q = q.Where(i => i.CorretorResponsavelId == c);
         if (f.Situacao is { } s) q = q.Where(i => i.Situacao == s);
         if (f.Finalidade is { } fi) q = q.Where(i => i.Finalidade == fi);
         if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.ILike(i.Tipo, Texto.LikeLiteral(tipo), @"\"));
@@ -58,7 +57,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
 
     private async Task<ImovelDetalhe> Detalhe(InovabensDb db, UsuarioAtual u, Guid id)
     {
-        var im = await ImovelComAcesso(db, u, id, rastrear: false);
+        var im = await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         var carac = await db.ImovelCaracteristicas.AsNoTracking().Where(c => c.ImovelId == id).OrderBy(c => c.Chave).ToListAsync();
         var midias = await db.ImovelMidias.AsNoTracking().Where(m => m.ImovelId == id).OrderBy(m => m.Ordem).ToListAsync();
         var props = await db.ImovelProprietarios.AsNoTracking().Where(p => p.ImovelId == id)
@@ -102,7 +101,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         u.Exigir(P.ImoveisEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        var im = await ImovelComAcesso(db, u, id);
+        var im = await Acesso.ImovelComAcesso(db, u, id);
         var antes = im.Copia();
         form.AplicarEm(im);
         // corretor (escopo próprio) não repassa o imóvel para outra pessoa
@@ -116,7 +115,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
     {
         u.Exigir(P.ImoveisExcluir);
         await using var db = await fabrica.CreateDbContextAsync();
-        var im = await ImovelComAcesso(db, u, id);
+        var im = await Acesso.ImovelComAcesso(db, u, id);
         audit.Registrar(db, u.Id, "imoveis", id, "EXCLUIR", antes: im.Copia());
         im.ExcluidoEm = DateTime.UtcNow;
         await db.SaveChangesAsync();
@@ -133,7 +132,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         var unicos = itens.GroupBy(i => i.Chave.Trim().ToLowerInvariant()).Select(g => g.Last()).ToList();
 
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImovelComAcesso(db, u, id, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         await using var tx = await db.Database.BeginTransactionAsync();
         await db.ImovelCaracteristicas.Where(c => c.ImovelId == id).ExecuteDeleteAsync();
         db.ImovelCaracteristicas.AddRange(unicos.Select(i => new ImovelCaracteristica
@@ -153,7 +152,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         RegrasImovel.ValidarProprietarios(itens, DatasBR.Hoje());
 
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImovelComAcesso(db, u, id, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         await using var tx = await db.Database.BeginTransactionAsync();
         await db.ImovelProprietarios.Where(p => p.ImovelId == id).ExecuteDeleteAsync();
         db.ImovelProprietarios.AddRange(itens.Select(i => new ImovelProprietario
@@ -173,7 +172,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         var unicos = itens.DistinctBy(i => (i.PessoaId, i.Papel)).ToList();
 
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImovelComAcesso(db, u, id, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         await using var tx = await db.Database.BeginTransactionAsync();
         await db.ImovelEnvolvidos.Where(e => e.ImovelId == id).ExecuteDeleteAsync();
         db.ImovelEnvolvidos.AddRange(unicos.Select(i => new ImovelEnvolvido
@@ -194,7 +193,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
     {
         u.Exigir(P.ImoveisEditar);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImovelComAcesso(db, u, id, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         if (!storage.Habilitado) throw new ServicoIndisponivelException("Armazenamento de arquivos não configurado (S3_*).");
 
         var ext = Path.GetExtension(nomeOriginal).ToLowerInvariant();
@@ -246,7 +245,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
     {
         var m = await db.ImovelMidias.SingleOrDefaultAsync(x => x.Id == midiaId)
             ?? throw new NaoEncontradoException("Mídia não encontrada.");
-        await ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
         return m;
     }
 
@@ -256,7 +255,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
     {
         u.Exigir(P.ImoveisVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         return await db.Regularizacoes.AsNoTracking()
             .Where(r => r.ImovelId == imovelId && r.ExcluidoEm == null)
             .OrderByDescending(r => r.CriadoEm)
@@ -269,7 +268,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         u.Exigir(P.ImoveisEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        await ImovelComAcesso(db, u, imovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var r = new Regularizacao { ImovelId = imovelId };
         form.AplicarEm(r);
         db.Regularizacoes.Add(r);
@@ -303,23 +302,7 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
     {
         var r = await db.Regularizacoes.SingleOrDefaultAsync(x => x.Id == regId && x.ExcluidoEm == null)
             ?? throw new NaoEncontradoException("Regularização não encontrada.");
-        await ImovelComAcesso(db, u, r.ImovelId, rastrear: false);
+        await Acesso.ImovelComAcesso(db, u, r.ImovelId, rastrear: false);
         return r;
-    }
-
-    /* ------------------------------ Escopo ------------------------------ */
-
-    /// <summary>
-    /// Garante que o imóvel existe (e não foi excluído) e que o usuário pode acessá-lo:
-    /// perfis com escopo próprio (Corretor) só acessam imóveis em que são o responsável.
-    /// Use em TODA operação que acontece "dentro" de um imóvel.
-    /// </summary>
-    public static async Task<Imovel> ImovelComAcesso(InovabensDb db, UsuarioAtual u, Guid id, bool rastrear = true)
-    {
-        var q = rastrear ? db.Imoveis : db.Imoveis.AsNoTracking();
-        var im = await q.SingleOrDefaultAsync(i => i.Id == id && i.ExcluidoEm == null)
-            ?? throw new NaoEncontradoException("Imóvel não encontrado.");
-        if (u.EscopoProprio && im.CorretorResponsavelId != u.Id) throw new AcessoNegadoException("Sem acesso a este imóvel.");
-        return im;
     }
 }

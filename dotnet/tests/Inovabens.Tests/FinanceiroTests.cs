@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Inovabens.Core.Comum;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Financeiro;
 
@@ -119,4 +120,52 @@ public class FinanceiroTests
         Assert.NotEmpty(Validar(new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, Valor = -1m }));
         Assert.NotEmpty(Validar(new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, Valor = 1.234m }));
     }
+
+    [Fact]
+    public void Marcar_pago_usa_hoje_e_descarta_justificativa()
+    {
+        var usuario = Guid.NewGuid();
+        var l = new DespesaLancamento { Valor = 100m, Justificativa = "antiga", Status = StatusLancamento.NAO_PAGO };
+        var e = new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, Justificativa = "ignorada" };
+
+        e.AplicarEm(l, usuario, D(2026, 10, 28));
+
+        Assert.Equal(StatusLancamento.PAGO, l.Status);
+        Assert.Equal(D(2026, 10, 28), l.DataPagamento);
+        Assert.Null(l.Justificativa);
+        Assert.Equal(100m, l.Valor);
+        Assert.Equal(usuario, l.AtualizadoPor);
+        Assert.True(e.ResolveAlerta);
+    }
+
+    [Theory]
+    [InlineData(StatusLancamento.NAO_PAGO, false)]
+    [InlineData(StatusLancamento.NAO_SE_APLICA, true)]
+    public void Marcar_sem_pagamento_guarda_justificativa_e_limpa_data(StatusLancamento status, bool resolveAlerta)
+    {
+        var l = new DespesaLancamento { Valor = 100m, DataPagamento = D(2026, 10, 1), Status = StatusLancamento.PAGO };
+        var e = new StatusLancamentoEntrada { Status = status, Justificativa = "  Inquilino atrasou o repasse  ", DataPagamento = D(2026, 10, 2), Valor = 80m };
+
+        e.AplicarEm(l, Guid.NewGuid(), D(2026, 10, 28));
+
+        Assert.Equal("Inquilino atrasou o repasse", l.Justificativa);
+        Assert.Null(l.DataPagamento);
+        Assert.Equal(80m, l.Valor);
+        Assert.Equal(resolveAlerta, e.ResolveAlerta);
+    }
+
+    [Fact]
+    public void Resposta_do_Banco_Central_vira_competencia_mensal()
+    {
+        var pontos = IndicesService.LerPontos([new("01/01/2025", "0.16"), new("01/12/2025", "-0.05")]);
+        Assert.Equal([(D(2025, 1, 1), 0.16m), (D(2025, 12, 1), -0.05m)], pontos);
+    }
+
+    [Theory]
+    [InlineData("2025-01-01", "0.16")]
+    [InlineData("01/13/2025", "0.16")]
+    [InlineData("01/01/2025", "0,16")]
+    [InlineData(null, "0.16")]
+    public void Resposta_inesperada_do_Banco_Central_e_erro_controlado(string? data, string valor) =>
+        Assert.Throws<ServicoIndisponivelException>(() => IndicesService.LerPontos([new(data!, valor)]));
 }
