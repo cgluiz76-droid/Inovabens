@@ -11,19 +11,18 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Inovabens.Tests;
 
 /// <summary>
-/// Fluxo completo contra um PostgreSQL real com as migrations de apps/api/drizzle aplicadas e
-/// os usuários admin@ / carla@ (Corretor) criados com a senha Trocar@123456.
-/// Só roda se a variável INOVABENS_TEST_DB estiver definida (ex.: postgres://inovabens:inovabens@localhost:5433/inovabens).
+/// Fluxo completo contra um PostgreSQL real (ver <see cref="BancoFixture"/>: Docker descartável ou INOVABENS_TEST_DB),
+/// com as migrações do .NET aplicadas e os usuários admin@ / carla@ (Corretor) criados com a senha Trocar@123456.
 /// </summary>
 [Collection(BancoDeTeste.Nome)]
+[Trait("Categoria", "Integracao")]
 public class ImoveisIntegracaoTests
 {
-    private static readonly string? Url = Environment.GetEnvironmentVariable("INOVABENS_TEST_DB");
+    private static string Url => BancoFixture.Url;
 
     [Fact]
     public async Task Fluxo_completo_do_modulo_imoveis()
     {
-        if (Url is null) return; // sem banco de teste configurado
 
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["DATABASE_URL"] = Url }).Build();
         var services = new ServiceCollection().AddLogging().AddInovabensCore(InovabensOpcoes.De(cfg, producao: false));

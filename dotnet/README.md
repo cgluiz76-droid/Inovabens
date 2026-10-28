@@ -25,7 +25,9 @@ dotnet/
   Inovabens.slnx                 abre no Visual Studio 2026 / Rider / VS Code (C# Dev Kit)
   src/Inovabens.Core/            regras de negócio e acesso a dados (sem interface)
     Dominio/                     entidades (tabelas existentes), enums, permissões
-    Dados/InovabensDb.cs         EF Core + Npgsql (sem migrations: o esquema vem de apps/api/drizzle/*.sql)
+    Dados/InovabensDb.cs         EF Core + Npgsql (sem migrations do EF)
+    Dados/Migracoes/*.sql        esquema do banco (tabelas, CHECKs, triggers), aplicado pelo Migrador.cs
+    Dados/DadosIniciais.cs       permissões, perfis, categorias, estágios e administrador inicial (port do seed.ts)
     Imoveis/                     ImoveisService (port de imoveis.service.ts), formulários, regras
     Financeiro/                  Aquisição, Despesas (checklist), Receitas, Índices (BCB), Retorno;
                                  CalculoRetorno.cs é o cálculo puro (port de retorno.service.ts)
@@ -50,17 +52,26 @@ Equivalências com a versão Node:
 
 ## Rodando
 
-Requer o **SDK do .NET 10** e um PostgreSQL com as tabelas criadas (o mesmo da versão Node).
+Requer o **SDK do .NET 10** e um PostgreSQL 16 (vazio ou o mesmo da versão Node).
 
 ```bash
-# 1) banco (do docker-compose do projeto) + tabelas e usuário admin pela versão Node, se ainda não existir
-docker compose up -d db
-pnpm db:migrate && pnpm db:seed
-
-# 2) aplicação Blazor
+docker compose up -d db          # banco do docker-compose do projeto
 cd dotnet/src/Inovabens.Web
-dotnet run            # http://localhost:5051  — login admin@inovabens.com.br / Trocar@123456
+dotnet run                       # http://localhost:5051  — login admin@inovabens.com.br / Trocar@123456
 ```
+
+**Banco:** a cada subida a aplicação aplica as migrações pendentes de `Inovabens.Core/Dados/Migracoes` e garante
+os dados-base. Isso é idempotente e protegido por lock, então pode haver várias instâncias. O administrador inicial
+só é criado se ainda não houver nenhum usuário (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`; em produção a senha
+padrão é recusada). `dotnet Inovabens.Web.dll migrar` faz só essa parte e sai, para usar como passo de release.
+
+- **Banco criado pela versão Node:** os 3 scripts iniciais (iguais aos de `apps/api/drizzle`) são reconhecidos pelo
+  diário do Drizzle e não rodam de novo.
+- **Banco criado pelo .NET:** o diário do Drizzle também é preenchido, então o `migrate` do Node continua sem efeito
+  enquanto as duas versões coexistirem.
+- **Nova alteração de esquema:** crie `Dados/Migracoes/0003_descricao.sql` (o próximo número). Nunca edite um script
+  já aplicado; o migrador avisa no log se isso acontecer. A partir de agora, mudanças de esquema são feitas só no
+  .NET: a versão Node não conhece scripts novos.
 
 No Visual Studio: abra `dotnet/Inovabens.slnx`, defina **Inovabens.Web** como projeto de inicialização e pressione F5.
 
@@ -89,15 +100,13 @@ use `DISABLE_JOBS=true` em uma delas.
 
 ```bash
 cd dotnet
-dotnet test                       # regras de negócio + compatibilidade com o Node + mapeamento EF x SQL
-# testes de integração (todos os módulos, renderização das abas, PDF/Excel) contra um banco de TESTE:
-INOVABENS_TEST_DB=postgres://inovabens:inovabens@localhost:5433/inovabens dotnet test
-# + consulta real ao Banco Central:
-INOVABENS_TEST_BCB=1 INOVABENS_TEST_DB=... dotnet test
+dotnet test                                    # tudo: unidade + integração (requer o Docker em execução)
+dotnet test --filter "Categoria!=Integracao"   # só os testes de unidade, sem Docker
+INOVABENS_TEST_BCB=1 dotnet test               # + consulta real ao Banco Central
 ```
 
-Os testes de integração esperam um banco com as migrations aplicadas, ao menos uma categoria em
-`despesa_categorias`, os estágios padrão em `funil_estagios` (como no `pnpm db:seed`) e os usuários
-`admin@inovabens.com.br` (Administrador) e `carla@inovabens.com.br` (Corretor, escopo próprio, com as permissões
-padrão do Corretor mais `financeiro:ver` e `financeiro:editar`) com a senha `Trocar@123456`. Eles gravam dados:
-**não aponte para o banco de produção.**
+Os testes de integração (todos os módulos, migrações, renderização das abas, PDF/Excel) sobem um **PostgreSQL 16
+descartável no Docker** (Testcontainers), aplicam as migrações e os dados-base pelo próprio .NET e criam a usuária de
+teste `carla@inovabens.com.br` (Corretor + `financeiro:ver/editar`, senha `Trocar@123456`). Sem Docker eles
+**falham** com uma mensagem explicando o motivo: antes eles passavam sem executar nada. Para usar um banco seu,
+defina `INOVABENS_TEST_DB`. Os testes gravam dados nesse banco: **nunca aponte para o banco de produção.**

@@ -36,13 +36,13 @@ public class CompatibilidadeTests
         Assert.Equal(esperado, InovabensDb.NormalizarConexao(url));
 
     /// <summary>
-    /// Toda tabela/coluna mapeada no EF existe nas migrations SQL do projeto (apps/api/drizzle).
+    /// Toda tabela/coluna mapeada no EF existe nos scripts de migração (Inovabens.Core/Dados/Migracoes).
     /// Pega erro de digitação de coluna sem precisar de banco rodando.
     /// </summary>
     [Fact]
     public void Mapeamento_EF_bate_com_as_migrations_SQL()
     {
-        var sql = string.Concat(Directory.GetFiles(PastaMigrations(), "*.sql").Order().Select(File.ReadAllText));
+        var sql = string.Concat(Migrador.Scripts().Select(s => s.Sql.ReplaceLineEndings("\n")));
         var tabelas = Regex.Matches(sql, @"CREATE TABLE ""(\w+)"" \((.*?)\n\);", RegexOptions.Singleline)
             .ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value);
 
@@ -61,13 +61,31 @@ public class CompatibilidadeTests
         Assert.Empty(faltando);
     }
 
-    private static string PastaMigrations()
+    /// <summary>
+    /// Enquanto a versão Node existir, os scripts herdados precisam ser idênticos aos de apps/api/drizzle:
+    /// os dois lados aplicam e reconhecem as mesmas migrações no mesmo banco.
+    /// </summary>
+    [Fact]
+    public void Scripts_herdados_iguais_aos_do_Drizzle()
+    {
+        var pasta = PastaDrizzle();
+        if (pasta is null) return; // versão Node já removida
+        foreach (var arquivo in Directory.GetFiles(pasta, "*.sql"))
+        {
+            var nome = Path.GetFileNameWithoutExtension(arquivo);
+            var script = Migrador.Scripts().SingleOrDefault(s => s.Nome == nome);
+            Assert.True(script is not null, $"{nome}.sql existe no Drizzle mas não em Dados/Migracoes");
+            Assert.Equal(File.ReadAllText(arquivo).ReplaceLineEndings("\n"), script.Sql.ReplaceLineEndings("\n"));
+        }
+    }
+
+    private static string? PastaDrizzle()
     {
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
         {
             var p = Path.Combine(d.FullName, "apps", "api", "drizzle");
             if (Directory.Exists(p)) return p;
         }
-        throw new DirectoryNotFoundException("apps/api/drizzle não encontrado acima da pasta de testes.");
+        return null;
     }
 }

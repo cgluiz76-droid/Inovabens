@@ -26,13 +26,14 @@ namespace Inovabens.Tests;
 
 /// <summary>
 /// Pessoas, Memorandos, Agenda/Alertas, CRM, Painel, Administração, Conta e Relatórios contra um PostgreSQL real
-/// (mesmo banco descartável dos demais testes: INOVABENS_TEST_DB). Os dados levam um sufixo único para o teste
+/// (mesmo banco dos demais testes, ver <see cref="BancoFixture"/>). Os dados levam um sufixo único para o teste
 /// poder rodar várias vezes no mesmo banco.
 /// </summary>
 [Collection(BancoDeTeste.Nome)]
+[Trait("Categoria", "Integracao")]
 public class ModulosIntegracaoTests
 {
-    private static readonly string? Url = Environment.GetEnvironmentVariable("INOVABENS_TEST_DB");
+    private static string Url => BancoFixture.Url;
     private const string Senha = "Trocar@123456";
     private readonly string sufixo = Guid.NewGuid().ToString("N")[..8];
 
@@ -73,7 +74,6 @@ public class ModulosIntegracaoTests
     [Fact]
     public async Task Pessoas_cadastro_papeis_busca_e_exclusao()
     {
-        if (Url is null) return;
         await using var a = await new Ambiente().Entrar();
         var s = a.S<PessoasService>();
         var cpf = Random.Shared.NextInt64(10_000_000_000, 99_999_999_999).ToString();
@@ -119,7 +119,6 @@ public class ModulosIntegracaoTests
     [Fact]
     public async Task Memorandos_fixar_ordenar_editar_e_escopo()
     {
-        if (Url is null) return;
         await using var a = await new Ambiente().Entrar();
         var s = a.S<MemorandosService>();
         var doAdmin = await NovoImovel(a, a.Admin, $"Imóvel do admin {sufixo}");
@@ -146,7 +145,6 @@ public class ModulosIntegracaoTests
     [Fact]
     public async Task Agenda_alertas_reagendamento_e_painel()
     {
-        if (Url is null) return;
         await using var a = await new Ambiente().Entrar();
         var agenda = a.S<AgendaService>();
         var alertas = a.S<AlertasService>();
@@ -238,7 +236,6 @@ public class ModulosIntegracaoTests
     [Fact]
     public async Task Alerta_de_despesa_vencida_e_resolucao_ao_pagar()
     {
-        if (Url is null) return;
         await using var a = await new Ambiente().Entrar();
         var despesas = a.S<DespesasService>();
         var alertas = a.S<AlertasService>();
@@ -266,7 +263,6 @@ public class ModulosIntegracaoTests
     [Fact]
     public async Task Crm_funil_movimentacao_perda_interacoes_e_estagios()
     {
-        if (Url is null) return;
         await using var a = await new Ambiente().Entrar();
         var crm = a.S<CrmService>();
         var pipeline = await crm.PipelineAsync(a.Corretor, Funil.VENDA);
@@ -349,7 +345,6 @@ public class ModulosIntegracaoTests
     [Fact]
     public async Task Administracao_usuarios_perfis_senha_e_2fa()
     {
-        if (Url is null) return;
         await using var a = await new Ambiente().Entrar();
         var usuarios = a.S<UsuariosService>();
         var perfis = a.S<PerfisService>();
@@ -418,7 +413,6 @@ public class ModulosIntegracaoTests
     [Fact]
     public async Task Relatorios_pdf_e_excel_com_auditoria()
     {
-        if (Url is null) return;
         await using var a = await new Ambiente().Entrar();
         var rel = a.S<RelatoriosService>();
         var im = await NovoImovel(a, a.Corretor, $"Relatório {sufixo} – Ação & Cia");
@@ -468,7 +462,6 @@ public class ModulosIntegracaoTests
     [Fact]
     public async Task Componentes_interativos_renderizam_com_dados()
     {
-        if (Url is null) return;
         await using var a = await new Ambiente().Entrar();
         var im = await NovoImovel(a, a.Corretor, $"Render {sufixo}");
         await a.S<MemorandosService>().CriarAsync(a.Corretor, im, new MemorandoForm { Titulo = $"Memo {sufixo}", Corpo = "linha 1", Fixado = true });

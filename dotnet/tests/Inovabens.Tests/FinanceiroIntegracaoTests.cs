@@ -22,15 +22,15 @@ namespace Inovabens.Tests;
 /// Reproduz o cenário do e2e do Node e confere os mesmos números.
 /// </summary>
 [Collection(BancoDeTeste.Nome)]
+[Trait("Categoria", "Integracao")]
 public class FinanceiroIntegracaoTests
 {
-    private static readonly string? Url = Environment.GetEnvironmentVariable("INOVABENS_TEST_DB");
+    private static string Url => BancoFixture.Url;
     private static DateOnly D(int a, int m, int d) => new(a, m, d);
 
     [Fact]
     public async Task Fluxo_completo_do_modulo_financeiro()
     {
-        if (Url is null) return; // sem banco de teste configurado
 
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["DATABASE_URL"] = Url }).Build();
         var services = new ServiceCollection().AddLogging().AddInovabensCore(InovabensOpcoes.De(cfg, producao: false));
@@ -150,11 +150,11 @@ public class FinanceiroIntegracaoTests
         Assert.True(await db.AuditLog.AnyAsync(a => a.Entidade == "receitas" && a.EntidadeId == venda.Id));
     }
 
-    /// <summary>Consulta o BCB de verdade: só roda com INOVABENS_TEST_DB e INOVABENS_TEST_BCB=1.</summary>
+    /// <summary>Consulta o BCB de verdade: só roda com INOVABENS_TEST_BCB=1.</summary>
     [Fact]
     public async Task Sincroniza_indices_com_o_Banco_Central()
     {
-        if (Url is null || Environment.GetEnvironmentVariable("INOVABENS_TEST_BCB") != "1") return;
+        if (Environment.GetEnvironmentVariable("INOVABENS_TEST_BCB") != "1") return;
 
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["DATABASE_URL"] = Url }).Build();
         await using var sp = new ServiceCollection().AddLogging().AddInovabensCore(InovabensOpcoes.De(cfg, producao: false)).BuildServiceProvider();
