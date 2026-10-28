@@ -11,16 +11,15 @@ namespace Inovabens.Core.Dados;
 /// transação, e registra o que já rodou em <c>schema_migracoes</c>. Um advisory lock impede que duas
 /// instâncias subindo juntas apliquem o mesmo script.
 /// <para>
-/// Convivência com a versão Node: os três primeiros scripts são os mesmos de apps/api/drizzle. Num banco
-/// criado pelo Node, eles são reconhecidos pelo diário do Drizzle e só registrados aqui. Num banco criado
-/// pelo .NET, o diário do Drizzle também é preenchido, para o <c>migrate</c> do Node não tentar recriar as tabelas.
+/// Bancos criados pela antiga versão Node (Drizzle): os três primeiros scripts são os mesmos que ela aplicava, então
+/// num banco desses eles são reconhecidos pelo diário do Drizzle e só registrados aqui, sem rodar de novo.
 /// </para>
 /// </summary>
 public sealed class Migrador(InovabensOpcoes op, ILogger<Migrador> log)
 {
     private const long ChaveLock = 0x1A0BE45_0001;
 
-    /// <summary>Scripts herdados do Drizzle e o "when" de cada um em apps/api/drizzle/meta/_journal.json.</summary>
+    /// <summary>Scripts herdados do Drizzle e o "when" de cada um no meta/_journal.json da antiga versão Node.</summary>
     private static readonly Dictionary<string, long> Drizzle = new()
     {
         ["0000_init"] = 1793046596452,
@@ -75,7 +74,6 @@ public sealed class Migrador(InovabensOpcoes op, ILogger<Migrador> log)
                 await using var tx = await con.BeginTransactionAsync(ct);
                 await Executar(con, tx, s.Sql, ct);
                 await Registrar(con, tx, s, ct);
-                if (Drizzle.TryGetValue(s.Nome, out var quando)) await RegistrarNoDrizzle(con, tx, s, quando, ct);
                 await tx.CommitAsync(ct);
                 log.LogInformation("Migração aplicada: {Script}", s.Nome);
                 novas.Add(s.Nome);
@@ -107,19 +105,6 @@ public sealed class Migrador(InovabensOpcoes op, ILogger<Migrador> log)
         if (adotadas.Count > 0)
             log.LogInformation("Banco criado pela versão Node: {Qtd} migração(ões) do Drizzle reconhecidas", adotadas.Count);
         return adotadas;
-    }
-
-    /// <summary>Mesma tabela que o migrator do Drizzle cria; ele só compara created_at com o "when" do diário.</summary>
-    private static async Task RegistrarNoDrizzle(NpgsqlConnection con, NpgsqlTransaction tx, Script s, long quando, CancellationToken ct)
-    {
-        await Executar(con, tx, """
-            CREATE SCHEMA IF NOT EXISTS drizzle;
-            CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at bigint)
-            """, ct);
-        await using var cmd = new NpgsqlCommand("INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES (@h, @q)", con, tx);
-        cmd.Parameters.AddWithValue("h", s.Hash);
-        cmd.Parameters.AddWithValue("q", quando);
-        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     private static async Task Registrar(NpgsqlConnection con, NpgsqlTransaction tx, Script s, CancellationToken ct)

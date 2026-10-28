@@ -1,7 +1,7 @@
 # Inovabens — versão .NET (Blazor)
 
-Migração do sistema Node/Next.js para **C# / .NET 10 + Blazor Server** — **todos os módulos migrados**.
-As duas versões usam **o mesmo banco PostgreSQL** e podem rodar lado a lado durante a transição.
+Sistema em **C# / .NET 10 + Blazor Server**. Substituiu a primeira versão em Node/Next.js (aposentada; o código
+dela fica no histórico do git) e usa o mesmo banco PostgreSQL que ela usava.
 
 | Módulo | Situação |
 |---|---|
@@ -38,7 +38,7 @@ dotnet/
   tests/Inovabens.E2E/           Playwright: fluxos no navegador contra a aplicação real
 ```
 
-Equivalências com a versão Node:
+Equivalências com a antiga versão Node (para quem conhecia o código dela):
 
 | Node | .NET |
 |---|---|
@@ -53,7 +53,7 @@ Equivalências com a versão Node:
 
 ## Rodando
 
-Requer o **SDK do .NET 10** e um PostgreSQL 16 (vazio ou o mesmo da versão Node).
+Requer o **SDK do .NET 10** e um PostgreSQL 16 (vazio ou um banco já existente do sistema).
 
 ```bash
 docker compose up -d db          # banco do docker-compose do projeto
@@ -66,18 +66,14 @@ os dados-base. Isso é idempotente e protegido por lock, então pode haver vári
 só é criado se ainda não houver nenhum usuário (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`; em produção a senha
 padrão é recusada). `dotnet Inovabens.Web.dll migrar` faz só essa parte e sai, para usar como passo de release.
 
-- **Banco criado pela versão Node:** os 3 scripts iniciais (iguais aos de `apps/api/drizzle`) são reconhecidos pelo
-  diário do Drizzle e não rodam de novo.
-- **Banco criado pelo .NET:** o diário do Drizzle também é preenchido, então o `migrate` do Node continua sem efeito
-  enquanto as duas versões coexistirem.
-- **Nova alteração de esquema:** crie `Dados/Migracoes/0005_descricao.sql` (o próximo número; `0003` e `0004`
-  já são exclusivos do .NET: replay do 2FA e chaves de sessão, que a versão Node ignora). Nunca edite um script
-  já aplicado; o migrador avisa no log se isso acontecer. A partir de agora, mudanças de esquema são feitas só no
-  .NET: a versão Node não conhece scripts novos.
+- **Banco criado pela antiga versão Node:** os 3 scripts iniciais são os mesmos que ela aplicava; são reconhecidos
+  pelo diário do Drizzle e não rodam de novo. Os demais são aplicados normalmente.
+- **Nova alteração de esquema:** crie `Dados/Migracoes/0005_descricao.sql` (o próximo número). Nunca edite um script
+  já aplicado; o migrador avisa no log se isso acontecer.
 
 No Visual Studio: abra `dotnet/Inovabens.slnx`, defina **Inovabens.Web** como projeto de inicialização e pressione F5.
 
-Configuração (mesmos nomes de variável do `.env` da versão Node; em desenvolvimento o banco já vem de
+Configuração (variáveis de ambiente, os mesmos nomes da antiga versão Node; em desenvolvimento o banco já vem de
 `appsettings.Development.json`): `DATABASE_URL`, `TOKEN_ENC_KEY` (necessária para usuários com 2FA),
 `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `S3_FORCE_PATH_STYLE`, `TRUST_PROXY`,
 `DISABLE_JOBS`, `WEB_URL` (endereço público do sistema; padrão http://localhost:5051),
@@ -93,17 +89,17 @@ O login aceita até `LOGIN_LIMITE_POR_MINUTO` tentativas por IP (padrão 10, com
 Sem `S3_*` o sistema funciona, só o envio de fotos/documentos fica desligado; sem `GOOGLE_*`, a agenda funciona
 sem a integração com o Google.
 
-O callback e o webhook do Google ficam nos **mesmos caminhos da API Node**
-(`/api/v1/integracoes/google/callback` e `/api/v1/webhooks/google/calendar`) e há health check em `/api/v1/health`,
-então a configuração no Google Cloud Console e no provedor de nuvem não muda — basta apontar o domínio para a versão .NET.
+O callback e o webhook do Google ficam em `/api/v1/integracoes/google/callback` e `/api/v1/webhooks/google/calendar`
+(os mesmos caminhos da antiga API Node, então a configuração no Google Cloud Console não muda) e há health check em
+`/api/v1/health`. Publicação: `Dockerfile` nesta pasta e o [DEPLOY.md](../DEPLOY.md) da raiz.
 
 **Licença do QuestPDF (PDFs):** o projeto usa a licença *Community*, gratuita para empresas com receita bruta
 anual abaixo de US$ 1 milhão. Acima disso é preciso adquirir uma licença comercial (questpdf.com/license).
 
-Jobs (horário de Brasília, os mesmos do Node): índices BCB no dia 12 às 06:00; alertas de compromissos a cada 5 min;
+Jobs (horário de Brasília): índices BCB no dia 12 às 06:00; alertas de compromissos a cada 5 min;
 competências do mês + alertas de despesas vencidas todo dia às 06:00; sincronização Google a cada 10 min e
-renovação dos canais do webhook às 04:00. Todos são idempotentes; se as duas versões rodarem juntas,
-use `DISABLE_JOBS=true` em uma delas.
+renovação dos canais do webhook às 04:00. Todos são idempotentes; com várias instâncias,
+use `DISABLE_JOBS=true` em todas menos uma.
 
 ## Testes
 

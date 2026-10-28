@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Inovabens.Core.Dominio;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -80,25 +81,28 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     /// <summary>Aceita tanto "Host=...;Database=..." quanto a URL do Node (postgres://user:senha@host:5432/banco).</summary>
     public static string NormalizarConexao(string valor)
     {
-        if (!valor.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
-            !valor.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
-            return valor;
-        var uri = new Uri(valor);
-        var credenciais = uri.UserInfo.Split(':', 2);
+        // postgres://usuario:senha@host:porta/banco?sslmode=require  — o host pode vir vazio com ?host=/cloudsql/...
+        // (socket do Cloud SQL no Cloud Run), formato que System.Uri não aceita.
+        var m = Regex.Match(valor, @"^postgres(?:ql)?://(?:(?<u>[^:@/]*)(?::(?<s>[^@/]*))?@)?(?<h>[^:/?]*)(?::(?<p>\d+))?/(?<d>[^?]*)(?:\?(?<q>.*))?$",
+            RegexOptions.IgnoreCase);
+        if (!m.Success) return valor;
         var b = new NpgsqlConnectionStringBuilder
         {
-            Host = uri.Host,
-            Port = uri.IsDefaultPort || uri.Port <= 0 ? 5432 : uri.Port,
-            Database = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart('/')),
-            Username = Uri.UnescapeDataString(credenciais[0]),
-            Password = credenciais.Length > 1 ? Uri.UnescapeDataString(credenciais[1]) : null,
+            Host = Uri.UnescapeDataString(m.Groups["h"].Value),
+            Port = m.Groups["p"].Success ? int.Parse(m.Groups["p"].Value) : 5432,
+            Database = Uri.UnescapeDataString(m.Groups["d"].Value),
+            Username = Uri.UnescapeDataString(m.Groups["u"].Value),
+            Password = m.Groups["s"].Success ? Uri.UnescapeDataString(m.Groups["s"].Value) : null,
         };
-        foreach (var par in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var par in m.Groups["q"].Value.Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = par.Split('=', 2);
-            if (kv[0].Equals("sslmode", StringComparison.OrdinalIgnoreCase) && kv.Length == 2 &&
-                Enum.TryParse<SslMode>(kv[1], ignoreCase: true, out var ssl))
+            if (kv.Length != 2) continue;
+            var v = Uri.UnescapeDataString(kv[1]);
+            if (kv[0].Equals("sslmode", StringComparison.OrdinalIgnoreCase) && Enum.TryParse<SslMode>(v, ignoreCase: true, out var ssl))
                 b.SslMode = ssl;
+            else if (kv[0].Equals("host", StringComparison.OrdinalIgnoreCase))
+                b.Host = v;
         }
         return b.ConnectionString;
     }

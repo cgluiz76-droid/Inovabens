@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Inovabens.Tests;
 
-/// <summary>Garante que a versão .NET conversa com o banco e os dados gravados pela versão Node.</summary>
+/// <summary>Garante que a versão .NET lê o banco e os dados gravados pela antiga versão Node (senhas, segredos 2FA).</summary>
 public class CompatibilidadeTests
 {
     // Gerados pela própria API Node (@node-rs/argon2 e common/crypto.ts) para garantir compatibilidade.
@@ -63,32 +63,26 @@ public class CompatibilidadeTests
         }
         Assert.Empty(faltando);
     }
+}
 
-    /// <summary>
-    /// Enquanto a versão Node existir, os scripts herdados precisam ser idênticos aos de apps/api/drizzle:
-    /// os dois lados aplicam e reconhecem as mesmas migrações no mesmo banco.
-    /// </summary>
-    [Fact]
-    public void Scripts_herdados_iguais_aos_do_Drizzle()
+public class ConexaoTests
+{
+    [Theory]
+    // Render / docker-compose
+    [InlineData("postgres://inovabens:inovabens@db:5432/inovabens", "db", 5432, "inovabens", "inovabens", "inovabens")]
+    [InlineData("postgresql://u%40x:s%3Ah@dpg-abc.oregon-postgres.render.com/banco?sslmode=require", "dpg-abc.oregon-postgres.render.com", 5432, "banco", "u@x", "s:h")]
+    // Cloud SQL pelo socket do Cloud Run: host vazio na URL e o caminho do socket no parâmetro host
+    [InlineData("postgres://inovabens:abc123@/inovabens?host=/cloudsql/proj:southamerica-east1:inovabens-db", "/cloudsql/proj:southamerica-east1:inovabens-db", 5432, "inovabens", "inovabens", "abc123")]
+    public void Url_do_banco_vira_conexao_do_Npgsql(string url, string host, int porta, string banco, string usuario, string senha)
     {
-        var pasta = PastaDrizzle();
-        if (pasta is null) return; // versão Node já removida
-        foreach (var arquivo in Directory.GetFiles(pasta, "*.sql"))
-        {
-            var nome = Path.GetFileNameWithoutExtension(arquivo);
-            var script = Migrador.Scripts().SingleOrDefault(s => s.Nome == nome);
-            Assert.True(script is not null, $"{nome}.sql existe no Drizzle mas não em Dados/Migracoes");
-            Assert.Equal(File.ReadAllText(arquivo).ReplaceLineEndings("\n"), script.Sql.ReplaceLineEndings("\n"));
-        }
+        var b = new Npgsql.NpgsqlConnectionStringBuilder(InovabensDb.NormalizarConexao(url));
+        Assert.Equal((host, porta, banco, usuario, senha), (b.Host, b.Port, b.Database, b.Username, b.Password));
     }
 
-    private static string? PastaDrizzle()
+    [Fact]
+    public void Sslmode_da_url_e_respeitado_e_conexao_no_formato_do_Npgsql_passa_direto()
     {
-        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
-        {
-            var p = Path.Combine(d.FullName, "apps", "api", "drizzle");
-            if (Directory.Exists(p)) return p;
-        }
-        return null;
+        Assert.Equal(Npgsql.SslMode.Require, new Npgsql.NpgsqlConnectionStringBuilder(InovabensDb.NormalizarConexao("postgres://u:p@h/d?sslmode=require")).SslMode);
+        Assert.Equal("Host=x;Database=y", InovabensDb.NormalizarConexao("Host=x;Database=y"));
     }
 }

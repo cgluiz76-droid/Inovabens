@@ -3,8 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace Inovabens.Core.Dominio;
 
-// Entidades mapeadas para as tabelas EXISTENTES do PostgreSQL (o esquema continua sendo
-// mantido pelas migrations SQL em apps/api/drizzle). Colunas: snake_case do nome da propriedade.
+// Entidades mapeadas para as tabelas do PostgreSQL (o esquema é mantido pelos scripts SQL em
+// Dados/Migracoes, não por migrations do EF). Colunas: snake_case do nome da propriedade.
 // Navegações levam [JsonIgnore] para não vazarem na auditoria (ex.: senha_hash do corretor).
 
 [Table("imoveis")]

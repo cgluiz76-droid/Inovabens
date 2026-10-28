@@ -1,28 +1,29 @@
 # Blueprint do Render (https://render.com/docs/blueprint-spec). New → Blueprint → aponte para este repositório.
-# Depois do primeiro deploy preencha as variáveis marcadas com sync:false (S3, Google, TOKEN_ENC_KEY, WEB_URL).
+# Um único serviço (.NET / Blazor Server) + PostgreSQL. Preencha as variáveis sync:false antes do primeiro deploy.
+#
+# Migrando da antiga versão Node (serviços inovabens-api + inovabens-web): este serviço mantém o nome inovabens-web
+# (mesmo endereço público, então a configuração do Google não muda). COPIE do inovabens-api os valores de
+# TOKEN_ENC_KEY e JWT_REFRESH_SECRET: a primeira decifra os tokens do Google e os segredos de 2FA já gravados.
+# Depois apague o serviço inovabens-api no painel do Render (o blueprint não remove serviços sozinho).
 databases:
   - name: inovabens-db
     plan: basic-256mb
     postgresMajorVersion: "16"
 services:
   - type: web
-    name: inovabens-api
+    name: inovabens-web
     runtime: docker
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./dotnet/Dockerfile
+    dockerContext: ./dotnet
     healthCheckPath: /api/v1/health
-    numInstances: 1            # os jobs agendados rodam dentro da API: mantenha 1 réplica
+    numInstances: 1            # os jobs agendados rodam no próprio serviço; para escalar, DISABLE_JOBS=true nas réplicas extras
     envVars:
-      - { key: NODE_ENV, value: production }
-      - { key: COOKIE_SECURE, value: "true" }
       - { key: DATABASE_URL, fromDatabase: { name: inovabens-db, property: connectionString } }
-      - { key: JWT_ACCESS_SECRET, generateValue: true }
-      - { key: JWT_REFRESH_SECRET, generateValue: true }
-      - { key: TOKEN_ENC_KEY, sync: false }        # 64 hex: openssl rand -hex 32
-      - { key: WEB_URL, sync: false }              # https://SEU-WEB.onrender.com
-      - { key: CORS_ORIGIN, sync: false }          # mesma URL do web
+      - { key: TOKEN_ENC_KEY, sync: false }        # 64 hex: openssl rand -hex 32 (ou o valor do inovabens-api)
+      - { key: JWT_REFRESH_SECRET, sync: false }   # 32+ caracteres, diferente da TOKEN_ENC_KEY (ou o valor do inovabens-api)
+      - { key: WEB_URL, sync: false }              # https://inovabens-web.onrender.com (ou seu domínio)
       - { key: SEED_ADMIN_EMAIL, sync: false }
-      - { key: SEED_ADMIN_PASSWORD, sync: false }  # senha forte (o seed recusa a padrão em produção)
+      - { key: SEED_ADMIN_PASSWORD, sync: false }  # senha forte (em produção a senha padrão é recusada)
       - { key: S3_ENDPOINT, sync: false }
       - { key: S3_REGION, value: auto }
       - { key: S3_BUCKET, sync: false }
@@ -30,12 +31,5 @@ services:
       - { key: S3_SECRET_KEY, sync: false }
       - { key: GOOGLE_CLIENT_ID, sync: false }
       - { key: GOOGLE_CLIENT_SECRET, sync: false }
-      - { key: GOOGLE_REDIRECT_URI, sync: false }  # https://SEU-WEB.onrender.com/api/v1/integracoes/google/callback
-      - { key: GOOGLE_WEBHOOK_URL, sync: false }   # https://SEU-WEB.onrender.com/api/v1/webhooks/google/calendar
-  - type: web
-    name: inovabens-web
-    runtime: docker
-    dockerfilePath: ./apps/web/Dockerfile
-    dockerContext: .
-    envVars:
-      - { key: API_INTERNAL_URL, fromService: { type: web, name: inovabens-api, property: hostport } }
+      - { key: GOOGLE_REDIRECT_URI, sync: false }  # https://inovabens-web.onrender.com/api/v1/integracoes/google/callback
+      - { key: GOOGLE_WEBHOOK_URL, sync: false }   # https://inovabens-web.onrender.com/api/v1/webhooks/google/calendar

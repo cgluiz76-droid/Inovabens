@@ -3,18 +3,6 @@ on:
   push: { branches: [main] }
   pull_request:
 jobs:
-  verificar:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @inovabens/shared build
-      - run: pnpm typecheck
-      - run: pnpm --filter @inovabens/api test
-      - run: pnpm build
   dotnet:
     runs-on: ubuntu-latest
     steps:
@@ -24,11 +12,10 @@ jobs:
       # integração e ponta a ponta sobem um PostgreSQL descartável no Docker do runner (Testcontainers);
       # os de ponta a ponta baixam o Chromium do Playwright (com as bibliotecas do sistema, pois CI=true)
       - run: dotnet test dotnet/Inovabens.slnx
-      - run: docker build -t inovabens-dotnet dotnet
-  docker:
-    runs-on: ubuntu-latest
-    needs: verificar
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -f apps/api/Dockerfile -t inovabens-api .
-      - run: docker build -f apps/web/Dockerfile -t inovabens-web .
+      # falha se algum pacote (direto ou transitivo) tiver vulnerabilidade conhecida
+      - run: |
+          dotnet list dotnet/Inovabens.slnx package --vulnerable --include-transitive | tee vulneraveis.txt
+          ! grep -q "has the following vulnerable packages" vulneraveis.txt
+      - run: docker build -t inovabens dotnet
+      # sem o script do Blazor as telas carregam, mas nenhum botão funciona
+      - run: docker run --rm --entrypoint test inovabens -f /app/wwwroot/_framework/blazor.web.js

@@ -7,7 +7,7 @@ using Npgsql;
 
 namespace Inovabens.Tests;
 
-/// <summary>Migrações e dados-base aplicados pelo .NET, inclusive em banco criado pela versão Node.</summary>
+/// <summary>Migrações e dados-base, inclusive em banco criado pela antiga versão Node (Drizzle).</summary>
 [Collection(BancoDeTeste.Nome)]
 [Trait("Categoria", "Integracao")]
 public class MigradorTests
@@ -26,19 +26,12 @@ public class MigradorTests
     }
 
     [Fact]
-    public async Task Banco_novo_fica_reconhecivel_pelo_migrate_do_Node()
-    {
-        // o Drizzle só roda scripts com "when" maior que o created_at mais recente do seu diário
-        Assert.Equal(1793102256590L, await Escalar<long>(BancoFixture.Url, "SELECT max(created_at) FROM drizzle.__drizzle_migrations"));
-    }
-
-    [Fact]
     public async Task Banco_criado_pelo_Node_e_adotado_sem_reaplicar_scripts()
     {
         await using var banco = await BancoTemporario.CriarAsync();
         await using (var con = new NpgsqlConnection(banco.Conexao))
         {
-            // o que o `pnpm db:migrate` deixa no banco: as tabelas e o diário do Drizzle
+            // o que o `pnpm db:migrate` da antiga versão Node deixava no banco: as tabelas e o diário do Drizzle
             await con.OpenAsync();
             foreach (var s in Migrador.Scripts().Where(s => string.CompareOrdinal(s.Nome, "0002_auth_tokens") <= 0))
                 await new NpgsqlCommand(s.Sql, con).ExecuteNonQueryAsync();

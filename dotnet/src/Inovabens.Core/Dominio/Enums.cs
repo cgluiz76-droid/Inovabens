@@ -1,6 +1,6 @@
 namespace Inovabens.Core.Dominio;
 
-// Os nomes dos membros são IGUAIS aos rótulos dos tipos enum do PostgreSQL (ver apps/api/drizzle/0000_init.sql).
+// Os nomes dos membros são IGUAIS aos rótulos dos tipos enum do PostgreSQL (ver Dados/Migracoes/0000_init.sql).
 // Não renomeie: o mapeamento é feito sem tradução de nomes (InovabensDb.ConfigurarNpgsql).
 
 public enum FinalidadeImovel { VENDA, LOCACAO, AMBOS }

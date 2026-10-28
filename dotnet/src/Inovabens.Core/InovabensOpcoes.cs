@@ -3,8 +3,8 @@ using Microsoft.Extensions.Configuration;
 namespace Inovabens.Core;
 
 /// <summary>
-/// Configuração lida com os MESMOS nomes de variável de ambiente da versão Node (.env.example),
-/// para que os dois sistemas possam rodar lado a lado apontando para o mesmo banco.
+/// Configuração lida das variáveis de ambiente (os mesmos nomes da antiga versão Node, para que um ambiente
+/// já configurado continue valendo: DATABASE_URL, TOKEN_ENC_KEY, S3_*, GOOGLE_*...).
 /// </summary>
 public sealed class InovabensOpcoes
 {
@@ -17,7 +17,7 @@ public sealed class InovabensOpcoes
     public string? S3SecretKey { get; init; }
     public bool S3ForcePathStyle { get; init; } = true;
     public bool Producao { get; init; }
-    /// <summary>DISABLE_JOBS=true desliga as rotinas agendadas (útil quando a versão Node ainda roda os jobs).</summary>
+    /// <summary>DISABLE_JOBS=true desliga as rotinas agendadas (use em todas as instâncias menos uma, ao escalar).</summary>
     public bool DesativarJobs { get; init; }
 
     public string? GoogleClientId { get; init; }
@@ -66,7 +66,7 @@ public sealed class InovabensOpcoes
         // Em produção o segredo das assinaturas não pode cair na chave de cifragem (como exige a versão Node).
         if (producao && (Vazio(c["JWT_REFRESH_SECRET"]) is not { Length: >= 32 } segredo || segredo == op.TokenEncKey))
             throw new InvalidOperationException(
-                "Configuração inválida: defina JWT_REFRESH_SECRET em produção (32+ caracteres aleatórios, diferente de TOKEN_ENC_KEY; use o mesmo valor da versão Node).");
+                "Configuração inválida: defina JWT_REFRESH_SECRET em produção (32+ caracteres aleatórios, diferente de TOKEN_ENC_KEY; ao migrar da versão Node, use o mesmo valor dela).");
         return op;
     }
 
