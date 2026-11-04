@@ -75,7 +75,8 @@ No Visual Studio: abra `dotnet/Inovabens.slnx`, defina **Inovabens.Web** como pr
 
 Configuração (variáveis de ambiente, os mesmos nomes da antiga versão Node; em desenvolvimento o banco já vem de
 `appsettings.Development.json`): `DATABASE_URL`, `TOKEN_ENC_KEY` (necessária para usuários com 2FA),
-`GOOGLE_DRIVE_ID`, `GOOGLE_DRIVE_CREDENCIAIS` (caminho da chave JSON) ou `GOOGLE_DRIVE_CREDENCIAIS_JSON`, `TRUST_PROXY`,
+`GOOGLE_DRIVE_ID`, `GOOGLE_DRIVE_CREDENCIAIS` (caminho da chave JSON) ou `GOOGLE_DRIVE_CREDENCIAIS_JSON`,
+`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_URL_PUBLICA` ou `R2_CREDENCIAIS` (fotos públicas), `TRUST_PROXY`,
 `DISABLE_JOBS`, `WEB_URL` (endereço público do sistema; padrão http://localhost:5051),
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_WEBHOOK_URL`,
 `MAGNIFIC_API_KEY` (opcional: melhoria automática das fotos pelo Magnific, ver abaixo), `GOOGLE_MAPS_API_KEY` (opcional: Geocoding API do Google para "Localizar pelo endereço" no imóvel; sem ela usa o

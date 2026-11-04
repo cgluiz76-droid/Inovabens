@@ -27,5 +27,11 @@ services:
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       # com a chave, as fotos enviadas são melhoradas automaticamente pelo Magnific (consome créditos)
       MAGNIFIC_API_KEY: ${MAGNIFIC_API_KEY:-}
+      # cópia pública (Cloudflare R2) das fotos marcadas como públicas, para o site
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-inovabens-site}
+      R2_URL_PUBLICA: ${R2_URL_PUBLICA:-}
     ports: ["5051:8080"]
 volumes: { pgdata: {} }

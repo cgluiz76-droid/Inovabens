@@ -23,9 +23,11 @@ public sealed record ImovelListaItem(
     string? Cidade, string? Bairro, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, string? CorretorNome);
 
 /// <param name="Url">Endereço no próprio sistema (o arquivo vem do Drive pelo servidor, com verificação de acesso).</param>
-public sealed record MidiaDetalhe(ImovelMidia Midia, string? Url)
+/// <param name="UrlPublica">Endereço da cópia no R2 (site), quando publicada e com domínio público configurado.</param>
+public sealed record MidiaDetalhe(ImovelMidia Midia, string? Url, string? UrlPublica = null)
 {
     public string? NomeSubpasta => Midia.Subpasta is { } s && SubpastasDrive.Valida(s) ? SubpastasDrive.Nome(s) : null;
+    public SituacaoPublicacao Publicacao => PublicacaoFotosService.Situacao(Midia);
 }
 
 /// <summary>Arquivo de mídia pronto para ser entregue ao navegador.</summary>

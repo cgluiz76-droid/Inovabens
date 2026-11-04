@@ -15,7 +15,7 @@ namespace Inovabens.Core.Imoveis;
 /// </summary>
 public sealed class ImoveisService(
     IDbContextFactory<InovabensDb> fabrica, AuditService audit, IArmazenamento armazenamento, PastasDriveService pastas,
-    MagnificCliente magnific, ILogger<ImoveisService> log)
+    PublicacaoFotosService publicacao, MagnificCliente magnific, ILogger<ImoveisService> log)
 {
     public const long TamanhoMaximoArquivo = 25 * 1024 * 1024;
 
@@ -77,8 +77,9 @@ public sealed class ImoveisService(
     }
 
     /// <summary>O id do arquivo vai na URL: muda quando a foto é trocada (Magnific), então o navegador pode guardar em cache.</summary>
-    private static MidiaDetalhe Detalhar(ImovelMidia m) =>
-        new(m, string.IsNullOrEmpty(m.ArquivoChave) ? null : $"imoveis/midias/{m.Id}/{Uri.EscapeDataString(m.ArquivoChave)}");
+    private MidiaDetalhe Detalhar(ImovelMidia m) =>
+        new(m, string.IsNullOrEmpty(m.ArquivoChave) ? null : $"imoveis/midias/{m.Id}/{Uri.EscapeDataString(m.ArquivoChave)}",
+            PublicacaoFotosService.Situacao(m) == SituacaoPublicacao.Publicada ? publicacao.Url(m) : null);
 
     public async Task<Guid> CriarAsync(UsuarioAtual u, ImovelForm form)
     {
@@ -240,13 +241,15 @@ public sealed class ImoveisService(
     /* ------------------------------- Mídias ------------------------------- */
 
     public bool ArmazenamentoHabilitado => armazenamento.Habilitado;
+    public bool PublicacaoHabilitada => publicacao.Habilitada;
 
     /// <summary>
     /// Grava o arquivo na subpasta escolhida da pasta do imóvel no Drive. Só imagens e vídeos em "04 - Fotos e Vídeos"
     /// entram na galeria (capa, limite de fotos, site); o resto é documento.
     /// </summary>
+    /// <param name="publica">Só vale para fotos e vídeos em "04": foto pública ganha cópia no R2 (site e portais).</param>
     public async Task EnviarMidiaAsync(UsuarioAtual u, Guid id, Stream conteudo, string nomeOriginal, string contentType,
-        int subpasta, string? legenda = null, CancellationToken ct = default)
+        int subpasta, bool publica = false, string? legenda = null, CancellationToken ct = default)
     {
         u.Exigir(P.ImoveisEditar);
         await using var db = await fabrica.CreateDbContextAsync();
@@ -274,7 +277,7 @@ public sealed class ImoveisService(
             NomeOriginal = nome,
             Legenda = Texto.Limpo(legenda), Ordem = proximaOrdem,
             Capa = tipo == TipoMidia.FOTO && !temFoto, // a primeira foto vira capa
-            Publica = tipo is TipoMidia.FOTO or TipoMidia.VIDEO, // documentos nunca vão para o site
+            Publica = publica && tipo is TipoMidia.FOTO or TipoMidia.VIDEO, // documentos nunca vão para o site
             // com o Magnific configurado, a foto é melhorada em segundo plano (MelhoriaFotosService)
             MelhoriaStatus = MelhoriaAutomatica(tipo, RegrasImovel.TipoInformado(contentType)) ? StatusMelhoria.PENDENTE : null,
             MelhoriaAtualizadaEm = DateTime.UtcNow,
@@ -328,7 +331,15 @@ public sealed class ImoveisService(
         if (b.Legenda is not null) m.Legenda = Texto.Limpo(b.Legenda);
         if (b.Ordem is { } o) m.Ordem = Math.Max(0, o);
         if (b.Capa is { } capa) m.Capa = capa;
-        if (b.Publica is { } pub) m.Publica = pub;
+        if (b.Publica is { } pub && pub != m.Publica)
+        {
+            if (pub && m.Tipo is not (TipoMidia.FOTO or TipoMidia.VIDEO))
+                throw new RegraNegocioException("publica", "Só fotos e vídeos podem ser públicos.");
+            m.Publica = pub;
+            // marcada de novo: tenta publicar outra vez, mesmo que tenha falhado antes (a rotina publica ou retira)
+            if (m.PublicaChave is null) m.PublicadaArquivo = null;
+            m.PublicacaoErro = null;
+        }
         await db.SaveChangesAsync();
         await tx.CommitAsync();
     }
@@ -342,6 +353,7 @@ public sealed class ImoveisService(
         await db.SaveChangesAsync();
         await armazenamento.RemoverAsync(m.ArquivoChave);
         if (m.ArquivoOriginalChave is { } original) await armazenamento.RemoverAsync(original);
+        await publicacao.RemoverCopiaAsync(m.PublicaChave);
     }
 
     private static async Task<ImovelMidia> MidiaComAcesso(InovabensDb db, UsuarioAtual u, Guid midiaId)

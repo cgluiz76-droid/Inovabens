@@ -87,7 +87,8 @@ public class ImovelMidia
     public string? Legenda { get; set; }
     public int Ordem { get; set; }
     public bool Capa { get; set; }
-    public bool Publica { get; set; } = true;
+    /// <summary>Marcada pelo usuário para ir ao site (só fotos e vídeos); fotos públicas ganham cópia no R2.</summary>
+    public bool Publica { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     /// <summary>Foto como foi enviada, guardada quando o Magnific gera a versão melhorada (que vira ArquivoChave).</summary>
     public string? ArquivoOriginalChave { get; set; }
@@ -96,6 +97,12 @@ public class ImovelMidia
     public string? MelhoriaTarefa { get; set; }
     public string? MelhoriaErro { get; set; }
     public DateTime? MelhoriaAtualizadaEm { get; set; }
+    /// <summary>Prefixo da cópia pública no R2 (…-400.webp, -1200.webp, -1920.webp); null = não publicada.</summary>
+    public string? PublicaChave { get; set; }
+    /// <summary>Id do arquivo do Drive que gerou a cópia pública (outro valor = a foto mudou e é publicada de novo).</summary>
+    public string? PublicadaArquivo { get; set; }
+    public DateTime? PublicadaEm { get; set; }
+    public string? PublicacaoErro { get; set; }
 }
 
 [Table("imovel_proprietarios")]

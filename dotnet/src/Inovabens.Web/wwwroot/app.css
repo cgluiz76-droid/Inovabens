@@ -204,6 +204,8 @@ fieldset.campo { border: 0; padding: 0; margin-left: 0; margin-right: 0; margin-
 .envio-midias { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem; margin-top: .75rem; }
 .envio-midias .campo { min-width: 16rem; margin: 0; }
 .envio-midias .enviar { margin-top: 0; }
+.checkbox-publica { display: flex; align-items: center; gap: .4rem; padding: .45rem 0; cursor: pointer; }
+.publicacao { color: #047857; }
 .oculto { display: none; }
 
 /* ---------- Login ---------- */

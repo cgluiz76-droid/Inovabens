@@ -20,6 +20,35 @@ public static class ImagemFoto
     /// <summary>Resultado do Magnific (PNG/JPEG grande) regravado como JPEG para ocupar menos espaço.</summary>
     public static byte[]? PrepararResultado(byte[] dados) => Converter(dados, ladoMaximo: null, qualidade: 90);
 
+    /// <summary>
+    /// Versões da foto para o site, em WebP, uma por largura máxima (nunca amplia). A regravação descarta o EXIF,
+    /// inclusive a localização GPS que o celular grava na foto. Null se não decodificar.
+    /// </summary>
+    public static IReadOnlyList<byte[]>? VersoesWeb(byte[] dados, IReadOnlyList<int> larguras, int qualidade = 80)
+    {
+        using var codec = SKCodec.Create(new SKMemoryStream(dados));
+        if (codec is null) return null;
+        using var decodificada = SKBitmap.Decode(codec);
+        if (decodificada is null) return null;
+        using var orientada = Orientar(decodificada, codec.EncodedOrigin);
+        var bitmap = orientada ?? decodificada;
+
+        var versoes = new List<byte[]>(larguras.Count);
+        foreach (var largura in larguras)
+        {
+            var escala = Math.Min(1d, largura / (double)bitmap.Width);
+            using var reduzida = escala < 1
+                ? bitmap.Resize(new SKImageInfo((int)Math.Round(bitmap.Width * escala), Math.Max(1, (int)Math.Round(bitmap.Height * escala))),
+                    new SKSamplingOptions(SKCubicResampler.Mitchell))
+                : null;
+            using var imagem = SKImage.FromBitmap(reduzida ?? bitmap);
+            using var webp = imagem.Encode(SKEncodedImageFormat.Webp, qualidade);
+            if (webp is null) return null;
+            versoes.Add(webp.ToArray());
+        }
+        return versoes;
+    }
+
     private static byte[]? Converter(byte[] dados, int? ladoMaximo, int qualidade)
     {
         using var codec = SKCodec.Create(new SKMemoryStream(dados));

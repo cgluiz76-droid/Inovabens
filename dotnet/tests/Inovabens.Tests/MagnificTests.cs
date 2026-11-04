@@ -199,7 +199,8 @@ public class MelhoriaFotosIntegracaoTests : IAsyncLifetime
         var doc = midias.Single(m => m.Midia.NomeOriginal == "matricula.jpg");
         var galeria = midias.Single(m => m.Midia.NomeOriginal == "sala.jpg");
         Assert.Equal((TipoMidia.DOCUMENTO, false, "01 - Matrícula"), (doc.Midia.Tipo, doc.Midia.Publica, doc.NomeSubpasta));
-        Assert.Equal((TipoMidia.FOTO, true, true), (galeria.Midia.Tipo, galeria.Midia.Publica, galeria.Midia.Capa));
+        // sem marcar "pública", a foto fica só no Drive
+        Assert.Equal((TipoMidia.FOTO, false, true), (galeria.Midia.Tipo, galeria.Midia.Publica, galeria.Midia.Capa));
         Assert.Equal("01 - Matrícula", _drive.Itens[_drive.Itens[doc.Midia.ArquivoChave].Pai!].Nome);
         Assert.Equal("04 - Fotos e Vídeos", _drive.Itens[_drive.Itens[galeria.Midia.ArquivoChave].Pai!].Nome);
 

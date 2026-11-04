@@ -5,6 +5,7 @@ O sistema é **um contêiner** (`dotnet/Dockerfile`, build a partir da pasta `do
 ## 1. Pré-requisitos
 1. **Banco**: PostgreSQL 16 gerenciado (o blueprint cria um no Render).
 2. **Arquivos**: drive compartilhado do Google Workspace + conta de serviço do Google Cloud (Google Drive API ativada) como **Administrador de conteúdo** do drive. Defina `GOOGLE_DRIVE_ID` (ID do drive, trecho da URL depois de `/folders/`) e a chave JSON da conta de serviço: `GOOGLE_DRIVE_CREDENCIAIS` (caminho do arquivo) ou `GOOGLE_DRIVE_CREDENCIAIS_JSON` (o conteúdo). Sem isso o sistema funciona, mas o envio de fotos/documentos fica desligado. Detalhes no [README](README.md#fotos-e-documentos-no-google-drive).
+   Opcional: `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` e `R2_URL_PUBLICA` ligam a cópia das fotos públicas no Cloudflare R2 ([README](README.md#fotos-públicas-no-cloudflare-r2-site-e-portais)).
 3. **Segredos** (sem eles a aplicação **não sobe** em produção):
    - `TOKEN_ENC_KEY`: `openssl rand -hex 32`. Cifra os tokens do Google e os segredos de 2FA.
    - `JWT_REFRESH_SECRET`: 32+ caracteres aleatórios, diferente da `TOKEN_ENC_KEY`. Assina o `state` do OAuth e o token do webhook do Google.

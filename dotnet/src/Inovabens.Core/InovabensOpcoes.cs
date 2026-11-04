@@ -16,6 +16,16 @@ public sealed class InovabensOpcoes
     public string? GoogleDriveCredenciais { get; init; }
     /// <summary>O mesmo JSON, direto na variável (útil em contêiner/nuvem). Tem prioridade sobre o caminho.</summary>
     public string? GoogleDriveCredenciaisJson { get; init; }
+
+    /// <summary>Cloudflare R2: cópia pública (WebP) das fotos marcadas como públicas, para o site e os portais.</summary>
+    public string? R2Endpoint { get; init; }
+    public string? R2AccessKeyId { get; init; }
+    public string? R2SecretAccessKey { get; init; }
+    public string R2Bucket { get; init; } = "inovabens-site";
+    /// <summary>Endereço público do bucket (domínio próprio, ex.: https://fotos.inovabens.com.br, ou o r2.dev).</summary>
+    public string? R2UrlPublica { get; init; }
+    /// <summary>Alternativa às três variáveis acima: texto copiado do painel da Cloudflare ao criar o token.</summary>
+    public string? R2Credenciais { get; init; }
     public bool Producao { get; init; }
     /// <summary>DISABLE_JOBS=true desliga as rotinas agendadas (use em todas as instâncias menos uma, ao escalar).</summary>
     public bool DesativarJobs { get; init; }
@@ -49,6 +59,12 @@ public sealed class InovabensOpcoes
             GoogleDriveId = Vazio(c["GOOGLE_DRIVE_ID"]),
             GoogleDriveCredenciais = Vazio(c["GOOGLE_DRIVE_CREDENCIAIS"]),
             GoogleDriveCredenciaisJson = Vazio(c["GOOGLE_DRIVE_CREDENCIAIS_JSON"]),
+            R2Endpoint = Vazio(c["R2_ENDPOINT"]),
+            R2AccessKeyId = Vazio(c["R2_ACCESS_KEY_ID"]),
+            R2SecretAccessKey = Vazio(c["R2_SECRET_ACCESS_KEY"]),
+            R2Bucket = Vazio(c["R2_BUCKET"]) ?? "inovabens-site",
+            R2UrlPublica = Vazio(c["R2_URL_PUBLICA"])?.TrimEnd('/'),
+            R2Credenciais = Vazio(c["R2_CREDENCIAIS"]),
             Producao = producao,
             DesativarJobs = string.Equals(c["DISABLE_JOBS"], "true", StringComparison.OrdinalIgnoreCase),
             GoogleClientId = Vazio(c["GOOGLE_CLIENT_ID"]),

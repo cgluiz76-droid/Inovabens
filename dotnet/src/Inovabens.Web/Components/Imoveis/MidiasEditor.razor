@@ -55,12 +55,39 @@
                         <p class="pequeno texto-erro" title="@m.Midia.MelhoriaErro">Melhoria falhou</p>
                         break;
                 }
+                @if (m.Midia.Tipo == TipoMidia.FOTO)
+                {
+                    @switch (m.Publicacao)
+                    {
+                        case SituacaoPublicacao.Privada:
+                            <p class="pequeno mudo">🔒 Só no Drive</p>
+                            break;
+                        case SituacaoPublicacao.Pendente:
+                            <p class="pequeno publicacao">🌐 @(Servico.PublicacaoHabilitada ? "Publicando no site…" : "Pública (aguardando R2)")</p>
+                            break;
+                        case SituacaoPublicacao.Publicada when m.UrlPublica is { } urlPublica:
+                            <p class="pequeno publicacao"><a href="@urlPublica" target="_blank" rel="noreferrer">🌐 No site ↗</a></p>
+                            break;
+                        case SituacaoPublicacao.Publicada:
+                            <p class="pequeno publicacao">🌐 No site</p>
+                            break;
+                        case SituacaoPublicacao.Falha:
+                            <p class="pequeno texto-erro" title="@m.Midia.PublicacaoErro">Não publicada: @m.Midia.PublicacaoErro</p>
+                            break;
+                    }
+                }
                 @if (Editar)
                 {
                     <div class="acoes-midia">
                         @if (m.Midia.Tipo == TipoMidia.FOTO && !m.Midia.Capa)
                         {
                             <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => DefinirCapa(m.Midia.Id)">Capa</button>
+                        }
+                        @if (m.Midia.Tipo == TipoMidia.FOTO)
+                        {
+                            <button class="btn-ghost mini" disabled="@Ocupado"
+                                    title="@(m.Midia.Publica ? "Retira a foto do site (continua no Drive)" : "Publica a foto no site e nos portais")"
+                                    @onclick="() => AlternarPublica(m.Midia)">@(m.Midia.Publica ? "Tornar privada" : "Tornar pública")</button>
                         }
                         @if (m.Midia.ArquivoOriginalChave is not null)
                         {
@@ -95,6 +122,13 @@
                     }
                 </select>
             </label>
+            @if (subpasta == SubpastasDrive.FotosVideos)
+            {
+                <label class="checkbox-publica">
+                    <input type="checkbox" @bind="publica" disabled="@Ocupado" />
+                    <span>Fotos públicas (vão para o site e os portais)</span>
+                </label>
+            }
             <label class="btn-ghost enviar">
                 @(Ocupado ? progresso ?? "Enviando…" : "⤒ Enviar arquivos para esta pasta")
                 <InputFile OnChange="Enviar" class="oculto" disabled="@Ocupado" multiple />
@@ -102,6 +136,7 @@
         </div>
         <p class="pequeno mudo">
             Fotos e vídeos enviados para "04 - Fotos e Vídeos" entram na galeria do imóvel; nas demais pastas, tudo é guardado como documento.
+            Só as fotos marcadas como públicas ganham cópia no site; as demais ficam apenas no Google Drive.
             Até @RegrasImovel.MaximoFotos fotos por imóvel (JPG, PNG, WebP...), 25 MB por arquivo. Selecione vários de uma vez.
             @if (Melhoria.Habilitada)
             {
@@ -120,13 +155,17 @@
 
     private string? progresso;
     private int subpasta = SubpastasDrive.FotosVideos;
+    private bool publica;
 
     private IReadOnlyList<MidiaDetalhe> midias = [];
     private CancellationTokenSource? acompanhamento;
 
     private int Fotos => midias.Count(m => m.Midia.Tipo == TipoMidia.FOTO);
 
-    private bool EmMelhoria => midias.Any(m => m.Midia.MelhoriaStatus is StatusMelhoria.PENDENTE or StatusMelhoria.PROCESSANDO);
+    /// <summary>Algo muda sozinho em segundo plano: melhoria no Magnific ou publicação no R2.</summary>
+    private bool EmMelhoria => midias.Any(m => m.Midia.MelhoriaStatus is StatusMelhoria.PENDENTE or StatusMelhoria.PROCESSANDO
+        || Servico.PublicacaoHabilitada && (m.Midia.Tipo == TipoMidia.FOTO && m.Publicacao == SituacaoPublicacao.Pendente
+                                            || m.Midia.PublicaChave is not null && !m.Midia.Publica));
 
     protected override void OnParametersSet()
     {
@@ -207,7 +246,8 @@
                 await origem.CopyToAsync(buffer);
                 buffer.Position = 0;
                 await Servico.EnviarMidiaAsync(Usuario, Detalhe.Dados.Id, buffer, f.Name,
-                    string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType, subpasta);
+                    string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType, subpasta,
+                    publica && subpasta == SubpastasDrive.FotosVideos);
                 enviados++;
             }
         });
@@ -223,6 +263,13 @@
     private async Task DefinirCapa(Guid midiaId)
     {
         if (await Executar(() => Servico.AtualizarMidiaAsync(Usuario, midiaId, new MidiaAlteracao { Capa = true }))) await Atualizar();
+    }
+
+    private async Task AlternarPublica(ImovelMidia m)
+    {
+        if (!await Executar(() => Servico.AtualizarMidiaAsync(Usuario, m.Id, new MidiaAlteracao { Publica = !m.Publica }))) return;
+        midias = await Servico.MidiasAsync(Usuario, Detalhe.Dados.Id);
+        Acompanhar();
     }
 
     private async Task Remover(Guid midiaId)

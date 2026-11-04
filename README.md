@@ -37,6 +37,7 @@ GOOGLE_DRIVE_ID=0A...
 GOOGLE_DRIVE_CREDENCIAIS_JSON={"type":"service_account",...}
 ```
 Com `MAGNIFIC_API_KEY=...` no mesmo `.env`, as fotos enviadas são melhoradas automaticamente pelo Magnific.
+Com as variáveis `R2_*`, as fotos marcadas como públicas são copiadas para o Cloudflare R2 (veja *Fotos públicas* abaixo).
 
 Com `dotnet run` (opção B), no PowerShell, antes do `dotnet run`:
 ```powershell
@@ -57,6 +58,20 @@ espaço próprio no Drive, por isso precisa ser um drive compartilhado.
   galeria do imóvel (capa, limite de fotos, site); nas outras pastas tudo é documento.
 - O Drive é privado: as telas mostram os arquivos pelo próprio sistema (`/imoveis/midias/...`), que confere o acesso.
 - Excluir um arquivo no sistema manda para a **lixeira** do Drive (recuperável por 30 dias).
+
+### Fotos públicas no Cloudflare R2 (site e portais)
+Ao enviar para `04 - Fotos e Vídeos`, a caixa **Fotos públicas** decide se a foto vai para o site (padrão: desmarcada).
+Cada foto também tem o botão **Tornar pública / Tornar privada**. Só as fotos públicas ganham cópia no bucket R2; as
+demais ficam apenas no Drive.
+
+- A rotina de publicação roda a cada minuto. Gera três versões WebP (400, 1200 e 1920 px de largura, sem ampliar e sem
+  dados EXIF/GPS) com o nome `imoveis/{imóvel}/{foto}-{resumo}-{largura}.webp`.
+- Foto trocada (ex.: melhorada pelo Magnific) ganha endereço novo e a cópia antiga é apagada. Foto desmarcada, excluída
+  ou de imóvel excluído sai do R2.
+- Variáveis: `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (padrão `inovabens-site`) e
+  `R2_URL_PUBLICA` (domínio público do bucket, ex.: `https://fotos.inovabens.com.br`). Em vez das três primeiras,
+  `R2_CREDENCIAIS` pode apontar para o texto copiado do painel da Cloudflare (rótulo numa linha, valor na seguinte).
+- Sem R2 configurado, a marcação fica guardada e as fotos são publicadas quando ele for ligado.
 
 ### Opção B — desenvolvimento (Visual Studio / `dotnet run`)
 Requer o SDK do .NET 10 e um PostgreSQL 16 (o compose fornece um: `docker compose up -d db`).

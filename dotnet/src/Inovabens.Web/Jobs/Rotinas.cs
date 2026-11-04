@@ -123,3 +123,17 @@ public sealed class MelhoriaFotosJob(IServiceScopeFactory e, InovabensOpcoes o, 
         if (n > 0) Log.LogInformation("Magnific: {Qtd} foto(s) melhorada(s)", n);
     }
 }
+
+/// <summary>A cada minuto: publica no R2 as fotos marcadas como públicas e retira as que deixaram de ser (só com R2 configurado).</summary>
+public sealed class PublicacaoFotosJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<PublicacaoFotosJob> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "publicação de fotos (R2)";
+    protected override bool Habilitada => Opcoes.R2Endpoint is not null || Opcoes.R2Credenciais is not null;
+    protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 1);
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<PublicacaoFotosService>().ProcessarAsync(ct);
+        if (n > 0) Log.LogInformation("R2: {Qtd} foto(s) publicada(s)", n);
+    }
+}

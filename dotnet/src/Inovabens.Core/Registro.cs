@@ -27,6 +27,8 @@ public static class Registro
         services.AddSingleton<DadosIniciais>();
         services.AddSingleton<IArmazenamento, GoogleDriveArmazenamento>();
         services.AddScoped<PastasDriveService>();
+        services.AddSingleton<IArmazenamentoPublico, R2ArmazenamentoPublico>();
+        services.AddScoped<PublicacaoFotosService>();
         services.AddScoped<ContextoConexao>();
         services.AddScoped<AuditService>();
         services.AddScoped<AuthService>();
