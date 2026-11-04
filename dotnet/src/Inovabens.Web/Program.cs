@@ -4,6 +4,7 @@ using Inovabens.Core.Agenda;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Financeiro;
+using Inovabens.Core.Imoveis;
 using Inovabens.Core.Relatorios;
 using Inovabens.Core.Servicos;
 using Inovabens.Web;
@@ -17,7 +18,7 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Mesmas variáveis de ambiente da versão Node (DATABASE_URL, S3_*, TOKEN_ENC_KEY...).
+// Mesmas variáveis de ambiente da versão Node (DATABASE_URL, TOKEN_ENC_KEY...), mais GOOGLE_DRIVE_* para os arquivos.
 var opcoes = InovabensOpcoes.De(builder.Configuration, builder.Environment.IsProduction());
 builder.Services.AddInovabensCore(opcoes);
 builder.Services.AddHostedService<SincronizacaoIndicesJob>();
@@ -25,6 +26,7 @@ builder.Services.AddHostedService<AlertasCompromissosJob>();
 builder.Services.AddHostedService<RotinaFinanceiraDiariaJob>();
 builder.Services.AddHostedService<SincronizacaoGoogleJob>();
 builder.Services.AddHostedService<RenovacaoCanaisGoogleJob>();
+builder.Services.AddHostedService<MelhoriaFotosJob>();
 builder.Services.AddSingleton<RenovacaoSessao>();
 
 builder.Services.AddRazorComponents()
@@ -149,6 +151,22 @@ imovel.MapGet("ficha-financeira.pdf", (Guid id, CodigoIndice? indice, HttpContex
 imovel.MapGet("ficha-financeira.xlsx", (Guid id, CodigoIndice? indice, HttpContext c, RelatoriosService r) =>
     Baixar(c, u => r.FichaFinanceiraXlsxAsync(u, id, indice ?? CodigoIndice.IPCA))).RequireAuthorization(Permissoes.FinanceiroExportar);
 
+// Fotos e documentos: o Drive é privado, então o sistema confere o acesso ao imóvel e repassa o arquivo.
+// O id do arquivo no Drive vai na URL e muda quando a foto é trocada, por isso o navegador pode guardar em cache.
+app.MapGet("/imoveis/midias/{midiaId:guid}/{arquivo}", async (Guid midiaId, string arquivo, HttpContext c, ImoveisService s) =>
+{
+    try
+    {
+        var a = await s.ArquivoMidiaAsync(UsuarioAtual.De(c.User)!, midiaId, arquivo, c.RequestAborted);
+        c.Response.Headers.CacheControl = "private, max-age=86400";
+        return a.Download
+            ? Results.File(a.Dados, a.ContentType, a.Nome)
+            : Results.File(a.Dados, a.ContentType, enableRangeProcessing: true); // inline; range para vídeo
+    }
+    catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
+    catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
+}).RequireAuthorization(Permissoes.ImoveisVer);
+
 // Google Agenda: mesmos caminhos da API Node, para não mudar a configuração no Google Cloud Console.
 app.MapGet("/api/v1/integracoes/google/callback", async (string? code, string? state, string? error, GoogleService g, ILogger<Program> log) =>
 {
@@ -185,9 +203,6 @@ app.MapGet("/conta/renovar-sessao", async (string t, HttpContext c, AuthService 
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-
-if (app.Environment.IsDevelopment())
-    await app.Services.GetRequiredService<StorageService>().GarantirBucketAsync();
 
 app.Run();
 

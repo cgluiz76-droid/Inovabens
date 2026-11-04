@@ -13,5 +13,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "caveman@caveman": true
   }
 }

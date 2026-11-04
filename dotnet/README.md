@@ -6,7 +6,7 @@ dela fica no histórico do git) e usa o mesmo banco PostgreSQL que ela usava.
 | Módulo | Situação |
 |---|---|
 | Login (senha Argon2 + 2FA, bloqueio progressivo) | ✅ migrado |
-| Imóveis: lista, cadastro, ficha, proprietários (regra dos 100%), características, fotos/documentos (S3), regularização | ✅ migrado |
+| Imóveis: lista, cadastro, ficha, proprietários (regra dos 100%), características, fotos/documentos (Google Drive, uma pasta por imóvel), regularização | ✅ migrado |
 | Financeiro (aba do imóvel): aquisição/CAPEX e itens, despesas/OPEX com checklist mensal (Não Pago exige justificativa), receitas, retorno do investimento (ROI, ROI real, TIR, MOIC, correção por IPCA/INCC/IGP-M/Selic), sincronização dos índices com o Banco Central (botão + job do dia 12) | ✅ migrado |
 | Painel (resumo por situação, funil, alertas, próximos compromissos) | ✅ migrado |
 | Pessoas (cadastro único com papéis: cliente, proprietário, fiador, parceiro, prestador, terceiro; LGPD) | ✅ migrado |
@@ -15,7 +15,7 @@ dela fica no histórico do git) e usa o mesmo banco PostgreSQL que ela usava.
 | Alertas: compromisso não cumprido (job a cada 5 min) e despesa vencida (job diário 06:00, que também gera as competências do mês); reagendar/concluir pelo alerta | ✅ migrado |
 | CRM: funis de venda e locação, mover estágio (perda exige motivo), novo lead, interações, imóveis de interesse, histórico | ✅ migrado |
 | Relatórios: Ficha do Imóvel e Ficha Financeira em PDF (QuestPDF) e Excel (ClosedXML), registrados na auditoria | ✅ migrado |
-| Administração: usuários, perfis/permissões (RBAC), categorias de despesa, índices BCB, estágios do funil, auditoria | ✅ migrado |
+| Administração: usuários, perfis/permissões (RBAC), cadastros (tipos de imóvel, perfis de pessoa), categorias de despesa, índices BCB, estágios do funil, auditoria | ✅ migrado |
 | Minha conta: alterar senha (encerra as outras sessões) e 2FA (TOTP) | ✅ migrado |
 
 ## Estrutura
@@ -32,7 +32,7 @@ dotnet/
     Financeiro/                  Aquisição, Despesas (checklist), Receitas, Índices (BCB), Retorno;
                                  CalculoRetorno.cs é o cálculo puro (port de retorno.service.ts)
     Pessoas/ Memorandos/ Agenda/ Crm/ Painel/ Admin/ Relatorios/   demais módulos (um Service por módulo)
-    Servicos/                    Auth, Auditoria, escopo de acesso por imóvel, Armazenamento S3, listas de opções
+    Servicos/                    Auth, Auditoria, escopo de acesso por imóvel, Armazenamento (Google Drive), listas de opções
   src/Inovabens.Web/             Blazor Server (telas .razor); Jobs/ = rotinas agendadas
   tests/Inovabens.Tests/         xUnit: unidade e integração (PostgreSQL no Docker)
   tests/Inovabens.E2E/           Playwright: fluxos no navegador contra a aplicação real
@@ -68,16 +68,18 @@ padrão é recusada). `dotnet Inovabens.Web.dll migrar` faz só essa parte e sai
 
 - **Banco criado pela antiga versão Node:** os 3 scripts iniciais são os mesmos que ela aplicava; são reconhecidos
   pelo diário do Drizzle e não rodam de novo. Os demais são aplicados normalmente.
-- **Nova alteração de esquema:** crie `Dados/Migracoes/0005_descricao.sql` (o próximo número). Nunca edite um script
+- **Nova alteração de esquema:** crie `Dados/Migracoes/0006_descricao.sql` (o próximo número). Nunca edite um script
   já aplicado; o migrador avisa no log se isso acontecer.
 
 No Visual Studio: abra `dotnet/Inovabens.slnx`, defina **Inovabens.Web** como projeto de inicialização e pressione F5.
 
 Configuração (variáveis de ambiente, os mesmos nomes da antiga versão Node; em desenvolvimento o banco já vem de
 `appsettings.Development.json`): `DATABASE_URL`, `TOKEN_ENC_KEY` (necessária para usuários com 2FA),
-`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `S3_FORCE_PATH_STYLE`, `TRUST_PROXY`,
+`GOOGLE_DRIVE_ID`, `GOOGLE_DRIVE_CREDENCIAIS` (caminho da chave JSON) ou `GOOGLE_DRIVE_CREDENCIAIS_JSON`, `TRUST_PROXY`,
 `DISABLE_JOBS`, `WEB_URL` (endereço público do sistema; padrão http://localhost:5051),
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_WEBHOOK_URL`, `JWT_REFRESH_SECRET`
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_WEBHOOK_URL`,
+`MAGNIFIC_API_KEY` (opcional: melhoria automática das fotos pelo Magnific, ver abaixo), `GOOGLE_MAPS_API_KEY` (opcional: Geocoding API do Google para "Localizar pelo endereço" no imóvel; sem ela usa o
+OpenStreetMap), `JWT_REFRESH_SECRET`
 (assina o `state` do OAuth e o token do webhook do Google — use o mesmo valor do Node). **Em produção** são
 obrigatórias uma `TOKEN_ENC_KEY` aleatória e uma `JWT_REFRESH_SECRET` com 32+ caracteres, diferente da `TOKEN_ENC_KEY`:
 sem elas a aplicação não sobe.
@@ -86,7 +88,7 @@ valem em várias instâncias. Arquivos enviados só abrem no navegador se forem 
 HTML/SVG) é servido como download. Respostas levam `X-Frame-Options`, `nosniff` e uma CSP mínima (papel do helmet).
 O login aceita até `LOGIN_LIMITE_POR_MINUTO` tentativas por IP (padrão 10, como na versão Node); o IP vem do
 `X-Forwarded-For` do proxy (`TRUST_PROXY` = quantos proxies há na frente; padrão 1, o do Render).
-Sem `S3_*` o sistema funciona, só o envio de fotos/documentos fica desligado; sem `GOOGLE_*`, a agenda funciona
+Sem `GOOGLE_DRIVE_*` o sistema funciona, só o envio de fotos/documentos fica desligado; sem `GOOGLE_*`, a agenda funciona
 sem a integração com o Google.
 
 O callback e o webhook do Google ficam em `/api/v1/integracoes/google/callback` e `/api/v1/webhooks/google/calendar`
@@ -96,9 +98,16 @@ O callback e o webhook do Google ficam em `/api/v1/integracoes/google/callback` 
 **Licença do QuestPDF (PDFs):** o projeto usa a licença *Community*, gratuita para empresas com receita bruta
 anual abaixo de US$ 1 milhão. Acima disso é preciso adquirir uma licença comercial (questpdf.com/license).
 
+**Melhoria de fotos (Magnific):** com `MAGNIFIC_API_KEY` (e o Google Drive configurado), cada foto JPG/PNG/WebP enviada entra na
+fila e a rotina de 1 em 1 minuto a envia ao upscaler *Precision V2* do Magnific (perfil "photo", fiel ao original):
+a foto é reduzida para no máximo 2048 px e ampliada 2x (resultado de até 4096 px, regravado em JPEG). Pronta, ela
+passa a ser a foto exibida (inclusive nas fichas em PDF); a original fica guardada e pode ser restaurada na tela.
+Falhas (créditos, formato) ficam registradas na foto com botão para tentar de novo. A API do Magnific é cobrada
+por créditos à parte da assinatura do site (docs.magnific.com/pricing).
+
 Jobs (horário de Brasília): índices BCB no dia 12 às 06:00; alertas de compromissos a cada 5 min;
 competências do mês + alertas de despesas vencidas todo dia às 06:00; sincronização Google a cada 10 min e
-renovação dos canais do webhook às 04:00. Todos são idempotentes; com várias instâncias,
+renovação dos canais do webhook às 04:00; melhoria de fotos pelo Magnific a cada minuto (só com `MAGNIFIC_API_KEY`). Todos são idempotentes; com várias instâncias,
 use `DISABLE_JOBS=true` em todas menos uma.
 
 ## Testes

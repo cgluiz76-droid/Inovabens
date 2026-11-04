@@ -4,18 +4,18 @@ namespace Inovabens.Core;
 
 /// <summary>
 /// Configuração lida das variáveis de ambiente (os mesmos nomes da antiga versão Node, para que um ambiente
-/// já configurado continue valendo: DATABASE_URL, TOKEN_ENC_KEY, S3_*, GOOGLE_*...).
+/// já configurado continue valendo: DATABASE_URL, TOKEN_ENC_KEY, GOOGLE_*...).
 /// </summary>
 public sealed class InovabensOpcoes
 {
     public required string DatabaseUrl { get; init; }
     public string TokenEncKey { get; init; } = new('0', 64);
-    public string? S3Endpoint { get; init; }
-    public string S3Region { get; init; } = "auto";
-    public string S3Bucket { get; init; } = "inovabens";
-    public string? S3AccessKey { get; init; }
-    public string? S3SecretKey { get; init; }
-    public bool S3ForcePathStyle { get; init; } = true;
+    /// <summary>ID do drive compartilhado onde ficam as pastas dos imóveis (trecho da URL depois de /folders/).</summary>
+    public string? GoogleDriveId { get; init; }
+    /// <summary>Caminho do arquivo JSON da chave da conta de serviço (membro "Administrador de conteúdo" do drive).</summary>
+    public string? GoogleDriveCredenciais { get; init; }
+    /// <summary>O mesmo JSON, direto na variável (útil em contêiner/nuvem). Tem prioridade sobre o caminho.</summary>
+    public string? GoogleDriveCredenciaisJson { get; init; }
     public bool Producao { get; init; }
     /// <summary>DISABLE_JOBS=true desliga as rotinas agendadas (use em todas as instâncias menos uma, ao escalar).</summary>
     public bool DesativarJobs { get; init; }
@@ -25,6 +25,10 @@ public sealed class InovabensOpcoes
     /// <summary>Ex.: https://app.inovabens.com.br/api/v1/integracoes/google/callback (a versão .NET atende o mesmo caminho).</summary>
     public string? GoogleRedirectUri { get; init; }
     public string? GoogleWebhookUrl { get; init; }
+    /// <summary>Chave da API do Magnific: com ela, toda foto enviada é melhorada automaticamente (upscaler Precision V2).</summary>
+    public string? MagnificApiKey { get; init; }
+    /// <summary>Chave da Geocoding API do Google (localizar imóvel pelo endereço). Sem ela, usa o OpenStreetMap.</summary>
+    public string? GoogleMapsApiKey { get; init; }
     /// <summary>Endereço público da aplicação (volta do OAuth do Google).</summary>
     public string WebUrl { get; init; } = "http://localhost:5051";
     /// <summary>Chave do HMAC dos tokens de canal do Google (JWT_REFRESH_SECRET na versão Node, para os canais continuarem válidos).</summary>
@@ -42,18 +46,17 @@ public sealed class InovabensOpcoes
             DatabaseUrl = c["DATABASE_URL"] ?? c.GetConnectionString("Inovabens")
                 ?? throw new InvalidOperationException("Configuração inválida: defina DATABASE_URL (ou ConnectionStrings:Inovabens)."),
             TokenEncKey = c["TOKEN_ENC_KEY"] ?? new string('0', 64),
-            S3Endpoint = Vazio(c["S3_ENDPOINT"]),
-            S3Region = c["S3_REGION"] ?? "auto",
-            S3Bucket = c["S3_BUCKET"] ?? "inovabens",
-            S3AccessKey = Vazio(c["S3_ACCESS_KEY"]),
-            S3SecretKey = Vazio(c["S3_SECRET_KEY"]),
-            S3ForcePathStyle = !string.Equals(c["S3_FORCE_PATH_STYLE"], "false", StringComparison.OrdinalIgnoreCase),
+            GoogleDriveId = Vazio(c["GOOGLE_DRIVE_ID"]),
+            GoogleDriveCredenciais = Vazio(c["GOOGLE_DRIVE_CREDENCIAIS"]),
+            GoogleDriveCredenciaisJson = Vazio(c["GOOGLE_DRIVE_CREDENCIAIS_JSON"]),
             Producao = producao,
             DesativarJobs = string.Equals(c["DISABLE_JOBS"], "true", StringComparison.OrdinalIgnoreCase),
             GoogleClientId = Vazio(c["GOOGLE_CLIENT_ID"]),
             GoogleClientSecret = Vazio(c["GOOGLE_CLIENT_SECRET"]),
             GoogleRedirectUri = Vazio(c["GOOGLE_REDIRECT_URI"]),
             GoogleWebhookUrl = Vazio(c["GOOGLE_WEBHOOK_URL"]),
+            GoogleMapsApiKey = Vazio(c["GOOGLE_MAPS_API_KEY"]),
+            MagnificApiKey = Vazio(c["MAGNIFIC_API_KEY"]),
             WebUrl = (Vazio(c["WEB_URL"]) ?? "http://localhost:5051").TrimEnd('/'),
             SegredoHmac = Vazio(c["JWT_REFRESH_SECRET"]) ?? c["TOKEN_ENC_KEY"] ?? new string('0', 64),
             SeedAdminEmail = Vazio(c["SEED_ADMIN_EMAIL"]) ?? "admin@inovabens.com.br",

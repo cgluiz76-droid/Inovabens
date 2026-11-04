@@ -1,0 +1,7 @@
+# HTTPS automático (Let's Encrypt) para o domínio do .env. O DNS do domínio precisa apontar para o IP público da VM.
+# Sem domínio próprio, use <IP-da-VM>.sslip.io (ex.: 152.67.10.20.sslip.io).
+{$DOMINIO} {
+	encode zstd gzip
+	# repassa X-Forwarded-For/Proto: a aplicação usa o IP real no limite de login e na auditoria. WebSocket do Blazor incluído.
+	reverse_proxy app:8080
+}

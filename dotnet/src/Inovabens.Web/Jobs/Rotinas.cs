@@ -2,6 +2,7 @@ using Inovabens.Core;
 using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Financeiro;
+using Inovabens.Core.Imoveis;
 
 namespace Inovabens.Web.Jobs;
 
@@ -107,4 +108,18 @@ public sealed class RenovacaoCanaisGoogleJob(IServiceScopeFactory e, InovabensOp
     protected internal override DateTime ProximaBR(DateTime agoraBR) => Diaria(agoraBR, 4);
 
     protected override Task Rodar(IServiceProvider sp, CancellationToken ct) => sp.GetRequiredService<GoogleService>().RenovarCanaisAsync(ct);
+}
+
+/// <summary>A cada minuto: envia ao Magnific as fotos novas e recolhe as que ficaram prontas (só com MAGNIFIC_API_KEY).</summary>
+public sealed class MelhoriaFotosJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<MelhoriaFotosJob> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "melhoria de fotos (Magnific)";
+    protected override bool Habilitada => Opcoes.MagnificApiKey is not null;
+    protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 1);
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<MelhoriaFotosService>().ProcessarAsync(ct);
+        if (n > 0) Log.LogInformation("Magnific: {Qtd} foto(s) melhorada(s)", n);
+    }
 }

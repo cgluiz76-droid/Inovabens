@@ -8,11 +8,12 @@ using P = Inovabens.Core.Dominio.Permissoes;
 
 namespace Inovabens.Core.Pessoas;
 
-public sealed record FiltroPessoas(string? Termo = null, PapelPessoa? Papel = null, int Pagina = 1, int TamanhoPagina = 20);
+public sealed record FiltroPessoas(string? Termo = null, string? Papel = null, int Pagina = 1, int TamanhoPagina = 20);
 
 public sealed class PapelEntrada
 {
-    public PapelPessoa Papel { get; set; }
+    /// <summary>Código do perfil de pessoa (cadastro da Administração).</summary>
+    public string Papel { get; set; } = "";
     [StringLength(100)] public string? Especialidade { get; set; }
 }
 
@@ -26,7 +27,7 @@ public sealed class PessoaForm : IValidatableObject
 
     public string? CpfCnpj { get; set; }
     [StringLength(30)] public string? Rg { get; set; }
-    [EmailAddress(ErrorMessage = "E-mail inválido."), StringLength(200)] public string? Email { get; set; }
+    [StringLength(200)] public string? Email { get; set; }
     [StringLength(30)] public string? Telefone { get; set; }
     [StringLength(30)] public string? Whatsapp { get; set; }
     [StringLength(12)] public string? Cep { get; set; }
@@ -40,21 +41,32 @@ public sealed class PessoaForm : IValidatableObject
     public DateTime? LgpdConsentimentoEm { get; set; }
     public List<PapelEntrada> Papeis { get; set; } = [];
 
-    /// <summary>Só os dígitos do CPF/CNPJ (como grava a versão Node).</summary>
-    public string? DocumentoDigitos => Texto.Limpo(CpfCnpj) is { } d ? new string(d.Where(char.IsDigit).ToArray()) : null;
+    /// <summary>CPF/CNPJ sem máscara (como grava a versão Node); o CNPJ alfanumérico mantém as letras.</summary>
+    public string? DocumentoDigitos => Formatos.DocumentoSemMascara(CpfCnpj);
 
     public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {
-        if (DocumentoDigitos is { } d && d.Length is not (11 or 14))
-            yield return new ValidationResult("CPF (11 dígitos) ou CNPJ (14 dígitos)", [nameof(CpfCnpj)]);
-        if (Texto.Limpo(Uf) is { Length: not 2 })
-            yield return new ValidationResult("UF com 2 letras", [nameof(Uf)]);
+        if (DocumentoDigitos is { } d)
+        {
+            if (Tipo == TipoPessoa.PF && !Formatos.CpfValido(d))
+                yield return new ValidationResult("CPF deve ter 11 dígitos.", [nameof(CpfCnpj)]);
+            if (Tipo == TipoPessoa.PJ && !Formatos.CnpjValido(d))
+                yield return new ValidationResult("CNPJ deve ter 14 caracteres (12 letras ou dígitos + 2 dígitos).", [nameof(CpfCnpj)]);
+        }
+        if (Texto.Limpo(Email) is { } e && !Formatos.Email().IsMatch(e))
+            yield return new ValidationResult("E-mail inválido.", [nameof(Email)]);
+        if (Formatos.TelefoneDigitos(Telefone) is { } t && !Formatos.TelefoneValido(t))
+            yield return new ValidationResult("Telefone com DDD: (11) 3456-7890 ou (11) 98765-4321.", [nameof(Telefone)]);
+        if (Formatos.TelefoneDigitos(Whatsapp) is { } w && !Formatos.TelefoneValido(w))
+            yield return new ValidationResult("WhatsApp com DDD: (11) 98765-4321.", [nameof(Whatsapp)]);
+        if (Texto.Limpo(Uf) is not null && !Formatos.UfValida(Uf))
+            yield return new ValidationResult("Selecione uma UF válida.", [nameof(Uf)]);
     }
 
     public static PessoaForm De(Pessoa p) => new()
     {
-        Tipo = p.Tipo, NomeRazao = p.NomeRazao, CpfCnpj = p.CpfCnpj, Rg = p.Rg, Email = p.Email, Telefone = p.Telefone,
-        Whatsapp = p.Whatsapp, Cep = p.Cep, Logradouro = p.Logradouro, Numero = p.Numero, Complemento = p.Complemento,
+        Tipo = p.Tipo, NomeRazao = p.NomeRazao, CpfCnpj = p.CpfCnpj is null ? null : Formatos.Documento(p.CpfCnpj), Rg = p.Rg,
+        Email = p.Email, Telefone = Formatos.TelefoneFormatado(p.Telefone), Whatsapp = Formatos.TelefoneFormatado(p.Whatsapp), Cep = p.Cep, Logradouro = p.Logradouro, Numero = p.Numero, Complemento = p.Complemento,
         Bairro = p.Bairro, Cidade = p.Cidade, Uf = p.Uf, Observacoes = p.Observacoes, LgpdConsentimentoEm = p.LgpdConsentimentoEm,
         Papeis = [.. p.Papeis.Select(x => new PapelEntrada { Papel = x.Papel, Especialidade = x.Especialidade })],
     };
@@ -66,8 +78,8 @@ public sealed class PessoaForm : IValidatableObject
         p.CpfCnpj = DocumentoDigitos;
         p.Rg = Texto.Limpo(Rg);
         p.Email = Texto.Limpo(Email)?.ToLowerInvariant();
-        p.Telefone = Texto.Limpo(Telefone);
-        p.Whatsapp = Texto.Limpo(Whatsapp);
+        p.Telefone = Formatos.TelefoneFormatado(Telefone);
+        p.Whatsapp = Formatos.TelefoneFormatado(Whatsapp);
         p.Cep = Texto.Limpo(Cep);
         p.Logradouro = Texto.Limpo(Logradouro);
         p.Numero = Texto.Limpo(Numero);
@@ -97,7 +109,7 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
             q = q.Where(p => EF.Functions.ILike(p.NomeRazao, termo) || EF.Functions.ILike(p.CpfCnpj!, termo)
                 || EF.Functions.ILike(p.Email!, termo) || EF.Functions.ILike(p.Telefone!, termo));
         }
-        if (f.Papel is { } papel) q = q.Where(p => p.Papeis.Any(x => x.Papel == papel));
+        if (Texto.Limpo(f.Papel) is { } papel) q = q.Where(p => p.Papeis.Any(x => x.Papel == papel));
         var pagina = Math.Max(1, f.Pagina);
         var total = await q.CountAsync();
         var itens = await q.Include(p => p.Papeis).OrderBy(p => p.NomeRazao)
@@ -123,6 +135,7 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
         u.Exigir(P.PessoasCriar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
+        await ExigirPerfisValidos(db, form);
         var p = new Pessoa { Id = Guid.NewGuid(), CriadoPor = u.Id };
         form.AplicarEm(p);
         p.Papeis = form.PapeisPara(p.Id);
@@ -138,11 +151,20 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         var p = await Carregar(db, id, rastrear: true);
+        await ExigirPerfisValidos(db, form);
         var antes = p.Copia();
         form.AplicarEm(p);
         SincronizarPapeis(db, p, form.PapeisPara(p.Id));
         audit.Registrar(db, u.Id, "pessoas", id, "ATUALIZAR", antes, p);
         await db.SaveChangesAsync();
+    }
+
+    private static async Task ExigirPerfisValidos(InovabensDb db, PessoaForm form)
+    {
+        var codigos = form.Papeis.Select(x => x.Papel).Distinct().ToList();
+        if (codigos.Count == 0) return;
+        var existentes = await db.PerfisPessoa.CountAsync(x => codigos.Contains(x.Codigo));
+        if (existentes != codigos.Count) throw new RegraNegocioException("Papeis", "Perfil de pessoa inválido.");
     }
 
     /// <summary>Atualiza a lista de papéis no lugar (chave composta pessoa+papel não pode ser apagada e recriada no mesmo SaveChanges).</summary>

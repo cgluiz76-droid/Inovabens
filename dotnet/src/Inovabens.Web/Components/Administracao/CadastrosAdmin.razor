@@ -1,0 +1,110 @@
+@inherits ComponenteBase
+@inject CadastrosService Servico
+
+<MensagemErro Texto="@Erro" />
+
+<div class="grade-2">
+    <section class="card">
+        <h2>Tipos de imóvel</h2>
+        @if (tipos is not null)
+        {
+            <table class="tabela">
+                <tbody>
+                    @foreach (var t in tipos)
+                    {
+                        <tr>
+                            <td><input class="input" value="@t.Nome" @onchange="e => SalvarTipo(t, e.Value?.ToString() ?? string.Empty, t.Ativo)" /></td>
+                            <td class="acoes-linha">
+                                <label class="check">
+                                    <input type="checkbox" checked="@t.Ativo" @onchange="e => SalvarTipo(t, t.Nome, (bool)e.Value!)" /> Ativo
+                                </label>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <div class="linha-form">
+            <input class="input w-desc" placeholder="Novo tipo de imóvel" @bind="novoTipo" />
+            <button class="btn-primary" disabled="@Ocupado" @onclick="CriarTipo">Adicionar</button>
+        </div>
+        <p class="pequeno mudo">Renomear um tipo altera também os imóveis já cadastrados com ele. Tipo fora de uso: desative-o.</p>
+    </section>
+
+    <section class="card">
+        <h2>Perfis de pessoa</h2>
+        @if (perfis is not null)
+        {
+            <table class="tabela">
+                <tbody>
+                    @foreach (var p in perfis)
+                    {
+                        <tr>
+                            <td><input class="input" value="@p.Nome" @onchange="e => SalvarPerfil(p, e.Value?.ToString() ?? string.Empty, p.Ativo)" /></td>
+                            <td class="acoes-linha">
+                                <label class="check">
+                                    <input type="checkbox" checked="@p.Ativo" @onchange="e => SalvarPerfil(p, p.Nome, (bool)e.Value!)" /> Ativo
+                                </label>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <div class="linha-form">
+            <input class="input w-desc" placeholder="Novo perfil de pessoa" @bind="novoPerfil" />
+            <button class="btn-primary" disabled="@Ocupado" @onclick="CriarPerfil">Adicionar</button>
+        </div>
+        <p class="pequeno mudo">
+            Perfis marcados no cadastro de Pessoas (cliente, proprietário, fiador...). Um perfil desativado deixa de ser
+            oferecido, mas continua nas pessoas que já o têm.
+        </p>
+    </section>
+</div>
+
+@code {
+    private IReadOnlyList<TipoImovel>? tipos;
+    private IReadOnlyList<PerfilPessoa>? perfis;
+    private string novoTipo = "";
+    private string novoPerfil = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarTipos();
+        await CarregarPerfis();
+    }
+
+    private Task CarregarTipos() => Executar(async () => tipos = await Servico.TiposImovelAsync(incluirInativos: true));
+
+    private Task CarregarPerfis() => Executar(async () => perfis = await Servico.PerfisPessoaAsync(incluirInativos: true));
+
+    private async Task SalvarTipo(TipoImovel t, string nome, bool ativo)
+    {
+        var ok = await Executar(() => Servico.AtualizarTipoImovelAsync(Usuario, t.Id, new TipoImovelForm { Nome = nome, Ativo = ativo }));
+        var erro = Erro;
+        await CarregarTipos();
+        if (!ok) Erro = erro;
+    }
+
+    private async Task CriarTipo()
+    {
+        if (!await Executar(() => Servico.CriarTipoImovelAsync(Usuario, new TipoImovelForm { Nome = novoTipo }))) return;
+        novoTipo = "";
+        await CarregarTipos();
+    }
+
+    private async Task SalvarPerfil(PerfilPessoa p, string nome, bool ativo)
+    {
+        var ok = await Executar(() => Servico.AtualizarPerfilPessoaAsync(Usuario, p.Codigo, new PerfilPessoaForm { Nome = nome, Ativo = ativo }));
+        var erro = Erro;
+        await CarregarPerfis();
+        if (!ok) Erro = erro;
+    }
+
+    private async Task CriarPerfil()
+    {
+        if (!await Executar(() => Servico.CriarPerfilPessoaAsync(Usuario, new PerfilPessoaForm { Nome = novoPerfil }))) return;
+        novoPerfil = "";
+        await CarregarPerfis();
+    }
+}

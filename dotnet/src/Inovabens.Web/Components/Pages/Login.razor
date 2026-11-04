@@ -11,8 +11,11 @@
 
 <EditForm Model="Entrada" method="post" OnValidSubmit="Entrar" FormName="login" class="login-cartao">
     <DataAnnotationsValidator />
-    <div class="marca-login">🏢 Inovabens</div>
-    <p class="mudo">Gestão imobiliária e financeira</p>
+    <img class="logo-login" src="img/logo-inovabens.webp" width="960" height="668" alt="Inovabens — Gestão patrimonial — CRECI 50457-J" />
+    <div>
+        <h1>Bem-vindo de volta</h1>
+        <p class="mudo pequeno">Entre com seu e-mail e senha para continuar.</p>
+    </div>
     <MensagemErro Texto="@erro" />
 
     <label class="campo">

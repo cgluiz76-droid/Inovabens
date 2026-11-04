@@ -3,6 +3,7 @@ using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using P = Inovabens.Core.Dominio.Permissoes;
 
 namespace Inovabens.Core.Imoveis;
@@ -12,7 +13,9 @@ namespace Inovabens.Core.Imoveis;
 /// Toda operação recebe o usuário atual: permissões e escopo (Corretor só vê os seus) são verificados aqui,
 /// não apenas na tela.
 /// </summary>
-public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, AuditService audit, StorageService storage)
+public sealed class ImoveisService(
+    IDbContextFactory<InovabensDb> fabrica, AuditService audit, IArmazenamento armazenamento, PastasDriveService pastas,
+    MagnificCliente magnific, ILogger<ImoveisService> log)
 {
     public const long TamanhoMaximoArquivo = 25 * 1024 * 1024;
 
@@ -64,14 +67,18 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
             .Select(p => new ProprietarioDetalhe(p.PessoaId, p.Pessoa!.NomeRazao, p.Percentual, p.Principal, p.InicioEm, p.FimEm))
             .ToListAsync();
         var envs = await db.ImovelEnvolvidos.AsNoTracking().Where(e => e.ImovelId == id)
-            .Select(e => new EnvolvidoDetalhe(e.PessoaId, e.Pessoa!.NomeRazao, e.Papel, e.Observacao))
+            .Select(e => new EnvolvidoDetalhe(e.PessoaId, e.Pessoa!.NomeRazao, e.Papel,
+                db.PerfisPessoa.Where(p => p.Codigo == e.Papel).Select(p => p.Nome).FirstOrDefault() ?? e.Papel, e.Observacao))
             .ToListAsync();
         var corretor = im.CorretorResponsavelId is { } cid
             ? await db.Usuarios.Where(x => x.Id == cid).Select(x => x.Nome).FirstOrDefaultAsync()
             : null;
-        return new ImovelDetalhe(im, corretor, carac,
-            midias.Select(m => new MidiaDetalhe(m, storage.UrlAssinada(m.ArquivoChave))).ToList(), props, envs);
+        return new ImovelDetalhe(im, corretor, carac, [.. midias.Select(Detalhar)], props, envs, pastas.Link(im.DrivePastaId));
     }
+
+    /// <summary>O id do arquivo vai na URL: muda quando a foto é trocada (Magnific), então o navegador pode guardar em cache.</summary>
+    private static MidiaDetalhe Detalhar(ImovelMidia m) =>
+        new(m, string.IsNullOrEmpty(m.ArquivoChave) ? null : $"imoveis/midias/{m.Id}/{Uri.EscapeDataString(m.ArquivoChave)}");
 
     public async Task<Guid> CriarAsync(UsuarioAtual u, ImovelForm form)
     {
@@ -86,14 +93,46 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
             "select coalesce(max(substring(codigo from 5)::int), 0) + 1 as \"Value\" from imoveis where codigo ~ '^IMV-[0-9]+$'")
             .SingleAsync();
 
+        await ExigirTipoValido(db, form.Tipo, atual: null);
         var im = new Imovel { Codigo = RegrasImovel.FormatarCodigo(n) };
         form.AplicarEm(im);
+        await ExigirNomeDriveLivre(db, im.NomeDrive, exceto: null);
         im.CorretorResponsavelId = Acesso.ResponsavelAoCriar(u, form.CorretorResponsavelId);
         db.Imoveis.Add(im);
         audit.Registrar(db, u.Id, "imoveis", im.Id, "CRIAR", depois: im);
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+        await TentarCriarPastas(im.Id);
         return im.Id;
+    }
+
+    /// <summary>
+    /// Cria a pasta do imóvel e as subpastas no Drive. Se o Drive falhar, o cadastro continua valendo: a ficha mostra
+    /// o botão "Criar pastas no Drive", e o primeiro envio de arquivo também tenta de novo.
+    /// </summary>
+    private async Task TentarCriarPastas(Guid id)
+    {
+        if (!armazenamento.Habilitado) return;
+        try { await pastas.GarantirAsync(id); }
+        catch (Exception e) { log.LogWarning("Pastas do imóvel {Imovel} não criadas no Drive: {Erro}", id, e.Message); }
+    }
+
+    /// <summary>Cria (ou recria) as pastas no Drive pela ficha do imóvel.</summary>
+    public async Task CriarPastasDriveAsync(UsuarioAtual u, Guid id)
+    {
+        u.Exigir(P.ImoveisEditar);
+        await using (var db = await fabrica.CreateDbContextAsync())
+            await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
+        await pastas.GarantirAsync(id);
+    }
+
+    /// <summary>Duas pastas com o mesmo nome no Drive confundiriam os arquivos de imóveis diferentes.</summary>
+    private static async Task ExigirNomeDriveLivre(InovabensDb db, string? nome, Guid? exceto)
+    {
+        if (nome is null) return;
+        var minusculo = nome.ToLower();
+        if (await db.Imoveis.AnyAsync(i => i.ExcluidoEm == null && i.Id != exceto && i.NomeDrive != null && i.NomeDrive.ToLower() == minusculo))
+            throw new RegraNegocioException(nameof(ImovelForm.NomeDrive), "Já existe outro imóvel com este nome de pasta no Drive.");
     }
 
     public async Task AtualizarAsync(UsuarioAtual u, Guid id, ImovelForm form)
@@ -102,11 +141,26 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         var im = await Acesso.ImovelComAcesso(db, u, id);
+        await ExigirTipoValido(db, form.Tipo, atual: im.Tipo);
         var antes = im.Copia();
         form.AplicarEm(im);
+        await ExigirNomeDriveLivre(db, im.NomeDrive, exceto: id);
         if (Acesso.NovoResponsavel(u, form.CorretorResponsavelId) is { } r) im.CorretorResponsavelId = r;
+        // nome mudou: renomeia a pasta no Drive antes de gravar, para os dois não ficarem diferentes
+        if (im.NomeDrive is { } nome && nome != antes.NomeDrive && im.DrivePastaId is { } pasta && armazenamento.Habilitado)
+            await pastas.RenomearAsync(pasta, nome);
         audit.Registrar(db, u.Id, "imoveis", id, "ATUALIZAR", antes, im);
         await db.SaveChangesAsync();
+        if (im.DrivePastaId is null) await TentarCriarPastas(id);
+    }
+
+    /// <summary>O tipo precisa estar cadastrado e ativo; um tipo desativado só vale para o imóvel que já o tinha.</summary>
+    private static async Task ExigirTipoValido(InovabensDb db, string tipo, string? atual)
+    {
+        var nome = tipo.Trim();
+        if (nome == atual) return;
+        if (!await db.TiposImovel.AnyAsync(t => t.Nome == nome && t.Ativo))
+            throw new RegraNegocioException(nameof(ImovelForm.Tipo), "Selecione um tipo de imóvel cadastrado.");
     }
 
     /// <summary>Exclusão lógica (excluido_em), como no sistema original.</summary>
@@ -185,32 +239,80 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
 
     /* ------------------------------- Mídias ------------------------------- */
 
-    public bool ArmazenamentoHabilitado => storage.Habilitado;
+    public bool ArmazenamentoHabilitado => armazenamento.Habilitado;
 
+    /// <summary>
+    /// Grava o arquivo na subpasta escolhida da pasta do imóvel no Drive. Só imagens e vídeos em "04 - Fotos e Vídeos"
+    /// entram na galeria (capa, limite de fotos, site); o resto é documento.
+    /// </summary>
     public async Task EnviarMidiaAsync(UsuarioAtual u, Guid id, Stream conteudo, string nomeOriginal, string contentType,
-        TipoMidia tipo, string? legenda = null, bool publica = true, CancellationToken ct = default)
+        int subpasta, string? legenda = null, CancellationToken ct = default)
     {
         u.Exigir(P.ImoveisEditar);
         await using var db = await fabrica.CreateDbContextAsync();
         await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
-        if (!storage.Habilitado) throw new ServicoIndisponivelException("Armazenamento de arquivos não configurado (S3_*).");
+        if (!armazenamento.Habilitado)
+            throw new ServicoIndisponivelException("Google Drive não configurado (GOOGLE_DRIVE_ID e GOOGLE_DRIVE_CREDENCIAIS).");
+        SubpastasDrive.Nome(subpasta); // valida
 
-        var arquivo = RegrasImovel.ArquivoSeguro(nomeOriginal, contentType);
-        if (tipo != TipoMidia.DOCUMENTO && tipo != arquivo.Tipo) tipo = TipoMidia.DOCUMENTO; // "foto" que não é imagem permitida
-        var chave = $"imoveis/{id}/{Guid.NewGuid()}{arquivo.Extensao}";
-        await storage.EnviarAsync(chave, conteudo, arquivo.ContentType, arquivo.Download ? nomeOriginal : null, ct);
+        var tipo = SubpastasDrive.TipoNaPasta(subpasta, RegrasImovel.ArquivoSeguro(nomeOriginal, contentType).Tipo);
+        if (tipo == TipoMidia.FOTO && await db.ImovelMidias.CountAsync(m => m.ImovelId == id && m.Tipo == TipoMidia.FOTO, ct) >= RegrasImovel.MaximoFotos)
+            throw new RegraNegocioException("arquivo", $"Limite de {RegrasImovel.MaximoFotos} fotos por imóvel atingido. Exclua uma foto para enviar outra.");
+        var nome = Path.GetFileName(nomeOriginal.Trim());
+        if (nome.Length == 0) nome = "arquivo";
+        if (nome.Length > 255) nome = nome[..255];
+
+        // no Drive o arquivo fica com o tipo informado (para abrir certo lá); ao servir pelo sistema, ArquivoSeguro filtra
+        var pasta = await pastas.SubpastaAsync(id, subpasta, ct);
+        var chave = await PastasDriveService.Chamar(() => armazenamento.EnviarAsync(pasta, nome, conteudo, RegrasImovel.TipoInformado(contentType), ct));
 
         var proximaOrdem = (await db.ImovelMidias.Where(m => m.ImovelId == id).MaxAsync(m => (int?)m.Ordem, ct) ?? -1) + 1;
         var temFoto = await db.ImovelMidias.AnyAsync(m => m.ImovelId == id && m.Tipo == TipoMidia.FOTO, ct);
         db.ImovelMidias.Add(new ImovelMidia
         {
-            ImovelId = id, Tipo = tipo, ArquivoChave = chave,
-            NomeOriginal = nomeOriginal.Length > 255 ? nomeOriginal[..255] : nomeOriginal,
+            ImovelId = id, Tipo = tipo, ArquivoChave = chave, Subpasta = (short)subpasta,
+            NomeOriginal = nome,
             Legenda = Texto.Limpo(legenda), Ordem = proximaOrdem,
             Capa = tipo == TipoMidia.FOTO && !temFoto, // a primeira foto vira capa
-            Publica = publica,
+            Publica = tipo is TipoMidia.FOTO or TipoMidia.VIDEO, // documentos nunca vão para o site
+            // com o Magnific configurado, a foto é melhorada em segundo plano (MelhoriaFotosService)
+            MelhoriaStatus = MelhoriaAutomatica(tipo, RegrasImovel.TipoInformado(contentType)) ? StatusMelhoria.PENDENTE : null,
+            MelhoriaAtualizadaEm = DateTime.UtcNow,
         });
         await db.SaveChangesAsync(ct);
+    }
+
+    public bool MelhoriaHabilitada => magnific.Configurado && armazenamento.Habilitado;
+
+    private bool MelhoriaAutomatica(TipoMidia tipo, string contentType) =>
+        MelhoriaHabilitada && tipo == TipoMidia.FOTO && ImagemFoto.Suportado(contentType);
+
+    /// <summary>Só as mídias do imóvel (a tela recarrega enquanto há fotos sendo melhoradas).</summary>
+    public async Task<IReadOnlyList<MidiaDetalhe>> MidiasAsync(UsuarioAtual u, Guid id)
+    {
+        u.Exigir(P.ImoveisVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
+        var midias = await db.ImovelMidias.AsNoTracking().Where(m => m.ImovelId == id).OrderBy(m => m.Ordem).ToListAsync();
+        return [.. midias.Select(Detalhar)];
+    }
+
+    /// <summary>
+    /// Arquivo para o navegador (o Drive é privado; o sistema confere o acesso e repassa). <paramref name="arquivoId"/>
+    /// tem de ser o arquivo atual da mídia ou o original guardado pela melhoria.
+    /// </summary>
+    public async Task<ArquivoMidia> ArquivoMidiaAsync(UsuarioAtual u, Guid midiaId, string arquivoId, CancellationToken ct = default)
+    {
+        u.Exigir(P.ImoveisVer);
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var m = await db.ImovelMidias.AsNoTracking().SingleOrDefaultAsync(x => x.Id == midiaId, ct)
+            ?? throw new NaoEncontradoException("Arquivo não encontrado.");
+        await Acesso.ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
+        if (arquivoId != m.ArquivoChave && arquivoId != m.ArquivoOriginalChave) throw new NaoEncontradoException("Arquivo não encontrado.");
+        var conteudo = await armazenamento.BaixarAsync(arquivoId, ct) ?? throw new NaoEncontradoException("Arquivo não encontrado no Google Drive.");
+        // só imagem, vídeo e PDF abrem no navegador; o resto (HTML, SVG...) é sempre baixado
+        var seguro = RegrasImovel.ArquivoSeguro(m.NomeOriginal ?? "arquivo", conteudo.Tipo);
+        return new ArquivoMidia(conteudo.Dados, seguro.ContentType, m.NomeOriginal ?? "arquivo", seguro.Download);
     }
 
     public async Task AtualizarMidiaAsync(UsuarioAtual u, Guid midiaId, MidiaAlteracao b)
@@ -238,7 +340,8 @@ public sealed class ImoveisService(IDbContextFactory<InovabensDb> fabrica, Audit
         var m = await MidiaComAcesso(db, u, midiaId);
         db.ImovelMidias.Remove(m);
         await db.SaveChangesAsync();
-        await storage.RemoverAsync(m.ArquivoChave);
+        await armazenamento.RemoverAsync(m.ArquivoChave);
+        if (m.ArquivoOriginalChave is { } original) await armazenamento.RemoverAsync(original);
     }
 
     private static async Task<ImovelMidia> MidiaComAcesso(InovabensDb db, UsuarioAtual u, Guid midiaId)

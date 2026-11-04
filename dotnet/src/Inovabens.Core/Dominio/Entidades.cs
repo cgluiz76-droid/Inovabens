@@ -43,6 +43,10 @@ public class Imovel
     public decimal? PrecoLocacao { get; set; }
     public bool DivulgarSite { get; set; }
     public Guid? CorretorResponsavelId { get; set; }
+    /// <summary>Nome da pasta principal do imóvel no Google Drive ("Nome para Drive do Empreendimento").</summary>
+    public string? NomeDrive { get; set; }
+    /// <summary>Id da pasta principal no Drive; null enquanto ainda não foi criada.</summary>
+    public string? DrivePastaId { get; set; }
     /// <summary>jsonb livre (atributos extras).</summary>
     public string? Atributos { get; set; } = "{}";
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
@@ -75,13 +79,23 @@ public class ImovelMidia
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ImovelId { get; set; }
     public TipoMidia Tipo { get; set; } = TipoMidia.FOTO;
+    /// <summary>Id do arquivo no Google Drive.</summary>
     public string ArquivoChave { get; set; } = "";
+    /// <summary>Subpasta do imóvel no Drive (1 a 6, ver <c>SubpastasDrive</c>); null nos arquivos anteriores ao Drive.</summary>
+    public short? Subpasta { get; set; }
     public string? NomeOriginal { get; set; }
     public string? Legenda { get; set; }
     public int Ordem { get; set; }
     public bool Capa { get; set; }
     public bool Publica { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    /// <summary>Foto como foi enviada, guardada quando o Magnific gera a versão melhorada (que vira ArquivoChave).</summary>
+    public string? ArquivoOriginalChave { get; set; }
+    public StatusMelhoria? MelhoriaStatus { get; set; }
+    /// <summary>task_id do Magnific enquanto a melhoria está em processamento.</summary>
+    public string? MelhoriaTarefa { get; set; }
+    public string? MelhoriaErro { get; set; }
+    public DateTime? MelhoriaAtualizadaEm { get; set; }
 }
 
 [Table("imovel_proprietarios")]
@@ -97,13 +111,23 @@ public class ImovelProprietario
     [JsonIgnore] public Pessoa? Pessoa { get; set; }
 }
 
+/// <summary>Tipo de imóvel, mantido na Administração; imoveis.tipo guarda o nome (renomear propaga por FK).</summary>
+[Table("tipos_imovel")]
+public class TipoImovel
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Nome { get; set; } = "";
+    public bool Ativo { get; set; } = true;
+}
+
 [Table("imovel_envolvidos")]
 public class ImovelEnvolvido
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ImovelId { get; set; }
     public Guid PessoaId { get; set; }
-    public PapelPessoa Papel { get; set; }
+    /// <summary>Código do perfil de pessoa (tabela perfis_pessoa).</summary>
+    public string Papel { get; set; } = "";
     public string? Observacao { get; set; }
     [JsonIgnore] public Pessoa? Pessoa { get; set; }
 }

@@ -1,0 +1,52 @@
+# Produção em uma VM Always Free da Oracle Cloud (Ampere A1 / ARM ou AMD): PostgreSQL + aplicação + Caddy (HTTPS).
+# Rode a partir desta pasta, depois de criar o .env (veja .env.example ou use instalar.sh):
+#   docker compose up -d --build
+# Só o Caddy fica exposto (80/443). Banco e aplicação ficam na rede interna do Docker.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inovabens
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      POSTGRES_DB: inovabens
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U inovabens"], interval: 5s, timeout: 3s, retries: 10 }
+
+  app:
+    build: { context: ../../dotnet }
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      DATABASE_URL: postgres://inovabens:${DB_PASSWORD}@db:5432/inovabens
+      TOKEN_ENC_KEY: ${TOKEN_ENC_KEY:?defina TOKEN_ENC_KEY no .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?defina JWT_REFRESH_SECRET no .env}
+      WEB_URL: https://${DOMINIO}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      # Fotos/documentos no drive compartilhado do Google (vazio = envio desligado). A chave JSON da conta de
+      # serviço fica em ./google-drive.json, nesta pasta da VM (nunca no Git).
+      GOOGLE_DRIVE_ID: ${GOOGLE_DRIVE_ID:-}
+      GOOGLE_DRIVE_CREDENCIAIS: /run/secrets/google-drive.json
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: https://${DOMINIO}/api/v1/integracoes/google/callback
+      GOOGLE_WEBHOOK_URL: ${GOOGLE_WEBHOOK_URL:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      MAGNIFIC_API_KEY: ${MAGNIFIC_API_KEY:-}
+    volumes:
+      - ./google-drive.json:/run/secrets/google-drive.json:ro
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    environment: { DOMINIO: "${DOMINIO:?defina DOMINIO no .env}" }
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes: { pgdata: {}, caddydata: {}, caddyconfig: {} }

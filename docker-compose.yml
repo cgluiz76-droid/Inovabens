@@ -8,15 +8,6 @@ services:
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U inovabens"], interval: 5s, timeout: 3s, retries: 10 }
-  # Arquivos (fotos/documentos) — OPCIONAL: só sobe com  docker compose --profile arquivos up
-  # (o MinIO não é mais publicado no Docker Hub; a imagem vem do quay.io)
-  minio:
-    profiles: [arquivos]
-    image: quay.io/minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment: { MINIO_ROOT_USER: minioadmin, MINIO_ROOT_PASSWORD: minioadmin }
-    ports: ["9000:9000", "9001:9001"]
-    volumes: [miniodata:/data]
   app:
     build: { context: ./dotnet }
     depends_on: { db: { condition: service_healthy } }
@@ -27,14 +18,14 @@ services:
       TOKEN_ENC_KEY: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
       JWT_REFRESH_SECRET: local-refresh-secret-troque-em-producao-9876543210
       WEB_URL: http://localhost:5051
-      # vazio = envio de fotos/documentos desligado. Para ligar, veja o README (perfil "arquivos").
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_BUCKET: inovabens
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
-      S3_FORCE_PATH_STYLE: "true"
+      # fotos/documentos no Google Drive (vazio = envio desligado). Veja o README.
+      GOOGLE_DRIVE_ID: ${GOOGLE_DRIVE_ID:-}
+      GOOGLE_DRIVE_CREDENCIAIS_JSON: ${GOOGLE_DRIVE_CREDENCIAIS_JSON:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: http://localhost:5051/api/v1/integracoes/google/callback
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      # com a chave, as fotos enviadas são melhoradas automaticamente pelo Magnific (consome créditos)
+      MAGNIFIC_API_KEY: ${MAGNIFIC_API_KEY:-}
     ports: ["5051:8080"]
-volumes: { pgdata: {}, miniodata: {} }
+volumes: { pgdata: {} }

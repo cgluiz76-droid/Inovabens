@@ -133,7 +133,7 @@ else
                     </label>
                 }
             </div>
-            <CamposLead Form="novo" Responsaveis="responsaveis" Finalidade />
+            <CamposLead Form="novo" Responsaveis="responsaveis" Imoveis="imoveis" Finalidade />
             <MensagemErro Texto="@erroModal" />
             <div class="acoes">
                 <button type="submit" class="btn-primary" disabled="@Ocupado">Criar lead</button>
@@ -160,7 +160,7 @@ else
         <h3>Dados do lead</h3>
         <EditForm Model="edicao" OnValidSubmit="SalvarLead" class="formulario">
             <DataAnnotationsValidator />
-            <CamposLead Form="edicao" Responsaveis="responsaveis" />
+            <CamposLead Form="edicao" Responsaveis="responsaveis" Imoveis="@(Usuario.Pode(Permissoes.CrmEditar) ? opcoesInteresse : null)" />
             @if (Usuario.Pode(Permissoes.CrmEditar))
             {
                 <div class="acoes">
@@ -173,23 +173,9 @@ else
             }
         </EditForm>
 
+        @* quem edita marca os imóveis no formulário acima; aqui ficam os links para abrir cada um *@
         <h3>Imóveis de interesse</h3>
-        @if (Usuario.Pode(Permissoes.CrmEditar) && imoveis.Count > 0)
-        {
-            <div class="checks lista-rolavel">
-                @foreach (var i in imoveis)
-                {
-                    <label>
-                        <input type="checkbox" checked="@interesse.Contains(i.Id)" @onchange="e => AlternarInteresse(i.Id, (bool)e.Value!)" />
-                        @i.Nome
-                    </label>
-                }
-            </div>
-            <div class="acoes">
-                <button class="btn-ghost" disabled="@Ocupado" @onclick="SalvarInteresse">Salvar imóveis de interesse</button>
-            </div>
-        }
-        else if (detalhe.ImoveisInteresse.Count == 0)
+        @if (detalhe.ImoveisInteresse.Count == 0)
         {
             <p class="vazio">Nenhum imóvel marcado.</p>
         }
@@ -270,7 +256,7 @@ else
 
     private LeadDetalhe? detalhe;
     private LeadForm? edicao;
-    private HashSet<Guid> interesse = [];
+    private IReadOnlyList<Opcao> opcoesInteresse = [];
     private IReadOnlyList<InteracaoDetalhe>? interacoes;
     private IReadOnlyList<HistoricoEstagio>? historico;
     private InteracaoForm interacao = new();
@@ -280,7 +266,7 @@ else
         await Executar(async () =>
         {
             pessoas = await Opcoes.PessoasAsync(Usuario);
-            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            imoveis = await Opcoes.ImoveisParaInteresseAsync(Usuario);
             if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
         });
         await Carregar();
@@ -334,7 +320,7 @@ else
     {
         erroModal = null;
         contatoNovo = true;
-        novo = new LeadForm { Finalidade = funil == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO };
+        novo = new LeadForm { Finalidade = funil == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO, ImoveisInteresse = [] };
     }
 
     private async Task CriarLead()
@@ -370,8 +356,11 @@ else
         {
             Finalidade = d.Finalidade, Origem = d.Origem, ResponsavelId = d.ResponsavelId, OrcamentoMin = d.OrcamentoMin,
             OrcamentoMax = d.OrcamentoMax, ProximaAcaoEm = d.ProximaAcaoEm is { } p ? DatasBR.DeUtc(p) : null, PessoaId = d.PessoaId,
+            Observacoes = d.Observacoes, ImoveisInteresse = [.. detalhe.ImoveisInteresse.Select(i => i.Id)],
         };
-        interesse = [.. detalhe.ImoveisInteresse.Select(i => i.Id)];
+        // os já marcados continuam na lista mesmo se vendidos/arquivados depois, para poder desmarcar
+        opcoesInteresse = [.. imoveis, .. detalhe.ImoveisInteresse.Where(i => imoveis.All(o => o.Id != i.Id))
+            .Select(i => new Opcao(i.Id, $"{i.Codigo} · {i.Titulo} ({Texto.Rotulo(i.Situacao)})"))];
     }
 
     private void Fechar()
@@ -405,19 +394,6 @@ else
         if (!await Executar(() => Servico.ExcluirAsync(Usuario, detalhe!.Dados.Id))) return;
         Fechar();
         await Carregar();
-    }
-
-    private void AlternarInteresse(Guid id, bool marcado)
-    {
-        if (marcado) interesse.Add(id);
-        else interesse.Remove(id);
-    }
-
-    private async Task SalvarInteresse()
-    {
-        var id = detalhe!.Dados.Id;
-        await Executar(() => Servico.DefinirInteresseAsync(Usuario, id, interesse), noModal: true);
-        if (erroModal is null) await Abrir(id);
     }
 
     private async Task RegistrarInteracao()

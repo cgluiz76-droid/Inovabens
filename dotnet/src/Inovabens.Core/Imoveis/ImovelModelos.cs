@@ -22,11 +22,18 @@ public sealed record ImovelListaItem(
     Guid Id, string Codigo, string Titulo, string Tipo, SituacaoImovel Situacao, FinalidadeImovel Finalidade,
     string? Cidade, string? Bairro, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, string? CorretorNome);
 
-public sealed record MidiaDetalhe(ImovelMidia Midia, string? Url);
+/// <param name="Url">Endereço no próprio sistema (o arquivo vem do Drive pelo servidor, com verificação de acesso).</param>
+public sealed record MidiaDetalhe(ImovelMidia Midia, string? Url)
+{
+    public string? NomeSubpasta => Midia.Subpasta is { } s && SubpastasDrive.Valida(s) ? SubpastasDrive.Nome(s) : null;
+}
+
+/// <summary>Arquivo de mídia pronto para ser entregue ao navegador.</summary>
+public sealed record ArquivoMidia(byte[] Dados, string ContentType, string Nome, bool Download);
 
 public sealed record ProprietarioDetalhe(Guid PessoaId, string PessoaNome, decimal Percentual, bool Principal, DateOnly? InicioEm, DateOnly? FimEm);
 
-public sealed record EnvolvidoDetalhe(Guid PessoaId, string PessoaNome, PapelPessoa Papel, string? Observacao);
+public sealed record EnvolvidoDetalhe(Guid PessoaId, string PessoaNome, string Papel, string PapelNome, string? Observacao);
 
 public sealed record ImovelDetalhe(
     Imovel Dados,
@@ -34,7 +41,8 @@ public sealed record ImovelDetalhe(
     IReadOnlyList<ImovelCaracteristica> Caracteristicas,
     IReadOnlyList<MidiaDetalhe> Midias,
     IReadOnlyList<ProprietarioDetalhe> Proprietarios,
-    IReadOnlyList<EnvolvidoDetalhe> Envolvidos);
+    IReadOnlyList<EnvolvidoDetalhe> Envolvidos,
+    string? LinkDrive = null);
 
 public sealed record RegularizacaoDetalhe(Regularizacao Dados, string? ProfissionalNome);
 
@@ -56,6 +64,11 @@ public sealed class ImovelForm : IValidatableObject
     [StringLength(200, MinimumLength = 3, ErrorMessage = "O título deve ter de 3 a 200 caracteres.")]
     public string Titulo { get; set; } = "";
 
+    /// <summary>Nome da pasta principal do imóvel no Google Drive.</summary>
+    [Required(ErrorMessage = "Informe o nome da pasta do imóvel no Drive.")]
+    [StringLength(120, MinimumLength = 2, ErrorMessage = "O nome da pasta deve ter de 2 a 120 caracteres.")]
+    public string NomeDrive { get; set; } = "";
+
     public string? DescricaoPublica { get; set; }
     public string? DescricaoInterna { get; set; }
 
@@ -66,7 +79,6 @@ public sealed class ImovelForm : IValidatableObject
     [StringLength(100)] public string? Bairro { get; set; }
     [StringLength(100)] public string? Cidade { get; set; }
 
-    [RegularExpression(@"^\s*[A-Za-z]{2}\s*$", ErrorMessage = "UF deve ter 2 letras.")]
     public string? Uf { get; set; }
 
     [Range(-90, 90, ErrorMessage = "Latitude inválida.")] public double? Latitude { get; set; }
@@ -93,6 +105,13 @@ public sealed class ImovelForm : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {
+        // caracteres que o Windows não aceita em nome de pasta (o Drive para computador sincroniza a pasta)
+        if (NomeDrive?.IndexOfAny(RegrasImovel.CaracteresProibidosPasta) >= 0)
+            yield return new ValidationResult("O nome da pasta não pode ter / \\ : * ? \" < > |", [nameof(NomeDrive)]);
+        if (Texto.Limpo(Uf) is not null && !RegrasImovel.UfValida(Uf))
+            yield return new ValidationResult("Selecione uma UF válida.", [nameof(Uf)]);
+        if ((Latitude is null) != (Longitude is null))
+            yield return new ValidationResult("Informe latitude e longitude.", [nameof(Latitude)]);
         // numeric(12,2) para medidas e numeric(15,2) para dinheiro; nunca negativos
         foreach (var (nome, valor, max) in new (string, decimal?, decimal)[]
                  {
@@ -110,7 +129,7 @@ public sealed class ImovelForm : IValidatableObject
 
     public static ImovelForm De(Imovel i) => new()
     {
-        Finalidade = i.Finalidade, Situacao = i.Situacao, Tipo = i.Tipo, Subtipo = i.Subtipo, Titulo = i.Titulo,
+        Finalidade = i.Finalidade, Situacao = i.Situacao, Tipo = i.Tipo, Subtipo = i.Subtipo, Titulo = i.Titulo, NomeDrive = i.NomeDrive ?? "",
         DescricaoPublica = i.DescricaoPublica, DescricaoInterna = i.DescricaoInterna,
         Cep = i.Cep, Logradouro = i.Logradouro, Numero = i.Numero, Complemento = i.Complemento, Bairro = i.Bairro, Cidade = i.Cidade, Uf = i.Uf,
         Latitude = i.Latitude, Longitude = i.Longitude, EnderecoPublico = i.EnderecoPublico,
@@ -126,6 +145,7 @@ public sealed class ImovelForm : IValidatableObject
     {
         i.Finalidade = Finalidade; i.Situacao = Situacao;
         i.Tipo = Tipo.Trim(); i.Subtipo = Texto.Limpo(Subtipo); i.Titulo = Titulo.Trim();
+        i.NomeDrive = RegrasImovel.NomePasta(NomeDrive);
         i.DescricaoPublica = Texto.Limpo(DescricaoPublica); i.DescricaoInterna = Texto.Limpo(DescricaoInterna);
         i.Cep = Texto.Limpo(Cep); i.Logradouro = Texto.Limpo(Logradouro); i.Numero = Texto.Limpo(Numero);
         i.Complemento = Texto.Limpo(Complemento); i.Bairro = Texto.Limpo(Bairro); i.Cidade = Texto.Limpo(Cidade);
@@ -162,7 +182,8 @@ public sealed class ProprietarioEntrada
 public sealed class EnvolvidoEntrada
 {
     public Guid PessoaId { get; set; }
-    public PapelPessoa Papel { get; set; }
+    /// <summary>Código do perfil de pessoa.</summary>
+    public string Papel { get; set; } = "";
     public string? Observacao { get; set; }
 }
 

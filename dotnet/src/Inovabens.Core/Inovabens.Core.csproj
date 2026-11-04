@@ -7,13 +7,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="4.0.104.7" />
     <PackageReference Include="ClosedXML" Version="0.105.1" />
+    <PackageReference Include="Google.Apis.Drive.v3" Version="1.78.0.4313" />
     <PackageReference Include="Isopoh.Cryptography.Argon2" Version="2.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Otp.NET" Version="1.4.1" />
     <PackageReference Include="QuestPDF" Version="2026.9.1" />
+    <PackageReference Include="SkiaSharp" Version="4.153.2" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.2" />
   </ItemGroup>
 
   <ItemGroup>

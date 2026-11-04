@@ -27,6 +27,10 @@ else
             <p class="codigo">@detalhe.Dados.Codigo</p>
             <h1>@detalhe.Dados.Titulo</h1>
             <span class="badge">@Texto.Rotulo(detalhe.Dados.Situacao)</span>
+            @if (LinkMapa is { } mapa)
+            {
+                <a class="pequeno" href="@mapa" target="_blank" rel="noreferrer">📍 Ver no Google Maps</a>
+            }
         </div>
         <div class="acoes-topo">
             @if (Usuario.Pode(Permissoes.ImoveisExportar))
@@ -78,7 +82,7 @@ else
     }
     else if (aba == Aba.Financeiro)
     {
-        <FinanceiroAba ImovelId="Id" />
+        <FinanceiroAba ImovelId="Id" AoAlterarImovel="Recarregar" />
     }
     else if (aba == Aba.Memorandos)
     {
@@ -104,6 +108,10 @@ else
     private Aba aba = Aba.Ficha;
 
     private bool Editar => Usuario.Pode(Permissoes.ImoveisEditar);
+
+    private string? LinkMapa => detalhe?.Dados is { } d
+        ? RegrasImovel.LinkGoogleMaps(d.Latitude, d.Longitude, RegrasImovel.EnderecoParaMapa(d.Logradouro, d.Numero, d.Bairro, d.Cidade, d.Uf, d.Cep))
+        : null;
 
     protected override Task OnParametersSetAsync() => Recarregar();
 

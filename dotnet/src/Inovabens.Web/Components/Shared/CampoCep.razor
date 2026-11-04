@@ -1,0 +1,81 @@
+@* CEP com máscara: ao completar 8 dígitos consulta o endereço e entrega ao formulário (AoEncontrar), que preenche os
+   campos. Eles continuam editáveis; sem resultado, avisa e o restante é preenchido à mão. *@
+@implements IDisposable
+@inject CepService Ceps
+
+<label class="campo @Classe">
+    <span>CEP</span>
+    <input class="input" type="text" inputmode="numeric" maxlength="9" placeholder="00000-000" data-mascara="cep"
+           @bind="texto" @bind:event="oninput" @bind:after="AoDigitar" />
+    @if (consultando)
+    {
+        <span class="pequeno mudo">Buscando endereço…</span>
+    }
+    else if (aviso is not null)
+    {
+        <span class="pequeno texto-erro" role="alert">@aviso</span>
+    }
+</label>
+
+@code {
+    [Parameter] public string? Valor { get; set; }
+    [Parameter] public EventCallback<string?> ValorChanged { get; set; }
+    [Parameter, EditorRequired] public EventCallback<EnderecoCep> AoEncontrar { get; set; }
+    [Parameter] public string? Classe { get; set; }
+
+    // @bind (e não value + @oninput): o Blazor não sobrescreve o que ainda está sendo digitado com um valor atrasado
+    private string? texto;
+    private string? consultado;
+    private string? aviso;
+    private bool consultando;
+    private CancellationTokenSource? consulta;
+
+    // o formulário trocou o valor (ex.: abriu outro cadastro ou gravou o CEP formatado)
+    protected override void OnParametersSet()
+    {
+        if (Valor != texto) texto = Valor;
+    }
+
+    private async Task AoDigitar()
+    {
+        await ValorChanged.InvokeAsync(texto);
+        var digitos = CepService.Digitos(texto);
+        if (digitos is null)
+        {
+            // CEP incompleto ou apagado: some o aviso e uma nova digitação do mesmo CEP volta a consultar
+            consultado = null;
+            aviso = null;
+            return;
+        }
+        if (digitos == consultado) return;
+        consultado = digitos;
+        await Consultar(digitos);
+    }
+
+    private async Task Consultar(string digitos)
+    {
+        consulta?.Cancel();
+        consulta = new CancellationTokenSource();
+        var ct = consulta.Token;
+        consultando = true;
+        aviso = null;
+        try
+        {
+            var (resultado, endereco) = await Ceps.ConsultarAsync(digitos, ct);
+            if (ct.IsCancellationRequested) return;
+            aviso = resultado switch
+            {
+                ResultadoCep.NaoEncontrado => "Cep não encontrado",
+                ResultadoCep.Indisponivel => "Não foi possível consultar o CEP agora. Preencha o endereço manualmente.",
+                _ => null,
+            };
+            if (endereco is not null) await AoEncontrar.InvokeAsync(endereco);
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested) consultando = false;
+        }
+    }
+
+    public void Dispose() => consulta?.Cancel();
+}

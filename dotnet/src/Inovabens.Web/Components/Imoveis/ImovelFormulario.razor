@@ -1,5 +1,7 @@
 @inherits ComponenteBase
 @inject OpcoesService Opcoes
+@inject CadastrosService Cadastros
+@inject GeocodificacaoService Geo
 
 <EditForm Model="Form" OnValidSubmit="Enviar" class="formulario">
     <DataAnnotationsValidator />
@@ -14,15 +16,15 @@
         </label>
         <label class="campo">
             <span>Tipo</span>
-            <InputText class="input" list="tipos-imovel" @bind-Value="Form.Tipo" />
+            <InputSelect class="input" @bind-Value="Form.Tipo">
+                <option value="">Selecione…</option>
+                @foreach (var t in TiposDisponiveis)
+                {
+                    <option value="@t">@t</option>
+                }
+            </InputSelect>
             <ValidationMessage For="() => Form.Tipo" />
         </label>
-        <datalist id="tipos-imovel">
-            @foreach (var t in Tipos)
-            {
-                <option value="@t"></option>
-            }
-        </datalist>
         <label class="campo">
             <span>Corretor responsável</span>
             <select class="input" @bind="CorretorSelecionado" disabled="@Usuario.EscopoProprio">
@@ -54,13 +56,52 @@
     </div>
 
     <div class="grade-4">
-        <label class="campo"><span>CEP</span><InputText class="input" @bind-Value="Form.Cep" /><ValidationMessage For="() => Form.Cep" /></label>
+        <label class="campo col-2">
+            <span>Nome para Drive do Empreendimento *</span>
+            <InputText class="input" @bind-Value="Form.NomeDrive" placeholder="Ex.: Residencial Gonzaga - Apto 52" />
+            <ValidationMessage For="() => Form.NomeDrive" />
+            <span class="pequeno mudo">Nome da pasta do imóvel no Google Drive (com as subpastas 01 a 06). Mudar aqui renomeia a pasta.</span>
+        </label>
+    </div>
+
+    <div class="grade-4">
+        <CampoCep @bind-Valor="Form.Cep" AoEncontrar="PreencherEndereco" />
         <label class="campo"><span>Logradouro</span><InputText class="input" @bind-Value="Form.Logradouro" /><ValidationMessage For="() => Form.Logradouro" /></label>
         <label class="campo"><span>Número</span><InputText class="input" @bind-Value="Form.Numero" /><ValidationMessage For="() => Form.Numero" /></label>
         <label class="campo"><span>Complemento</span><InputText class="input" @bind-Value="Form.Complemento" /><ValidationMessage For="() => Form.Complemento" /></label>
         <label class="campo"><span>Bairro</span><InputText class="input" @bind-Value="Form.Bairro" /><ValidationMessage For="() => Form.Bairro" /></label>
         <label class="campo"><span>Cidade</span><InputText class="input" @bind-Value="Form.Cidade" /><ValidationMessage For="() => Form.Cidade" /></label>
-        <label class="campo"><span>UF</span><InputText class="input" maxlength="2" @bind-Value="Form.Uf" /><ValidationMessage For="() => Form.Uf" /></label>
+        <label class="campo">
+            <span>UF</span>
+            <InputSelect class="input" @bind-Value="Form.Uf">
+                <option value="">—</option>
+                @foreach (var (sigla, nome) in RegrasImovel.Ufs)
+                {
+                    <option value="@sigla" title="@nome">@sigla · @nome</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="() => Form.Uf" />
+        </label>
+        <div class="campo col-2">
+            <label for="coordenadas-imovel">Localização (latitude, longitude)</label>
+            <input id="coordenadas-imovel" class="input" placeholder="Ex.: -23.5505, -46.6333 (copie do Google Maps)" value="@coordenadas"
+                   @onchange="e => DefinirCoordenadas(e.Value?.ToString())" />
+            <ValidationMessage For="() => Form.Latitude" />
+            @if (erroCoordenadas is not null)
+            {
+                <span class="validation-message">@erroCoordenadas</span>
+            }
+            <div class="acoes-mapa">
+                <button type="button" class="btn-ghost mini" disabled="@(localizando || Endereco is null)" @onclick="Localizar"
+                        title="Busca as coordenadas pelo endereço preenchido acima (@Geo.Provedor)">
+                    @(localizando ? "Localizando…" : "⌖ Localizar pelo endereço")
+                </button>
+                @if (LinkMapa is { } link)
+                {
+                    <a href="@link" target="_blank" rel="noreferrer">Ver no Google Maps ↗</a>
+                }
+            </div>
+        </div>
         <label class="campo"><span>Matrícula</span><InputText class="input" @bind-Value="Form.Matricula" /><ValidationMessage For="() => Form.Matricula" /></label>
         <label class="campo"><span>Cartório</span><InputText class="input" @bind-Value="Form.Cartorio" /><ValidationMessage For="() => Form.Cartorio" /></label>
         <label class="campo"><span>Inscrição municipal</span><InputText class="input" @bind-Value="Form.InscricaoMunicipal" /><ValidationMessage For="() => Form.InscricaoMunicipal" /></label>
@@ -100,9 +141,19 @@
     [Parameter, EditorRequired] public Func<ImovelForm, Task> AoSalvar { get; set; } = default!;
     [Parameter] public string RotuloBotao { get; set; } = "Salvar";
 
-    private static readonly string[] Tipos = ["apartamento", "casa", "terreno", "sala comercial", "galpão", "loja", "fazenda/sítio", "outro"];
-
     private IReadOnlyList<Opcao> corretores = [];
+    private IReadOnlyList<string> tipos = [];
+    private string coordenadas = "";
+    private string? erroCoordenadas;
+    private bool localizando;
+
+    /// <summary>Tipos ativos + o tipo atual do imóvel, mesmo que tenha sido desativado.</summary>
+    private IEnumerable<string> TiposDisponiveis =>
+        string.IsNullOrEmpty(Form.Tipo) || tipos.Contains(Form.Tipo) ? tipos : tipos.Prepend(Form.Tipo);
+
+    private string? Endereco => RegrasImovel.EnderecoParaMapa(Form.Logradouro, Form.Numero, Form.Bairro, Form.Cidade, Form.Uf, Form.Cep);
+
+    private string? LinkMapa => RegrasImovel.LinkGoogleMaps(Form.Latitude, Form.Longitude, Endereco);
 
     private string CorretorSelecionado
     {
@@ -110,7 +161,59 @@
         set => Form.CorretorResponsavelId = Guid.TryParse(value, out var g) ? g : null;
     }
 
-    protected override async Task OnInitializedAsync() => corretores = await Opcoes.CorretoresAsync();
+    // campos continuam editáveis; o que o CEP não trouxer (ex.: logradouro de CEP geral da cidade) fica como estava
+    private void PreencherEndereco(EnderecoCep e)
+    {
+        Form.Cep = e.Cep;
+        Form.Logradouro = e.Logradouro ?? Form.Logradouro;
+        Form.Bairro = e.Bairro ?? Form.Bairro;
+        Form.Cidade = e.Cidade ?? Form.Cidade;
+        Form.Uf = e.Uf ?? Form.Uf;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        corretores = await Opcoes.CorretoresAsync();
+        tipos = [.. (await Cadastros.TiposImovelAsync()).Select(t => t.Nome)];
+    }
+
+    protected override void OnParametersSet()
+    {
+        coordenadas = RegrasImovel.FormatarCoordenadas(Form.Latitude, Form.Longitude);
+        erroCoordenadas = null;
+    }
+
+    private void DefinirCoordenadas(string? texto)
+    {
+        coordenadas = texto ?? "";
+        erroCoordenadas = null;
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            Form.Latitude = Form.Longitude = null;
+        }
+        else if (RegrasImovel.LerCoordenadas(texto) is { } c)
+        {
+            (Form.Latitude, Form.Longitude) = c;
+            coordenadas = RegrasImovel.FormatarCoordenadas(c.Latitude, c.Longitude);
+        }
+        else
+        {
+            erroCoordenadas = "Use o formato latitude, longitude (ex.: -23.5505, -46.6333).";
+        }
+    }
+
+    private async Task Localizar()
+    {
+        if (Endereco is not { } endereco) return;
+        localizando = true;
+        erroCoordenadas = null;
+        try
+        {
+            if (await Geo.LocalizarAsync(endereco) is { } c) DefinirCoordenadas(RegrasImovel.FormatarCoordenadas(c.Latitude, c.Longitude));
+            else erroCoordenadas = "Endereço não encontrado no mapa. Confira o endereço ou cole as coordenadas do Google Maps.";
+        }
+        finally { localizando = false; }
+    }
 
     private async Task Enviar()
     {

@@ -3,6 +3,7 @@
 @inherits ComponenteBase
 @implements IDisposable
 @inject PessoasService Servico
+@inject CadastrosService Cadastros
 @inject IJSRuntime JS
 
 <PageTitle>Pessoas · Inovabens</PageTitle>
@@ -19,10 +20,10 @@
     <input class="input busca" placeholder="Buscar por nome, CPF/CNPJ, e-mail ou telefone…"
            @bind="termo" @bind:event="oninput" @bind:after="AoDigitar" />
     <select class="input filtro" @bind="papel" @bind:after="Filtrar">
-        <option value="">Todos os papéis</option>
-        @foreach (var p in Enum.GetValues<PapelPessoa>())
+        <option value="">Todos os perfis</option>
+        @foreach (var p in perfis)
         {
-            <option value="@p">@Texto.Rotulo(p)</option>
+            <option value="@p.Codigo">@p.Nome</option>
         }
     </select>
 </div>
@@ -42,7 +43,7 @@ else
     <div class="tabela-container">
         <table class="tabela">
             <thead>
-                <tr><th>Nome / Razão social</th><th>CPF/CNPJ</th><th>Contato</th><th>Papéis</th><th></th></tr>
+                <tr><th>Nome / Razão social</th><th>CPF/CNPJ</th><th>Contato</th><th>Perfis</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach (var p in resultado.Itens)
@@ -52,7 +53,7 @@ else
                             <span class="forte">@p.NomeRazao</span>
                             <p class="pequeno mudo">@(p.Tipo == TipoPessoa.PF ? "Pessoa física" : "Pessoa jurídica")@(p.Cidade is null ? "" : $" · {p.Cidade}/{p.Uf}")</p>
                         </td>
-                        <td>@Documento(p.CpfCnpj)</td>
+                        <td>@Formatos.Documento(p.CpfCnpj)</td>
                         <td>
                             @(p.Telefone ?? p.Whatsapp ?? "—")
                             @if (p.Email is not null)
@@ -63,7 +64,7 @@ else
                         <td>
                             @foreach (var x in p.Papeis)
                             {
-                                <span class="badge" title="@x.Especialidade">@Texto.Rotulo(x.Papel)</span>
+                                <span class="badge" title="@x.Especialidade">@NomePerfil(x.Papel)</span>
                             }
                         </td>
                         <td class="acoes-linha">
@@ -101,7 +102,14 @@ else
                 </label>
                 <label class="campo">
                     <span>@(form.Tipo == TipoPessoa.PF ? "CPF" : "CNPJ")</span>
-                    <InputText class="input" @bind-Value="form.CpfCnpj" inputmode="numeric" />
+                    @if (form.Tipo == TipoPessoa.PF)
+                    {
+                        <InputText class="input" @bind-Value="form.CpfCnpj" data-mascara="cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" />
+                    }
+                    else
+                    {
+                        <InputText class="input" @bind-Value="form.CpfCnpj" data-mascara="cnpj" maxlength="18" placeholder="00.000.000/0000-00" />
+                    }
                     <ValidationMessage For="() => form.CpfCnpj" />
                 </label>
                 @if (form.Tipo == TipoPessoa.PF)
@@ -113,21 +121,20 @@ else
                 }
                 <label class="campo">
                     <span>E-mail</span>
-                    <InputText class="input" type="email" @bind-Value="form.Email" />
+                    <InputText class="input" type="email" @bind-Value="form.Email" placeholder="nome@empresa.com.br" />
                     <ValidationMessage For="() => form.Email" />
                 </label>
                 <label class="campo">
                     <span>Telefone</span>
-                    <InputText class="input" type="tel" @bind-Value="form.Telefone" />
+                    <InputText class="input" type="tel" @bind-Value="form.Telefone" data-mascara="telefone" maxlength="15" placeholder="(11) 3456-7890" />
+                    <ValidationMessage For="() => form.Telefone" />
                 </label>
                 <label class="campo">
                     <span>WhatsApp</span>
-                    <InputText class="input" type="tel" @bind-Value="form.Whatsapp" />
+                    <InputText class="input" type="tel" @bind-Value="form.Whatsapp" data-mascara="telefone" maxlength="15" placeholder="(11) 98765-4321" />
+                    <ValidationMessage For="() => form.Whatsapp" />
                 </label>
-                <label class="campo">
-                    <span>CEP</span>
-                    <InputText class="input" @bind-Value="form.Cep" />
-                </label>
+                <CampoCep @bind-Valor="form.Cep" AoEncontrar="PreencherEndereco" />
                 <label class="campo col-2">
                     <span>Logradouro</span>
                     <InputText class="input" @bind-Value="form.Logradouro" />
@@ -150,24 +157,30 @@ else
                 </label>
                 <label class="campo">
                     <span>UF</span>
-                    <InputText class="input" maxlength="2" @bind-Value="form.Uf" />
+                    <InputSelect class="input" @bind-Value="form.Uf">
+                        <option value="">—</option>
+                        @foreach (var (sigla, nome) in Formatos.Ufs)
+                        {
+                            <option value="@sigla" title="@nome">@sigla · @nome</option>
+                        }
+                    </InputSelect>
                     <ValidationMessage For="() => form.Uf" />
                 </label>
             </div>
 
             <fieldset class="campo">
-                <span>Papéis</span>
+                <span>Perfis</span>
                 <div class="checks">
-                    @foreach (var p in Enum.GetValues<PapelPessoa>())
+                    @foreach (var p in perfis.Where(p => p.Ativo || TemPapel(p.Codigo)))
                     {
                         <label>
-                            <input type="checkbox" checked="@TemPapel(p)" @onchange="e => AlternarPapel(p, (bool)e.Value!)" />
-                            @Texto.Rotulo(p)
+                            <input type="checkbox" checked="@TemPapel(p.Codigo)" @onchange="e => AlternarPapel(p.Codigo, (bool)e.Value!)" />
+                            @p.Nome
                         </label>
                     }
                 </div>
             </fieldset>
-            @if (form.Papeis.FirstOrDefault(x => x.Papel == PapelPessoa.PRESTADOR) is { } prestador)
+            @if (form.Papeis.FirstOrDefault(x => x.Papel == PerfilPessoa.Prestador) is { } prestador)
             {
                 <label class="campo">
                     <span>Especialidade do prestador</span>
@@ -203,6 +216,7 @@ else
 
 @code {
     private Paginado<Pessoa>? resultado;
+    private IReadOnlyList<PerfilPessoa> perfis = [];
     private string termo = "";
     private string papel = "";
     private int pagina = 1;
@@ -214,11 +228,17 @@ else
 
     private bool PodeEditar => Usuario.Pode(Permissoes.PessoasEditar);
 
-    protected override Task OnInitializedAsync() => Carregar();
+    protected override async Task OnInitializedAsync()
+    {
+        perfis = await Cadastros.PerfisPessoaAsync(incluirInativos: true);
+        await Carregar();
+    }
+
+    private string NomePerfil(string codigo) => perfis.FirstOrDefault(p => p.Codigo == codigo)?.Nome ?? Texto.Rotulo(codigo);
 
     private Task Carregar() => Executar(async () =>
         resultado = await Servico.ListarAsync(Usuario, new FiltroPessoas(termo,
-            Enum.TryParse<PapelPessoa>(papel, out var p) ? p : null, pagina)));
+            Texto.Limpo(papel), pagina)));
 
     private async Task AoDigitar()
     {
@@ -255,9 +275,19 @@ else
         form = PessoaForm.De(p);
     }
 
-    private bool TemPapel(PapelPessoa p) => form!.Papeis.Any(x => x.Papel == p);
+    // campos continuam editáveis; o que o CEP não trouxer (ex.: logradouro de CEP geral da cidade) fica como estava
+    private void PreencherEndereco(EnderecoCep e)
+    {
+        form!.Cep = e.Cep;
+        form.Logradouro = e.Logradouro ?? form.Logradouro;
+        form.Bairro = e.Bairro ?? form.Bairro;
+        form.Cidade = e.Cidade ?? form.Cidade;
+        form.Uf = e.Uf ?? form.Uf;
+    }
 
-    private void AlternarPapel(PapelPessoa p, bool marcado)
+    private bool TemPapel(string p) => form!.Papeis.Any(x => x.Papel == p);
+
+    private void AlternarPapel(string p, bool marcado)
     {
         form!.Papeis.RemoveAll(x => x.Papel == p);
         if (marcado) form.Papeis.Add(new PapelEntrada { Papel = p });
@@ -285,14 +315,6 @@ else
         if (!await JS.InvokeAsync<bool>("confirm", $"Excluir {p.NomeRazao}? (exclusão lógica)")) return;
         if (await Executar(() => Servico.ExcluirAsync(Usuario, p.Id))) await Carregar();
     }
-
-    private static string Documento(string? d) => d switch
-    {
-        { Length: 11 } => $"{d[..3]}.{d[3..6]}.{d[6..9]}-{d[9..]}",
-        { Length: 14 } => $"{d[..2]}.{d[2..5]}.{d[5..8]}/{d[8..12]}-{d[12..]}",
-        null => "—",
-        _ => d,
-    };
 
     public void Dispose() => espera?.Cancel();
 }

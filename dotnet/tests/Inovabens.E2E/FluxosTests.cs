@@ -77,6 +77,62 @@ public class FluxosTests(Aplicacao app)
     }
 
     [Fact]
+    public async Task Crm_imoveis_de_interesse_pela_busca_parcial_e_observacoes()
+    {
+        var s = Navegacao.Sufixo();
+        var p = await app.NovaPaginaAsync();
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+        await p.CriarImovelAsync($"Apartamento Gonçalves {s}");
+        await p.CriarImovelAsync($"Casa Outra {s}");
+
+        await p.GotoAsync("/crm");
+        await p.Interativa();
+        await p.Botao("+ Novo lead").ClickAsync();
+        await p.GetByLabel("Nome *").FillAsync($"Cliente E2E {s}");
+
+        // busca parcial, sem acento: "goncalves" acha "Gonçalves"; a outra casa não aparece
+        var busca = p.GetByRole(AriaRole.Combobox, new() { Name = "Imóveis de interesse" });
+        await busca.PressSequentiallyAsync($"goncalves {s}");
+        var opcao = p.GetByRole(AriaRole.Option).Filter(new() { HasText = $"Apartamento Gonçalves {s}" });
+        await Expect(opcao).ToBeVisibleAsync();
+        await Expect(p.GetByRole(AriaRole.Option).Filter(new() { HasText = $"Casa Outra {s}" })).ToHaveCountAsync(0);
+        await busca.PressAsync("Enter"); // escolhe a destacada sem enviar o formulário
+        await Expect(p.GetByRole(AriaRole.Button, new() { Name = $"Remover", Exact = false })).ToHaveCountAsync(1);
+        await Expect(busca).ToHaveValueAsync("");
+
+        await p.GetByLabel("Observações").FillAsync("Prefere andar alto");
+        await p.Botao("Criar lead").ClickAsync();
+        await p.GetByRole(AriaRole.Button).Filter(new() { HasText = $"Cliente E2E {s}" }).ClickAsync();
+        await Expect(p.GetByRole(AriaRole.Link, new() { Name = "IMV-", Exact = false })).ToHaveCountAsync(1);
+        await Expect(p.GetByLabel("Observações")).ToHaveValueAsync("Prefere andar alto");
+    }
+
+    /// <summary>Consulta o ViaCEP de verdade (precisa de internet).</summary>
+    [Fact]
+    public async Task Pessoa_cep_completa_endereco_editavel_e_avisa_quando_nao_encontra()
+    {
+        var p = await app.NovaPaginaAsync();
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+        await p.GotoAsync("/pessoas");
+        await p.Interativa();
+        await p.Botao("+ Nova pessoa").ClickAsync();
+
+        var cep = p.GetByLabel("CEP");
+        await cep.PressSequentiallyAsync("01001000");
+        await Expect(cep).ToHaveValueAsync("01001-000");
+        await Expect(p.GetByLabel("Logradouro")).ToHaveValueAsync("Praça da Sé");
+        await Expect(p.GetByLabel("Cidade")).ToHaveValueAsync("São Paulo");
+        await Expect(p.GetByLabel("UF")).ToHaveValueAsync("SP");
+        await p.GetByLabel("Logradouro").FillAsync("Praça da Sé, lado ímpar"); // continua editável
+        await Expect(p.GetByLabel("Logradouro")).ToHaveValueAsync("Praça da Sé, lado ímpar");
+
+        await cep.FillAsync("");
+        await cep.PressSequentiallyAsync("99999999");
+        await Expect(p.GetByText("Cep não encontrado")).ToBeVisibleAsync();
+        await Expect(p.GetByLabel("Logradouro")).ToHaveValueAsync("Praça da Sé, lado ímpar");
+    }
+
+    [Fact]
     public async Task Imovel_checklist_financeiro_e_exportacoes()
     {
         var s = Navegacao.Sufixo();

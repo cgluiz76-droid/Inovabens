@@ -40,4 +40,16 @@ public sealed class OpcoesService(IDbContextFactory<InovabensDb> fabrica)
             .Select(i => new Opcao(i.Id, i.Codigo + " · " + i.Titulo))
             .ToListAsync();
     }
+
+    /// <summary>Imóveis que podem virar interesse de um lead: os visíveis, menos vendidos e arquivados.</summary>
+    public async Task<IReadOnlyList<Opcao>> ImoveisParaInteresseAsync(UsuarioAtual u)
+    {
+        if (!u.Pode(Dominio.Permissoes.ImoveisVer)) return [];
+        await using var db = await fabrica.CreateDbContextAsync();
+        var fora = Crm.CrmService.SituacoesSemInteresse;
+        return await db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null && !fora.Contains(i.Situacao)).VisiveisPara(u)
+            .OrderBy(i => i.Codigo)
+            .Select(i => new Opcao(i.Id, i.Codigo + " · " + i.Titulo))
+            .ToListAsync();
+    }
 }

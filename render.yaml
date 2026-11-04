@@ -24,12 +24,11 @@ services:
       - { key: WEB_URL, sync: false }              # https://inovabens-web.onrender.com (ou seu domínio)
       - { key: SEED_ADMIN_EMAIL, sync: false }
       - { key: SEED_ADMIN_PASSWORD, sync: false }  # senha forte (em produção a senha padrão é recusada)
-      - { key: S3_ENDPOINT, sync: false }
-      - { key: S3_REGION, value: auto }
-      - { key: S3_BUCKET, sync: false }
-      - { key: S3_ACCESS_KEY, sync: false }
-      - { key: S3_SECRET_KEY, sync: false }
+      - { key: GOOGLE_DRIVE_ID, sync: false }                # drive compartilhado das fotos/documentos
+      - { key: GOOGLE_DRIVE_CREDENCIAIS_JSON, sync: false }  # conteúdo da chave JSON da conta de serviço
       - { key: GOOGLE_CLIENT_ID, sync: false }
       - { key: GOOGLE_CLIENT_SECRET, sync: false }
       - { key: GOOGLE_REDIRECT_URI, sync: false }  # https://inovabens-web.onrender.com/api/v1/integracoes/google/callback
+      - { key: GOOGLE_MAPS_API_KEY, sync: false }  # opcional: Geocoding API (sem ela, OpenStreetMap)
+      - { key: MAGNIFIC_API_KEY, sync: false }     # opcional: melhoria automática das fotos (consome créditos)
       - { key: GOOGLE_WEBHOOK_URL, sync: false }   # https://inovabens-web.onrender.com/api/v1/webhooks/google/calendar

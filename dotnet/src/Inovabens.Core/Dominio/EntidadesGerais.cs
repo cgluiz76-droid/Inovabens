@@ -43,9 +43,23 @@ public class Pessoa
 public class PessoaPapel
 {
     [JsonIgnore] public Guid PessoaId { get; set; }
-    public PapelPessoa Papel { get; set; }
+    /// <summary>Código do perfil de pessoa (tabela perfis_pessoa).</summary>
+    public string Papel { get; set; } = "";
     /// <summary>Prestadores: advogado, topógrafo, despachante...</summary>
     public string? Especialidade { get; set; }
+}
+
+/// <summary>Perfil de pessoa (cliente, proprietário, ...), mantido na Administração. O código não muda.</summary>
+[Table("perfis_pessoa")]
+public class PerfilPessoa
+{
+    public const string Cliente = "CLIENTE";
+    public const string Prestador = "PRESTADOR";
+
+    public string Codigo { get; set; } = "";
+    public string Nome { get; set; } = "";
+    public bool Ativo { get; set; } = true;
+    public int Ordem { get; set; }
 }
 
 /* ----------------------------- Memorandos ----------------------------- */
@@ -172,6 +186,7 @@ public class Lead
     public decimal? OrcamentoMax { get; set; }
     public string? MotivoPerda { get; set; }
     public DateTime? ProximaAcaoEm { get; set; }
+    public string? Observacoes { get; set; }
     public int Ordem { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;

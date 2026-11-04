@@ -4,11 +4,13 @@
 
 <AquisicaoSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AtualizarRetorno" />
 <DespesasSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AtualizarRetorno" />
-<ReceitasSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AtualizarRetorno" />
+<ReceitasSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AoAlterarReceita" />
 <RetornoSecao @ref="retorno" ImovelId="ImovelId" />
 
 @code {
     [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    /// <summary>Uma receita de venda muda a situação do imóvel (Vendido): o cabeçalho precisa recarregar.</summary>
+    [Parameter] public Func<Task>? AoAlterarImovel { get; set; }
 
     private RetornoSecao? retorno;
 
@@ -16,4 +18,10 @@
 
     /// <summary>Qualquer lançamento muda o retorno: recalcula o quadro de indicadores.</summary>
     private Task AtualizarRetorno() => retorno?.RecarregarAsync() ?? Task.CompletedTask;
+
+    private async Task AoAlterarReceita()
+    {
+        await AtualizarRetorno();
+        if (AoAlterarImovel is not null) await AoAlterarImovel();
+    }
 }

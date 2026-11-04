@@ -21,7 +21,7 @@ public sealed record Arquivo(byte[] Conteudo, string Nome, string Tipo);
 /// </summary>
 public sealed class RelatoriosService(
     IDbContextFactory<InovabensDb> fabrica, ImoveisService imoveis, AquisicaoService aquisicao, DespesasService despesas,
-    RetornoService retorno, StorageService storage, AuditService audit)
+    RetornoService retorno, IArmazenamento storage, AuditService audit)
 {
     public const string TipoPdf = "application/pdf";
     public const string TipoXlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -67,7 +67,7 @@ public sealed class RelatoriosService(
         var d = im.Dados;
         var capa = im.Midias.FirstOrDefault(m => m.Midia.Capa && m.Midia.Tipo == TipoMidia.FOTO) ?? im.Midias.FirstOrDefault(m => m.Midia.Tipo == TipoMidia.FOTO);
         Image? foto = null;
-        if (await storage.BaixarAsync(capa?.Midia.ArquivoChave) is { } bytes)
+        if (await storage.BaixarAsync(capa?.Midia.ArquivoChave) is { Dados: var bytes })
         {
             try { foto = Image.FromBinaryData(bytes); } catch { /* formato não suportado: segue sem foto */ }
         }
@@ -101,7 +101,7 @@ public sealed class RelatoriosService(
                     pessoas.GetValueOrDefault(p.PessoaId)?.Contato ?? "—", p.Percentual.ToString("0.00", Texto.PtBr) })], alinharUltimaDireita: true);
             Secao(col, "Envolvidos (fiadores, parceiros, prestadores, terceiros)");
             Tabela(col, [("Nome", 3), ("Papel", 1.4f), ("Contato", 2.8f)],
-                [.. im.Envolvidos.Select(e => new[] { e.PessoaNome, Texto.Rotulo(e.Papel), pessoas.GetValueOrDefault(e.PessoaId)?.Contato ?? "—" })]);
+                [.. im.Envolvidos.Select(e => new[] { e.PessoaNome, e.PapelNome, pessoas.GetValueOrDefault(e.PessoaId)?.Contato ?? "—" })]);
             Secao(col, "Regularização");
             Tabela(col, [("Tipo", 1.6f), ("Status", 1.2f), ("Profissional", 1.9f), ("Prazo", 0.9f), ("Custo est.", 1.4f)],
                 [.. regs.Select(r => new[] { Texto.Rotulo(r.Dados.Tipo), Texto.Rotulo(r.Dados.Status), r.ProfissionalNome ?? "—",
@@ -169,7 +169,7 @@ public sealed class RelatoriosService(
         Aba(wb, "Pessoas", [("Vínculo", 16), ("Nome", 40), ("CPF/CNPJ", 20), ("Contato", 30), ("%", 8)],
             im.Proprietarios.Select(p => new XLCellValue[] { "Proprietário", p.PessoaNome, pessoas.GetValueOrDefault(p.PessoaId)?.CpfCnpj ?? "",
                     pessoas.GetValueOrDefault(p.PessoaId)?.Contato ?? "", p.Percentual })
-                .Concat(im.Envolvidos.Select(e => new XLCellValue[] { Texto.Rotulo(e.Papel), e.PessoaNome, "", pessoas.GetValueOrDefault(e.PessoaId)?.Contato ?? "", "" })));
+                .Concat(im.Envolvidos.Select(e => new XLCellValue[] { e.PapelNome, e.PessoaNome, "", pessoas.GetValueOrDefault(e.PessoaId)?.Contato ?? "", "" })));
         var sr = Aba(wb, "Regularização", [("Tipo", 22), ("Status", 16), ("Profissional", 28), ("Prazo", 12), ("Custo estimado", 18), ("Descrição", 50)],
             regs.Select(x => new XLCellValue[] { Texto.Rotulo(x.Dados.Tipo), Texto.Rotulo(x.Dados.Status), x.ProfissionalNome ?? "",
                 Texto.Data(x.Dados.PrazoPrevisto), V(x.Dados.CustoEstimado), x.Dados.Descricao ?? "" }));

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "inovabens-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "dotnet/src/Inovabens.Web", "--launch-profile", "http"],
+      "port": 5051
+    }
+  ]
+}

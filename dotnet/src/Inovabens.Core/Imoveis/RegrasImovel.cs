@@ -28,8 +28,65 @@ public static class RegrasImovel
         return new(ext, "application/octet-stream", Download: true, TipoMidia.DOCUMENTO);
     }
 
+    /// <summary>Caracteres que o Windows não aceita em nome de pasta (o Drive para computador sincroniza as pastas).</summary>
+    public static readonly char[] CaracteresProibidosPasta = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
+    /// <summary>Nome da pasta no Drive: sem espaços nas pontas nem repetidos; vazio vira null.</summary>
+    public static string? NomePasta(string? nome) =>
+        Texto.Limpo(nome) is { } n ? string.Join(' ', n.Split(' ', StringSplitOptions.RemoveEmptyEntries)) : null;
+
+    /// <summary>Content-Type informado pelo navegador, só o tipo (sem parâmetros); vazio vira application/octet-stream.</summary>
+    public static string TipoInformado(string? contentType) =>
+        (contentType ?? "").Split(';')[0].Trim().ToLowerInvariant() is { Length: > 0 } ct && ct.Contains('/') ? ct : "application/octet-stream";
+
     /// <summary>Próximo código sequencial no formato IMV-000123.</summary>
     public static string FormatarCodigo(int numero) => $"IMV-{numero:D6}";
+
+    /// <summary>Limite de fotos por imóvel (vídeos, plantas e documentos não contam).</summary>
+    public const int MaximoFotos = 20;
+
+    public static IReadOnlyList<(string Sigla, string Nome)> Ufs => Formatos.Ufs;
+
+    public static bool UfValida(string? uf) => Formatos.UfValida(uf);
+
+    /// <summary>
+    /// Lê coordenadas coladas do Google Maps ("-23.5505, -46.6333") ou digitadas com vírgula decimal
+    /// separadas por ponto e vírgula ("-23,5505; -46,6333"). Devolve null se o texto não for um par válido.
+    /// </summary>
+    public static (double Latitude, double Longitude)? LerCoordenadas(string? texto)
+    {
+        var t = texto?.Trim().Trim('(', ')');
+        if (string.IsNullOrEmpty(t)) return null;
+        string[] partes = t.Contains(';') ? [.. t.Split(';').Select(p => p.Replace(',', '.'))] : t.Split(',');
+        if (partes.Length != 2) return null;
+        const System.Globalization.NumberStyles estilo = System.Globalization.NumberStyles.Float;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (!double.TryParse(partes[0].Trim(), estilo, inv, out var lat) || !double.TryParse(partes[1].Trim(), estilo, inv, out var lng)) return null;
+        if (lat is < -90 or > 90 || lng is < -180 or > 180) return null;
+        return (Math.Round(lat, 7), Math.Round(lng, 7));
+    }
+
+    public static string FormatarCoordenadas(double? lat, double? lng) =>
+        lat is { } a && lng is { } b
+            ? $"{a.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {b.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : "";
+
+    /// <summary>Endereço em uma linha para busca no mapa: "Rua X, 10, Bairro, Cidade - UF, CEP, Brasil".</summary>
+    public static string? EnderecoParaMapa(string? logradouro, string? numero, string? bairro, string? cidade, string? uf, string? cep)
+    {
+        var rua = Texto.Limpo(logradouro) is { } l ? (Texto.Limpo(numero) is { } n ? $"{l}, {n}" : l) : null;
+        var local = Texto.Limpo(cidade) is { } c ? (Texto.Limpo(uf) is { } u ? $"{c} - {u}" : c) : Texto.Limpo(uf);
+        string?[] partes = [rua, Texto.Limpo(bairro), local, Texto.Limpo(cep)];
+        var preenchidas = partes.Where(p => p is not null).ToList();
+        return preenchidas.Count == 0 ? null : string.Join(", ", preenchidas) + ", Brasil";
+    }
+
+    /// <summary>Link do Google Maps: pelas coordenadas, se houver; senão pelo endereço.</summary>
+    public static string? LinkGoogleMaps(double? lat, double? lng, string? endereco)
+    {
+        var consulta = lat is not null && lng is not null ? FormatarCoordenadas(lat, lng).Replace(" ", "") : Texto.Limpo(endereco);
+        return consulta is null ? null : "https://www.google.com/maps/search/?api=1&query=" + Uri.EscapeDataString(consulta);
+    }
 
     /// <summary>
     /// Regra: a soma dos percentuais VIGENTES (na data de hoje) dos proprietários deve ser 100%.

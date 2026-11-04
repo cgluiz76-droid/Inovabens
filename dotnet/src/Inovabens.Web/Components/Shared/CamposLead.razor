@@ -43,9 +43,34 @@
     }
 </div>
 
+@if (Imoveis is { Count: > 0 })
+{
+    <div class="campo">
+        <span>Imóveis de interesse</span>
+        <BuscaMultipla Opcoes="Imoveis" @bind-Valores="Interesse" Rotulo="Imóveis de interesse"
+                       Placeholder="Selecione ou digite parte do código ou do título…" />
+        <ValidationMessage For="() => Form.ImoveisInteresse" />
+    </div>
+}
+
+<label class="campo">
+    <span>Observações</span>
+    <InputTextArea class="input" rows="3" placeholder="Preferências, restrições, combinados com o cliente…" @bind-Value="Form.Observacoes" />
+    <ValidationMessage For="() => Form.Observacoes" />
+</label>
+
 @code {
     [Parameter, EditorRequired] public LeadForm Form { get; set; } = default!;
     [Parameter] public IReadOnlyList<Opcao>? Responsaveis { get; set; }
+
+    /// <summary>Opções de imóveis de interesse (sem vendidos/arquivados, mais os já marcados). Vazio = não exibe.</summary>
+    [Parameter] public IReadOnlyList<Opcao>? Imoveis { get; set; }
+
+    private List<Guid> Interesse
+    {
+        get => Form.ImoveisInteresse ??= [];
+        set => Form.ImoveisInteresse = value;
+    }
 
     /// <summary>Mostra a escolha compra/locação (só na criação: o funil é definido por ela).</summary>
     [Parameter] public bool Finalidade { get; set; }

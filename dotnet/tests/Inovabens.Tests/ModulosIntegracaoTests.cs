@@ -69,7 +69,43 @@ public class ModulosIntegracaoTests
     }
 
     private static async Task<Guid> NovoImovel(Ambiente a, UsuarioAtual dono, string titulo) =>
-        await a.S<ImoveisService>().CriarAsync(dono, new ImovelForm { Titulo = titulo, Tipo = "casa", CorretorResponsavelId = dono.Id });
+        await a.S<ImoveisService>().CriarAsync(dono, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = titulo, Tipo = "casa", CorretorResponsavelId = dono.Id });
+
+    [Fact]
+    public async Task Cadastros_tipo_de_imovel_e_perfil_de_pessoa()
+    {
+        await using var a = await new Ambiente().Entrar();
+        var c = a.S<CadastrosService>();
+        var imoveis = a.S<ImoveisService>();
+
+        // só a administração cadastra; nome repetido (sem diferenciar maiúsculas) é recusado
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => c.CriarTipoImovelAsync(a.Corretor, new TipoImovelForm { Nome = $"Chácara {sufixo}" }));
+        var tipo = await c.CriarTipoImovelAsync(a.Admin, new TipoImovelForm { Nome = $"Chácara {sufixo}" });
+        await Assert.ThrowsAsync<RegraNegocioException>(() => c.CriarTipoImovelAsync(a.Admin, new TipoImovelForm { Nome = $"CHÁCARA {sufixo}" }));
+
+        // imóvel só aceita tipo cadastrado; renomear o tipo vale para os imóveis dele
+        await Assert.ThrowsAsync<RegraNegocioException>(() => imoveis.CriarAsync(a.Admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Sem tipo válido", Tipo = $"inexistente {sufixo}" }));
+        var id = await imoveis.CriarAsync(a.Admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Chácara no interior", Tipo = tipo.Nome });
+        await c.AtualizarTipoImovelAsync(a.Admin, tipo.Id, new TipoImovelForm { Nome = $"Sítio {sufixo}" });
+        Assert.Equal($"Sítio {sufixo}", (await imoveis.DetalheAsync(a.Admin, id)).Dados.Tipo);
+
+        // tipo desativado: some da lista, não vale para imóvel novo, mas o imóvel que já o tem continua editável
+        await c.AtualizarTipoImovelAsync(a.Admin, tipo.Id, new TipoImovelForm { Nome = $"Sítio {sufixo}", Ativo = false });
+        Assert.DoesNotContain(await c.TiposImovelAsync(), t => t.Id == tipo.Id);
+        await Assert.ThrowsAsync<RegraNegocioException>(() => imoveis.CriarAsync(a.Admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Outro sítio", Tipo = $"Sítio {sufixo}" }));
+        var form = ImovelForm.De((await imoveis.DetalheAsync(a.Admin, id)).Dados);
+        form.Titulo = "Sítio no interior";
+        await imoveis.AtualizarAsync(a.Admin, id, form);
+
+        // perfil novo ganha código e pode ser marcado numa pessoa
+        var perfil = await c.CriarPerfilPessoaAsync(a.Admin, new PerfilPessoaForm { Nome = $"Síndico {sufixo}" });
+        Assert.Equal($"SINDICO_{sufixo.ToUpperInvariant()}", perfil.Codigo);
+        var pessoas = a.S<PessoasService>();
+        var pid = await pessoas.CriarAsync(a.Admin, new PessoaForm { NomeRazao = $"Zé {sufixo}", Papeis = [new() { Papel = perfil.Codigo }] });
+        Assert.Contains((await pessoas.ListarAsync(a.Admin, new FiltroPessoas(sufixo, perfil.Codigo))).Itens, x => x.Id == pid);
+        await Assert.ThrowsAsync<RegraNegocioException>(() =>
+            pessoas.CriarAsync(a.Admin, new PessoaForm { NomeRazao = "Perfil falso", Papeis = [new() { Papel = "NAO_EXISTE" }] }));
+    }
 
     [Fact]
     public async Task Pessoas_cadastro_papeis_busca_e_exclusao()
@@ -81,14 +117,14 @@ public class ModulosIntegracaoTests
         var form = new PessoaForm
         {
             NomeRazao = $"Fulano {sufixo}", CpfCnpj = $"{cpf[..3]}.{cpf[3..6]}.{cpf[6..9]}-{cpf[9..]}", Email = $"FULANO.{sufixo}@Exemplo.com",
-            Uf = "sp", Papeis = [new() { Papel = PapelPessoa.CLIENTE }, new() { Papel = PapelPessoa.PRESTADOR, Especialidade = "Engenheiro" }],
+            Uf = "sp", Papeis = [new() { Papel = "CLIENTE" }, new() { Papel = "PRESTADOR", Especialidade = "Engenheiro" }],
         };
         var id = await s.CriarAsync(a.Corretor, form);
         var p = await s.ObterAsync(a.Admin, id);
         Assert.Equal(cpf, p.CpfCnpj); // só dígitos, como no Node
         Assert.Equal($"fulano.{sufixo}@exemplo.com", p.Email);
         Assert.Equal("SP", p.Uf);
-        Assert.Equal("Engenheiro", p.Papeis.Single(x => x.Papel == PapelPessoa.PRESTADOR).Especialidade);
+        Assert.Equal("Engenheiro", p.Papeis.Single(x => x.Papel == "PRESTADOR").Especialidade);
 
         // CPF duplicado, CPF inválido e UF inválida
         await Assert.ThrowsAnyAsync<Exception>(() => s.CriarAsync(a.Admin, new PessoaForm { NomeRazao = "Outro", CpfCnpj = cpf }));
@@ -97,17 +133,17 @@ public class ModulosIntegracaoTests
 
         // troca de papéis (remove um, mantém outro com nova especialidade, adiciona outro) na mesma gravação
         var f2 = PessoaForm.De(p);
-        f2.Papeis = [new() { Papel = PapelPessoa.PRESTADOR, Especialidade = "Despachante" }, new() { Papel = PapelPessoa.FIADOR }];
+        f2.Papeis = [new() { Papel = "PRESTADOR", Especialidade = "Despachante" }, new() { Papel = "FIADOR" }];
         await s.AtualizarAsync(a.Admin, id, f2);
         p = await s.ObterAsync(a.Admin, id);
-        Assert.Equal([PapelPessoa.FIADOR, PapelPessoa.PRESTADOR], p.Papeis.Select(x => x.Papel).Order());
-        Assert.Equal("Despachante", p.Papeis.Single(x => x.Papel == PapelPessoa.PRESTADOR).Especialidade);
+        Assert.Equal(["FIADOR", "PRESTADOR"], p.Papeis.Select(x => x.Papel).Order());
+        Assert.Equal("Despachante", p.Papeis.Single(x => x.Papel == "PRESTADOR").Especialidade);
 
         // busca por nome, documento e filtro por papel
         Assert.Contains((await s.ListarAsync(a.Admin, new FiltroPessoas($"fulano {sufixo}"))).Itens, x => x.Id == id);
         Assert.Contains((await s.ListarAsync(a.Admin, new FiltroPessoas(cpf[..6]))).Itens, x => x.Id == id);
-        Assert.Contains((await s.ListarAsync(a.Admin, new FiltroPessoas(sufixo, PapelPessoa.FIADOR))).Itens, x => x.Id == id);
-        Assert.DoesNotContain((await s.ListarAsync(a.Admin, new FiltroPessoas(sufixo, PapelPessoa.CLIENTE))).Itens, x => x.Id == id);
+        Assert.Contains((await s.ListarAsync(a.Admin, new FiltroPessoas(sufixo, "FIADOR"))).Itens, x => x.Id == id);
+        Assert.DoesNotContain((await s.ListarAsync(a.Admin, new FiltroPessoas(sufixo, "CLIENTE"))).Itens, x => x.Id == id);
 
         // corretor não exclui; admin exclui (lógico) e libera o CPF
         await Assert.ThrowsAsync<AcessoNegadoException>(() => s.ExcluirAsync(a.Corretor, id));
@@ -277,7 +313,7 @@ public class ModulosIntegracaoTests
         var d = await crm.ObterAsync(a.Corretor, id);
         Assert.Equal(inicial.Id, d.Estagio.Id);
         Assert.Equal("Carla Corretora", d.ResponsavelNome);
-        Assert.Contains((await a.S<PessoasService>().ObterAsync(a.Admin, d.Pessoa.Id)).Papeis, p => p.Papel == PapelPessoa.CLIENTE);
+        Assert.Contains((await a.S<PessoasService>().ObterAsync(a.Admin, d.Pessoa.Id)).Papeis, p => p.Papel == "CLIENTE");
         Assert.Contains((await crm.PipelineAsync(a.Corretor, Funil.VENDA))[0].Leads, l => l.Id == id);
         Assert.DoesNotContain((await crm.PipelineAsync(a.Corretor, Funil.LOCACAO)).SelectMany(c => c.Leads), l => l.Id == id);
         await Assert.ThrowsAsync<RegraNegocioException>(() => crm.CriarAsync(a.Corretor, new LeadForm { OrcamentoMin = 10, OrcamentoMax = 5, NovoNome = "X" }));
@@ -322,6 +358,23 @@ public class ModulosIntegracaoTests
         await Assert.ThrowsAsync<NaoEncontradoException>(() => crm.DefinirInteresseAsync(a.Corretor, id, [Guid.NewGuid()]));
         await crm.AtualizarAsync(a.Corretor, id, new LeadForm { Origem = "Indicação", OrcamentoMax = 450000 });
         Assert.Equal("Indicação", (await crm.ObterAsync(a.Corretor, id)).Dados.Origem);
+        Assert.Equal(2, (await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse.Count); // sem ImoveisInteresse: mantém
+
+        // observações e interesse salvos no próprio formulário; vendido/arquivado não entra como novo interesse
+        var vendido = await a.S<ImoveisService>().CriarAsync(a.Corretor,
+            new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = $"Vendido {sufixo}", Tipo = "casa", CorretorResponsavelId = a.Corretor.Id, Situacao = SituacaoImovel.VENDIDO });
+        Assert.DoesNotContain(await a.S<OpcoesService>().ImoveisParaInteresseAsync(a.Corretor), o => o.Id == vendido);
+        Assert.Contains(await a.S<OpcoesService>().ImoveisParaInteresseAsync(a.Corretor), o => o.Id == proprio);
+        await Assert.ThrowsAsync<RegraNegocioException>(() =>
+            crm.AtualizarAsync(a.Corretor, id, new LeadForm { Origem = "Indicação", ImoveisInteresse = [proprio, vendido] }));
+        await crm.AtualizarAsync(a.Corretor, id, new LeadForm { Observacoes = "  Quer 3 quartos perto da praia  ", ImoveisInteresse = [proprio] });
+        d = await crm.ObterAsync(a.Corretor, id);
+        Assert.Equal("Quer 3 quartos perto da praia", d.Dados.Observacoes);
+        Assert.Equal(proprio, Assert.Single(d.ImoveisInteresse).Id);
+        var comInteresse = await crm.CriarAsync(a.Corretor, new LeadForm { NovoNome = $"Interessado {sufixo}", ImoveisInteresse = [proprio] });
+        Assert.Equal(proprio, Assert.Single((await crm.ObterAsync(a.Corretor, comInteresse)).ImoveisInteresse).Id);
+        await Assert.ThrowsAsync<RegraNegocioException>(() =>
+            crm.CriarAsync(a.Corretor, new LeadForm { NovoNome = $"Não cria {sufixo}", ImoveisInteresse = [vendido] }));
 
         // estágios (admin:config): corretora não gerencia; criar, renomear, reordenar, excluir
         var nome = $"Teste {sufixo}";

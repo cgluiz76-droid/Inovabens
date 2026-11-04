@@ -1,0 +1,128 @@
+@* Seleção múltipla com busca: digite parte do texto (sem diferenciar maiúsculas nem acentos) e escolha na lista.
+   Os escolhidos viram etiquetas com × para remover. Setas + Enter escolhem pelo teclado; Esc fecha a lista. *@
+
+<div class="busca-multipla">
+    @if (Valores.Count > 0)
+    {
+        <div class="busca-etiquetas">
+            @foreach (var id in Valores)
+            {
+                <span class="badge busca-etiqueta">
+                    @NomeDe(id)
+                    @if (!Desabilitado)
+                    {
+                        <button type="button" class="busca-remover" aria-label="Remover @NomeDe(id)" @onclick="() => Remover(id)">×</button>
+                    }
+                </span>
+            }
+        </div>
+    }
+    @if (!Desabilitado)
+    {
+        <input class="input" type="text" role="combobox" autocomplete="off" data-sem-enviar
+               aria-expanded="@(aberto ? "true" : "false")" aria-controls="@idLista" aria-label="@Rotulo"
+               placeholder="@Placeholder"
+               @bind="termo" @bind:event="oninput" @bind:after="AoDigitar" @onfocus="Abrir" @onblur="Fechar" @onkeydown="AoTeclar" />
+        @if (aberto)
+        {
+            <ul class="busca-opcoes" id="@idLista" role="listbox">
+                @if (Encontrados.Count == 0)
+                {
+                    <li class="busca-vazio">Nada encontrado para "@termo".</li>
+                }
+                @for (var n = 0; n < Encontrados.Count; n++)
+                {
+                    var o = Encontrados[n];
+                    <li role="option" aria-selected="@(n == destaque ? "true" : "false")" class="@(n == destaque ? "destaque" : "")"
+                        @onmousedown="() => Escolher(o.Id)" @onmousedown:preventDefault>@o.Nome</li>
+                }
+                @if (totalEncontrado > Encontrados.Count)
+                {
+                    <li class="busca-vazio">+ @(totalEncontrado - Encontrados.Count) — digite mais para refinar.</li>
+                }
+            </ul>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<Opcao> Opcoes { get; set; } = [];
+    [Parameter, EditorRequired] public List<Guid> Valores { get; set; } = [];
+    [Parameter] public EventCallback<List<Guid>> ValoresChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Selecione ou digite para buscar…";
+    [Parameter] public string? Rotulo { get; set; }
+    [Parameter] public bool Desabilitado { get; set; }
+
+    private const int Limite = 50;
+    private readonly string idLista = "busca-" + Guid.NewGuid().ToString("N")[..8];
+    private string termo = "";
+    private bool aberto;
+    private int destaque;
+    private int totalEncontrado;
+
+    private string NomeDe(Guid id) => Opcoes.FirstOrDefault(o => o.Id == id)?.Nome ?? "Imóvel indisponível";
+
+    private List<Opcao> Encontrados
+    {
+        get
+        {
+            var todos = Opcoes.Where(o => !Valores.Contains(o.Id) && Contem(o.Nome, termo)).ToList();
+            totalEncontrado = todos.Count;
+            return todos.Take(Limite).ToList();
+        }
+    }
+
+    // parcial, sem diferenciar maiúsculas nem acentos ("sao" acha "São")
+    private static bool Contem(string texto, string busca) =>
+        string.IsNullOrWhiteSpace(busca)
+        || Texto.PtBr.CompareInfo.IndexOf(texto, busca.Trim(), System.Globalization.CompareOptions.IgnoreCase | System.Globalization.CompareOptions.IgnoreNonSpace) >= 0;
+
+    // @bind (e não value + @oninput): o Blazor não sobrescreve o que ainda está sendo digitado com um valor atrasado
+    private void AoDigitar()
+    {
+        aberto = true;
+        destaque = 0;
+    }
+
+    private void Abrir() => aberto = true;
+
+    private void Fechar() => aberto = false;
+
+    private async Task Escolher(Guid id)
+    {
+        if (!Valores.Contains(id)) Valores.Add(id);
+        termo = "";
+        destaque = 0;
+        await ValoresChanged.InvokeAsync(Valores);
+    }
+
+    private async Task Remover(Guid id)
+    {
+        Valores.Remove(id);
+        await ValoresChanged.InvokeAsync(Valores);
+    }
+
+    private async Task AoTeclar(KeyboardEventArgs e)
+    {
+        var encontrados = Encontrados;
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                aberto = true;
+                destaque = Math.Min(destaque + 1, Math.Max(encontrados.Count - 1, 0));
+                break;
+            case "ArrowUp":
+                destaque = Math.Max(destaque - 1, 0);
+                break;
+            case "Enter" when aberto && destaque < encontrados.Count:
+                await Escolher(encontrados[destaque].Id);
+                break;
+            case "Escape":
+                aberto = false;
+                break;
+            case "Backspace" when termo.Length == 0 && Valores.Count > 0:
+                await Remover(Valores[^1]);
+                break;
+        }
+    }
+}

@@ -30,6 +30,10 @@ public sealed class LeadForm : IValidatableObject
     [Range(0, 9_999_999_999_999.99, ErrorMessage = "O valor não pode ser negativo")] public decimal? OrcamentoMin { get; set; }
     [Range(0, 9_999_999_999_999.99, ErrorMessage = "O valor não pode ser negativo")] public decimal? OrcamentoMax { get; set; }
     public DateTime? ProximaAcaoEm { get; set; }
+    [StringLength(4000, ErrorMessage = "No máximo 4000 caracteres.")] public string? Observacoes { get; set; }
+
+    /// <summary>Imóveis de interesse gravados junto com o lead; null = não altera os atuais.</summary>
+    public List<Guid>? ImoveisInteresse { get; set; }
 
     /// <summary>Pessoa existente OU dados de um novo contato (só na criação).</summary>
     public Guid? PessoaId { get; set; }
@@ -49,6 +53,7 @@ public sealed class LeadForm : IValidatableObject
         l.OrcamentoMin = OrcamentoMin;
         l.OrcamentoMax = OrcamentoMax;
         l.ProximaAcaoEm = ProximaAcaoEm is { } p ? DatasBR.ParaUtc(p) : null;
+        l.Observacoes = Texto.Limpo(Observacoes);
     }
 }
 
@@ -73,6 +78,9 @@ public sealed class EstagioForm
 /// <summary>CRM: funil de vendas/locação (port de crm.service.ts). Corretor só vê os leads pelos quais é responsável.</summary>
 public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditService audit)
 {
+    /// <summary>REGRA: imóvel vendido ou arquivado não pode ser marcado como novo interesse (os já marcados continuam).</summary>
+    public static readonly IReadOnlyList<SituacaoImovel> SituacoesSemInteresse = [SituacaoImovel.VENDIDO, SituacaoImovel.ARQUIVADO];
+
     public static Funil FunilDa(FinalidadeLead f) => f == FinalidadeLead.COMPRA ? Funil.VENDA : Funil.LOCACAO;
     private static FinalidadeLead FinalidadeDo(Funil f) => f == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO;
 
@@ -146,7 +154,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
             if (!await db.Pessoas.AnyAsync(p => p.Id == pid && p.ExcluidoEm == null)) throw new NaoEncontradoException("Pessoa não encontrada.");
             pessoaId = pid;
             await db.Database.ExecuteSqlInterpolatedAsync(
-                $"insert into pessoa_papeis (pessoa_id, papel) values ({pid}, 'CLIENTE'::papel_pessoa) on conflict do nothing");
+                $"insert into pessoa_papeis (pessoa_id, papel) values ({pid}, {PerfilPessoa.Cliente}) on conflict do nothing");
         }
         else
         {
@@ -155,7 +163,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
                 Id = Guid.NewGuid(), NomeRazao = form.NovoNome!.Trim(), Telefone = Texto.Limpo(form.NovoTelefone),
                 Email = Texto.Limpo(form.NovoEmail)?.ToLowerInvariant(), CriadoPor = u.Id,
             };
-            p.Papeis.Add(new PessoaPapel { PessoaId = p.Id, Papel = PapelPessoa.CLIENTE });
+            p.Papeis.Add(new PessoaPapel { PessoaId = p.Id, Papel = PerfilPessoa.Cliente });
             db.Pessoas.Add(p);
             pessoaId = p.Id;
         }
@@ -170,6 +178,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         db.LeadHistoricoEstagios.Add(new LeadHistoricoEstagio { LeadId = l.Id, EstagioNovoId = estagio.Id, UsuarioId = u.Id });
         audit.Registrar(db, u.Id, "leads", l.Id, "CRIAR", depois: l);
         await db.SaveChangesAsync();
+        if (form.ImoveisInteresse is { } interesse) await SincronizarInteresse(db, u, l.Id, interesse);
         await tx.CommitAsync();
         return l.Id;
     }
@@ -185,7 +194,10 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         form.AplicarEm(l);
         if (Acesso.NovoResponsavel(u, form.ResponsavelId) is { } r) l.ResponsavelId = r;
         audit.Registrar(db, u.Id, "leads", id, "ATUALIZAR", antes, l);
+        await using var tx = await db.Database.BeginTransactionAsync();
         await db.SaveChangesAsync();
+        if (form.ImoveisInteresse is { } interesse) await SincronizarInteresse(db, u, id, interesse);
+        await tx.CommitAsync();
     }
 
     public async Task ExcluirAsync(UsuarioAtual u, Guid id)
@@ -281,21 +293,31 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
     public async Task DefinirInteresseAsync(UsuarioAtual u, Guid id, IReadOnlyCollection<Guid> imoveis)
     {
         u.Exigir(P.CrmEditar);
-        if (imoveis.Count > 100) throw new RegraNegocioException("_", "No máximo 100 imóveis de interesse");
         await using var db = await fabrica.CreateDbContextAsync();
         await Detalhe(db, u, id);
+        await using var tx = await db.Database.BeginTransactionAsync();
+        await SincronizarInteresse(db, u, id, imoveis);
+        await tx.CommitAsync();
+    }
+
+    /// <summary>Substitui os imóveis de interesse do lead. Quem chama abre a transação.</summary>
+    private static async Task SincronizarInteresse(InovabensDb db, UsuarioAtual u, Guid id, IReadOnlyCollection<Guid> imoveis)
+    {
+        if (imoveis.Count > 100) throw new RegraNegocioException(nameof(LeadForm.ImoveisInteresse), "No máximo 100 imóveis de interesse");
         // Novos vínculos só com imóveis que o usuário enxerga (Corretor: os seus); senão o vínculo revelaria código e
-        // título de imóvel alheio. Os já vinculados (por exemplo, por um gestor) podem continuar na lista.
+        // título de imóvel alheio. Os já vinculados (por exemplo, por um gestor, ou antes de o imóvel ser vendido)
+        // podem continuar na lista.
         var ids = imoveis.Distinct().ToList();
         var atuais = await db.LeadImoveisInteresse.Where(i => i.LeadId == id).Select(i => i.ImovelId).ToListAsync();
         var novos = ids.Except(atuais).ToList();
-        if (await db.Imoveis.Where(i => novos.Contains(i.Id) && i.ExcluidoEm == null).VisiveisPara(u).CountAsync() != novos.Count)
-            throw new NaoEncontradoException("Imóvel não encontrado.");
-        await using var tx = await db.Database.BeginTransactionAsync();
+        var situacoes = await db.Imoveis.Where(i => novos.Contains(i.Id) && i.ExcluidoEm == null).VisiveisPara(u)
+            .Select(i => i.Situacao).ToListAsync();
+        if (situacoes.Count != novos.Count) throw new NaoEncontradoException("Imóvel não encontrado.");
+        if (situacoes.Any(SituacoesSemInteresse.Contains))
+            throw new RegraNegocioException(nameof(LeadForm.ImoveisInteresse), "Imóvel vendido ou arquivado não pode ser marcado como interesse");
         await db.LeadImoveisInteresse.Where(i => i.LeadId == id).ExecuteDeleteAsync();
         db.LeadImoveisInteresse.AddRange(ids.Select(im => new LeadImovelInteresse { LeadId = id, ImovelId = im }));
         await db.SaveChangesAsync();
-        await tx.CommitAsync();
     }
 
     /* ----------------------- Estágios (configuráveis) ----------------------- */

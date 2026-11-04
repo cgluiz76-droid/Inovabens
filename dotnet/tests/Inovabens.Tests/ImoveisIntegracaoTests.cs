@@ -43,8 +43,8 @@ public class ImoveisIntegracaoTests
         Assert.False(corretor.Pode(Permissoes.ImoveisExcluir));
 
         // --- criar: código sequencial e enums gravados nos tipos do PostgreSQL ---
-        var id1 = await s.CriarAsync(admin, new ImovelForm { Titulo = "Apartamento Gonzaga", Tipo = "apartamento", Cidade = "Santos", Uf = "sp", PrecoVenda = 750000m, Situacao = SituacaoImovel.EM_AQUISICAO });
-        var id2 = await s.CriarAsync(admin, new ImovelForm { Titulo = "Terreno 50% à vista", Tipo = "terreno" });
+        var id1 = await s.CriarAsync(admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Apartamento Gonzaga", Tipo = "apartamento", Cidade = "Santos", Uf = "sp", PrecoVenda = 750000m, Situacao = SituacaoImovel.EM_AQUISICAO });
+        var id2 = await s.CriarAsync(admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Terreno 50% à vista", Tipo = "terreno" });
         var d1 = await s.DetalheAsync(admin, id1);
         var d2 = await s.DetalheAsync(admin, id2);
         Assert.Matches(@"^IMV-\d{6}$", d1.Dados.Codigo);
@@ -83,9 +83,9 @@ public class ImoveisIntegracaoTests
         Assert.Equal(2, carac.Count);
         Assert.Equal("aquecida", carac.Single(c => c.Chave.Equals("piscina", StringComparison.OrdinalIgnoreCase)).Valor);
 
-        // --- mídias: sem S3 configurado, envio é recusado de forma controlada ---
+        // --- mídias: sem Google Drive configurado, envio é recusado de forma controlada ---
         await Assert.ThrowsAsync<ServicoIndisponivelException>(() =>
-            s.EnviarMidiaAsync(admin, id1, new MemoryStream([1, 2, 3]), "foto.jpg", "image/jpeg", TipoMidia.FOTO));
+            s.EnviarMidiaAsync(admin, id1, new MemoryStream([1, 2, 3]), "foto.jpg", "image/jpeg", SubpastasDrive.FotosVideos));
 
         // --- regularizações ---
         await s.CriarRegularizacaoAsync(admin, id1, new RegularizacaoForm { Tipo = TipoRegularizacao.RETIFICACAO_AREA, ProfissionalId = pessoas[0].Id, CustoEstimado = 3500.5m, PrazoPrevisto = new DateOnly(2026, 12, 15) });
@@ -104,7 +104,7 @@ public class ImoveisIntegracaoTests
         Assert.DoesNotContain((await s.ListarAsync(corretor, new FiltroImoveis())).Itens, i => i.Id == id1);
         await Assert.ThrowsAsync<AcessoNegadoException>(() => s.DetalheAsync(corretor, id1));
         await Assert.ThrowsAsync<AcessoNegadoException>(() => s.ExcluirAsync(corretor, id1)); // sem imoveis:excluir
-        var idCorretor = await s.CriarAsync(corretor, new ImovelForm { Titulo = "Casa da Carla", Tipo = "casa", CorretorResponsavelId = admin.Id });
+        var idCorretor = await s.CriarAsync(corretor, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa da Carla", Tipo = "casa", CorretorResponsavelId = admin.Id });
         var dc = await s.DetalheAsync(corretor, idCorretor);
         Assert.Equal(corretor.Id, dc.Dados.CorretorResponsavelId); // não consegue atribuir a outro
         Assert.Contains((await s.ListarAsync(corretor, new FiltroImoveis())).Itens, i => i.Id == idCorretor);

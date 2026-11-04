@@ -10,3 +10,10 @@ TestResults/
 
 # Claude Code (configuração local da máquina)
 .claude/settings.local.json
+infra/oracle/backups/
+
+# chave da API do Magnific (local, nunca commitar)
+ChaveMagnific.txt
+
+# chave JSON da conta de serviço do Google Drive (nunca commitar)
+google-drive*.json

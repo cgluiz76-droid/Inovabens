@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Publica o Inovabens (.NET / Blazor Server) no Google Cloud: Cloud Run (um serviço), Cloud SQL (PostgreSQL 16),
-# Cloud Storage (arquivos) e Secret Manager.
+# Secret Manager. Fotos e documentos ficam no drive compartilhado do Google Workspace (Google Drive).
 #
 # Uso (no Cloud Shell ou em um terminal com gcloud logado):
 #   export PROJECT_ID=meu-projeto            # projeto com faturamento ativo
 #   export SEED_ADMIN_EMAIL=voce@empresa.com # administrador inicial
+#   export GOOGLE_DRIVE_ID=0A...             # opcional: drive compartilhado dos arquivos
+#   export DRIVE_CREDENCIAIS=chave.json      # opcional: chave JSON da conta de serviço do Drive (só na 1ª vez)
 #   bash infra/gcp/deploy-gcp.sh
-# Pode ser executado de novo para atualizar (não recria banco, bucket nem segredos existentes).
+# Pode ser executado de novo para atualizar (não recria banco nem segredos existentes).
 set -euo pipefail
 
 : "${PROJECT_ID:?defina PROJECT_ID}"
@@ -16,7 +18,7 @@ SQL_INSTANCE="${SQL_INSTANCE:-inovabens-db}"
 SQL_TIER="${SQL_TIER:-db-f1-micro}"
 DB_NAME="${DB_NAME:-inovabens}"
 DB_USER="${DB_USER:-inovabens}"
-BUCKET="${BUCKET:-${PROJECT_ID}-inovabens-arquivos}"
+GOOGLE_DRIVE_ID="${GOOGLE_DRIVE_ID:-}"
 AR_REPO="${AR_REPO:-inovabens}"
 SA_NAME="inovabens-run"
 TAG="${TAG:-$(date +%Y%m%d-%H%M%S)}"
@@ -29,7 +31,7 @@ novo_secret() { # nome valor — cria só se não existir
 }
 
 echo "▶ 1/7 Ativando APIs"
-g services enable run.googleapis.com sqladmin.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com secretmanager.googleapis.com storage.googleapis.com iam.googleapis.com
+g services enable run.googleapis.com sqladmin.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com secretmanager.googleapis.com iam.googleapis.com
 
 PROJECT_NUMBER="$(g projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 WEB_URL="https://inovabens-web-${PROJECT_NUMBER}.${REGION}.run.app"
@@ -70,18 +72,17 @@ if ! existe_secret inovabens-admin-password; then
   echo "  >>> SENHA INICIAL DO ADMINISTRADOR (anote e troque no primeiro acesso): $ADMIN_PASS"
 fi
 
-echo "▶ 5/7 Cloud Storage (bucket privado) + chave de acesso S3-compatível"
-g storage buckets describe "gs://${BUCKET}" >/dev/null 2>&1 || \
-  g storage buckets create "gs://${BUCKET}" --location="$REGION" --uniform-bucket-level-access --public-access-prevention
-g storage buckets add-iam-policy-binding "gs://${BUCKET}" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null
-# CORS para exibir imagens por URL assinada
-printf '[{"origin":["%s"],"method":["GET"],"maxAgeSeconds":3600}]' "$WEB_URL" > /tmp/inovabens-cors.json
-g storage buckets update "gs://${BUCKET}" --cors-file=/tmp/inovabens-cors.json >/dev/null
-if ! existe_secret inovabens-s3-access-key; then
-  HMAC="$(g storage hmac create "$SA" --format='value(metadata.accessId,secret)')"
-  novo_secret inovabens-s3-access-key "$(echo "$HMAC" | cut -f1)"
-  novo_secret inovabens-s3-secret-key "$(echo "$HMAC" | cut -f2)"
-else echo "  chave HMAC já existe (mantida)"; fi
+echo "▶ 5/7 Google Drive (chave da conta de serviço no Secret Manager)"
+DRIVE_SECRET=""
+if existe_secret inovabens-drive-credenciais; then
+  echo "  segredo inovabens-drive-credenciais já existe (mantido)"
+  DRIVE_SECRET=",GOOGLE_DRIVE_CREDENCIAIS_JSON=inovabens-drive-credenciais:latest"
+elif [ -n "${DRIVE_CREDENCIAIS:-}" ] && [ -f "$DRIVE_CREDENCIAIS" ]; then
+  novo_secret inovabens-drive-credenciais "$(cat "$DRIVE_CREDENCIAIS")"
+  DRIVE_SECRET=",GOOGLE_DRIVE_CREDENCIAIS_JSON=inovabens-drive-credenciais:latest"
+else
+  echo "  DRIVE_CREDENCIAIS não informado: envio de fotos/documentos fica desligado"
+fi
 
 echo "▶ 6/7 Construindo a imagem (Cloud Build) — tag $TAG"
 g builds submit . --config infra/gcp/cloudbuild.yaml --substitutions="_REPO=${REPO},_TAG=${TAG}"
@@ -90,7 +91,7 @@ echo "▶ 7/7 Publicando o sistema (Cloud Run) — migrações e dados iniciais 
 # 1 instância sempre ligada e com CPU alocada: os jobs agendados (alertas, índices, Google) rodam no próprio serviço.
 # Blazor Server mantém um WebSocket por tela aberta: timeout de 1 h (o padrão de 300 s derrubaria a conexão) e
 # afinidade de sessão. O nome inovabens-web mantém o endereço da antiga versão Node (Google OAuth não muda).
-g run deploy inovabens-web --image="${REPO}/app:${TAG}" --region="$REGION" --service-account="$SA" --port=8080   --allow-unauthenticated --min-instances=1 --max-instances=1 --no-cpu-throttling --memory=1Gi --cpu=1   --timeout=3600 --session-affinity   --add-cloudsql-instances="$SQL_CONN"   --set-env-vars="WEB_URL=${WEB_URL},SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL},S3_ENDPOINT=https://storage.googleapis.com,S3_REGION=auto,S3_BUCKET=${BUCKET},S3_FORCE_PATH_STYLE=true,GOOGLE_REDIRECT_URI=${WEB_URL}/api/v1/integracoes/google/callback,GOOGLE_WEBHOOK_URL=${WEB_URL}/api/v1/webhooks/google/calendar"   --set-secrets="DATABASE_URL=inovabens-database-url:latest,JWT_REFRESH_SECRET=inovabens-jwt-refresh:latest,TOKEN_ENC_KEY=inovabens-token-enc-key:latest,SEED_ADMIN_PASSWORD=inovabens-admin-password:latest,S3_ACCESS_KEY=inovabens-s3-access-key:latest,S3_SECRET_KEY=inovabens-s3-secret-key:latest"
+g run deploy inovabens-web --image="${REPO}/app:${TAG}" --region="$REGION" --service-account="$SA" --port=8080   --allow-unauthenticated --min-instances=1 --max-instances=1 --no-cpu-throttling --memory=1Gi --cpu=1   --timeout=3600 --session-affinity   --add-cloudsql-instances="$SQL_CONN"   --set-env-vars="WEB_URL=${WEB_URL},SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL},GOOGLE_DRIVE_ID=${GOOGLE_DRIVE_ID},GOOGLE_REDIRECT_URI=${WEB_URL}/api/v1/integracoes/google/callback,GOOGLE_WEBHOOK_URL=${WEB_URL}/api/v1/webhooks/google/calendar"   --set-secrets="DATABASE_URL=inovabens-database-url:latest,JWT_REFRESH_SECRET=inovabens-jwt-refresh:latest,TOKEN_ENC_KEY=inovabens-token-enc-key:latest,SEED_ADMIN_PASSWORD=inovabens-admin-password:latest${DRIVE_SECRET}"
 
 REAL_WEB="$(g run services describe inovabens-web --region="$REGION" --format='value(status.url)')"
 echo

@@ -30,6 +30,9 @@ else
         case Aba.Perfis:
             <PerfisAdmin />
             break;
+        case Aba.Cadastros:
+            <CadastrosAdmin />
+            break;
         case Aba.Configuracoes:
             <ConfiguracoesAdmin />
             break;
@@ -40,7 +43,7 @@ else
 }
 
 @code {
-    private enum Aba { Usuarios, Perfis, Configuracoes, Auditoria }
+    private enum Aba { Usuarios, Perfis, Cadastros, Configuracoes, Auditoria }
 
     private Aba aba;
 
@@ -51,7 +54,8 @@ else
     private IEnumerable<(Aba, string, bool)> Abas =>
     [
         (Aba.Usuarios, "Usuários", Usuario.Pode(Permissoes.UsuariosGerir)),
-        (Aba.Perfis, "Perfis e permissões", Usuario.Pode(Permissoes.RbacGerir)),
+        (Aba.Perfis, "Perfis de usuário e permissões", Usuario.Pode(Permissoes.RbacGerir)),
+        (Aba.Cadastros, "Cadastros", Usuario.Pode(Permissoes.AdminConfig)),
         (Aba.Configuracoes, "Configurações", Usuario.Pode(Permissoes.AdminConfig)),
         (Aba.Auditoria, "Auditoria", Usuario.Pode(Permissoes.AuditoriaVer)),
     ];

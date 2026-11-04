@@ -27,11 +27,12 @@ public sealed class ReceitasService(IDbContextFactory<InovabensDb> fabrica, Audi
         u.Exigir(P.FinanceiroEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        var im = await Acesso.ImovelComAcesso(db, u, imovelId);
         var r = new Receita { ImovelId = imovelId };
         form.AplicarEm(r);
         db.Receitas.Add(r);
         audit.Registrar(db, u.Id, "receitas", r.Id, "CRIAR", depois: ComLiquido(r));
+        MarcarVendido(db, u, im, r);
         await db.SaveChangesAsync(); // o EF lê de volta o valor_liquido calculado pelo banco
         return r;
     }
@@ -45,6 +46,7 @@ public sealed class ReceitasService(IDbContextFactory<InovabensDb> fabrica, Audi
         var antes = r.Copia();
         form.AplicarEm(r);
         audit.Registrar(db, u.Id, "receitas", id, "ATUALIZAR", antes, ComLiquido(r));
+        MarcarVendido(db, u, await Acesso.ImovelComAcesso(db, u, r.ImovelId), r);
         await db.SaveChangesAsync();
     }
 
@@ -64,6 +66,15 @@ public sealed class ReceitasService(IDbContextFactory<InovabensDb> fabrica, Audi
             ?? throw new NaoEncontradoException("Receita não encontrada.");
         await Acesso.ImovelComAcesso(db, u, r.ImovelId, rastrear: false);
         return r;
+    }
+
+    /// <summary>Receita de venda muda a situação do imóvel para Vendido (excluir a receita não desfaz: ajuste na ficha).</summary>
+    private void MarcarVendido(InovabensDb db, UsuarioAtual u, Imovel im, Receita r)
+    {
+        if (r.Tipo != TipoReceita.VENDA || im.Situacao == SituacaoImovel.VENDIDO) return;
+        var antes = im.Copia();
+        im.Situacao = SituacaoImovel.VENDIDO;
+        audit.Registrar(db, u.Id, "imoveis", im.Id, "ATUALIZAR", antes, im);
     }
 
     private static Receita ComLiquido(Receita r)

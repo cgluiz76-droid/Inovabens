@@ -75,28 +75,28 @@ public class ImovelFormTests
     [Fact]
     public void Formulario_valido_passa()
     {
-        Validacao.Validar(new ImovelForm { Titulo = "Apartamento centro", Tipo = "apartamento", PrecoVenda = 450_000.50m });
+        Validacao.Validar(new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Apartamento centro", Tipo = "apartamento", PrecoVenda = 450_000.50m });
     }
 
     [Fact]
     public void Titulo_curto_e_preco_negativo_sao_recusados()
     {
-        var e = Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { Titulo = "Ap", Tipo = "casa" }));
+        var e = Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Ap", Tipo = "casa" }));
         Assert.True(e.Erros.ContainsKey(nameof(ImovelForm.Titulo)));
 
-        e = Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { Titulo = "Casa", PrecoVenda = -1 }));
+        e = Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa", PrecoVenda = -1 }));
         Assert.True(e.Erros.ContainsKey(nameof(ImovelForm.PrecoVenda)));
     }
 
     [Fact]
     public void Mais_de_duas_casas_decimais_e_recusado() =>
-        Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { Titulo = "Casa", AreaTotalM2 = 10.555m }));
+        Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa", AreaTotalM2 = 10.555m }));
 
     [Fact]
     public void Aplicar_normaliza_vazios_e_uf()
     {
         var im = new Imovel();
-        new ImovelForm { Titulo = "  Casa  ", Tipo = "casa", Uf = "sp", Bairro = "   ", Cidade = " Santos " }.AplicarEm(im);
+        new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "  Casa  ", Tipo = "casa", Uf = "sp", Bairro = "   ", Cidade = " Santos " }.AplicarEm(im);
         Assert.Equal("Casa", im.Titulo);
         Assert.Equal("SP", im.Uf);
         Assert.Null(im.Bairro);
@@ -105,7 +105,44 @@ public class ImovelFormTests
 
     [Fact]
     public void UF_com_tamanho_errado_e_recusada() =>
-        Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { Titulo = "Casa", Uf = "SPX" }));
+        Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa", Uf = "SPX" }));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("Bloco A/Apto 12")]
+    [InlineData("Casa: fundos")]
+    public void Nome_da_pasta_no_drive_vazio_ou_com_caractere_proibido_e_recusado(string nome)
+    {
+        var e = Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { NomeDrive = nome, Titulo = "Casa", Tipo = "casa" }));
+        Assert.True(e.Erros.ContainsKey(nameof(ImovelForm.NomeDrive)));
+    }
+
+    [Fact]
+    public void Nome_da_pasta_tem_espacos_normalizados()
+    {
+        var im = new Imovel();
+        new ImovelForm { NomeDrive = "  Residencial   Gonzaga - Apto 52 ", Titulo = "Casa", Tipo = "casa" }.AplicarEm(im);
+        Assert.Equal("Residencial Gonzaga - Apto 52", im.NomeDrive);
+    }
+
+    [Theory]
+    [InlineData(SubpastasDrive.FotosVideos, TipoMidia.FOTO, TipoMidia.FOTO)]
+    [InlineData(SubpastasDrive.FotosVideos, TipoMidia.VIDEO, TipoMidia.VIDEO)]
+    [InlineData(SubpastasDrive.FotosVideos, TipoMidia.DOCUMENTO, TipoMidia.DOCUMENTO)]
+    [InlineData(SubpastasDrive.Matricula, TipoMidia.FOTO, TipoMidia.DOCUMENTO)]
+    [InlineData(SubpastasDrive.Protocolos, TipoMidia.VIDEO, TipoMidia.DOCUMENTO)]
+    public void So_a_pasta_de_fotos_e_videos_entra_na_galeria(int subpasta, TipoMidia arquivo, TipoMidia esperado) =>
+        Assert.Equal(esperado, SubpastasDrive.TipoNaPasta(subpasta, arquivo));
+
+    [Fact]
+    public void Subpastas_sao_as_seis_definidas()
+    {
+        Assert.Equal(
+            ["01 - Matrícula", "02 - Projetos", "03 - Comercial", "04 - Fotos e Vídeos", "05 - Documentos em Geral", "06 - Protocolos"],
+            SubpastasDrive.Todas.Select(s => s.Nome));
+        Assert.Throws<RegraNegocioException>(() => SubpastasDrive.Nome(7));
+    }
 }
 
 public class TextoTests
@@ -177,4 +214,58 @@ public class AcessoTests
         Assert.Equal(outro, Acesso.NovoResponsavel(gestor, outro));
         Assert.Null(Acesso.NovoResponsavel(gestor, null));
     }
+}
+
+public class LocalizacaoImovelTests
+{
+    [Theory]
+    [InlineData("-23.5505, -46.6333", -23.5505, -46.6333)]          // copiado do Google Maps
+    [InlineData("(-23.5505,-46.6333)", -23.5505, -46.6333)]
+    [InlineData("-23,5505; -46,6333", -23.5505, -46.6333)]          // vírgula decimal, separado por ;
+    [InlineData("-23.123456789, -46.1", -23.1234568, -46.1)]        // 7 casas (~1 cm)
+    public void Coordenadas_sao_lidas(string texto, double lat, double lng) =>
+        Assert.Equal((lat, lng), RegrasImovel.LerCoordenadas(texto));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("abc")]
+    [InlineData("-23.5")]
+    [InlineData("-23,5505, -46,6333")] // ambíguo: vírgula decimal sem ;
+    [InlineData("95, 10")]             // latitude fora da faixa
+    public void Coordenadas_invalidas_sao_recusadas(string texto) => Assert.Null(RegrasImovel.LerCoordenadas(texto));
+
+    [Fact]
+    public void Link_do_mapa_usa_coordenadas_ou_endereco()
+    {
+        Assert.Equal("https://www.google.com/maps/search/?api=1&query=-23.5505%2C-46.6333",
+            RegrasImovel.LinkGoogleMaps(-23.5505, -46.6333, "qualquer"));
+        var endereco = RegrasImovel.EnderecoParaMapa("Av. Ana Costa", "100", "Gonzaga", "Santos", "SP", null);
+        Assert.Equal("Av. Ana Costa, 100, Gonzaga, Santos - SP, Brasil", endereco);
+        Assert.StartsWith("https://www.google.com/maps/search/?api=1&query=Av.%20Ana%20Costa", RegrasImovel.LinkGoogleMaps(null, null, endereco));
+        Assert.Null(RegrasImovel.LinkGoogleMaps(null, null, RegrasImovel.EnderecoParaMapa(null, null, null, null, null, null)));
+    }
+
+    [Fact]
+    public void Uf_precisa_ser_do_Brasil()
+    {
+        Assert.Equal(27, RegrasImovel.Ufs.Count);
+        Validacao.Validar(new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa", Uf = "rj" });
+        var e = Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa", Uf = "XX" }));
+        Assert.True(e.Erros.ContainsKey(nameof(ImovelForm.Uf)));
+    }
+
+    [Fact]
+    public void Latitude_sem_longitude_e_recusada() =>
+        Assert.Throws<RegraNegocioException>(() => Validacao.Validar(new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa", Latitude = -23.5 }));
+}
+
+public class CodigoPerfilPessoaTests
+{
+    [Theory]
+    [InlineData("Corretor parceiro", "CORRETOR_PARCEIRO")]
+    [InlineData("  Síndico / Zelador ", "SINDICO_ZELADOR")]
+    [InlineData("Cliente", "CLIENTE_2")]
+    [InlineData("!!!", "PERFIL")]
+    public void Codigo_sem_acento_e_unico(string nome, string esperado) =>
+        Assert.Equal(esperado, Inovabens.Core.Admin.CadastrosService.CodigoLivre(nome, ["CLIENTE", "PROPRIETARIO"]));
 }

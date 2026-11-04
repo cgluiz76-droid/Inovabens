@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Inovabens">
+  <!-- Ícone do logotipo Inovabens redesenhado em vetor: quadrado azul, base marinho, curva dourada e "I" serifado -->
+  <defs>
+    <clipPath id="c"><rect width="100" height="100" rx="18"/></clipPath>
+    <linearGradient id="ouro" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#B8801F"/>
+      <stop offset=".55" stop-color="#E2B04F"/>
+      <stop offset="1" stop-color="#C8902F"/>
+    </linearGradient>
+    <linearGradient id="azul" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0F3BB0"/>
+      <stop offset="1" stop-color="#0A2E96"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect width="100" height="100" fill="url(#azul)"/>
+    <path d="M0 77 C 38 74, 72 64, 100 45 L100 100 L0 100 Z" fill="#03075F"/>
+    <path d="M0 77 C 38 74, 72 64, 100 45" fill="none" stroke="url(#ouro)" stroke-width="3.2"/>
+  </g>
+  <path fill="#fff" d="M29.5 11h41v2.6c-4.4.4-6.8 1.6-7.6 3.6v65.6c.8 2 3.2 3.2 7.6 3.6V89h-41v-2.6c4.4-.4 6.8-1.6 7.6-3.6V17.2c-.8-2-3.2-3.2-7.6-3.6z"/>
+</svg>

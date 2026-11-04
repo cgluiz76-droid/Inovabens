@@ -6,45 +6,57 @@
 @* data-interativo: o circuito do Blazor já assumiu a página (usado pelos testes de ponta a ponta) *@
 <div class="app" data-interativo="@(RendererInfo.IsInteractive ? "sim" : "nao")">
     <aside class="lateral">
-        <div class="marca">🏢 Inovabens</div>
+        <a class="marca" href="">
+            <img src="img/marca.svg" alt="" />
+            <span class="marca-texto">
+                <span class="marca-nome">INOVA<b>BENS</b></span>
+                <span class="marca-sub">Gestão patrimonial</span>
+            </span>
+        </a>
         <nav>
-            <NavLink class="nav-item" href="" Match="NavLinkMatch.All">Painel</NavLink>
+            <span class="nav-titulo">Menu</span>
+            <NavLink class="nav-item" href="" Match="NavLinkMatch.All"><Icone Nome="painel" />Painel</NavLink>
             @if (usuario?.Pode(Permissoes.ImoveisVer) == true)
             {
-                <NavLink class="nav-item" href="imoveis">Imóveis</NavLink>
+                <NavLink class="nav-item" href="imoveis"><Icone Nome="imoveis" />Imóveis</NavLink>
             }
             @if (usuario?.Pode(Permissoes.PessoasVer) == true)
             {
-                <NavLink class="nav-item" href="pessoas">Pessoas</NavLink>
+                <NavLink class="nav-item" href="pessoas"><Icone Nome="pessoas" />Pessoas</NavLink>
             }
             @if (usuario?.Pode(Permissoes.CrmVer) == true)
             {
-                <NavLink class="nav-item" href="crm">CRM</NavLink>
+                <NavLink class="nav-item" href="crm"><Icone Nome="crm" />CRM</NavLink>
             }
             @if (usuario?.Pode(Permissoes.AgendaVer) == true)
             {
-                <NavLink class="nav-item" href="agenda">Agenda</NavLink>
+                <NavLink class="nav-item" href="agenda"><Icone Nome="agenda" />Agenda</NavLink>
             }
             @if (usuario is not null && Pages.AdminPagina.PodeAlgo(usuario))
             {
-                <NavLink class="nav-item" href="admin">Administração</NavLink>
+                <NavLink class="nav-item" href="admin"><Icone Nome="admin" />Administração</NavLink>
             }
         </nav>
+        <div class="lateral-rodape">CRECI 50457-J</div>
     </aside>
 
     <div class="principal">
         <header class="topo">
-            <a class="sino" href="alertas" title="Alertas">
-                🔔
+            <a class="sino" href="alertas" title="Alertas" aria-label="Alertas">
+                <Icone Nome="sino" />
                 @if (alertas > 0)
                 {
                     <span class="contador">@(alertas > 99 ? "99+" : alertas.ToString())</span>
                 }
             </a>
-            <a href="conta" class="usuario-topo" title="Minha conta">@usuario?.Nome · <span class="mudo">@usuario?.PerfilNome</span></a>
+            <span class="separador-topo"></span>
+            <a href="conta" class="usuario-topo" title="Minha conta">
+                <span class="avatar">@Iniciais(usuario?.Nome)</span>
+                <span class="usuario-dados"><strong>@usuario?.Nome</strong><span>@usuario?.PerfilNome</span></span>
+            </a>
             <form method="post" action="sair">
                 <AntiforgeryToken />
-                <button type="submit" class="btn-ghost">Sair</button>
+                <button type="submit" class="btn-ghost mini"><Icone Nome="sair" />Sair</button>
             </form>
         </header>
         <main class="conteudo">
@@ -95,6 +107,18 @@
         if (usuario is null) return;
         try { alertas = await Alertas.ContagemAsync(usuario); }
         catch { /* o contador é auxiliar: falha no banco não derruba o layout */ }
+    }
+
+    /// <summary>"Ana Maria Souza" -> "AS" (primeira e última palavra).</summary>
+    private static string Iniciais(string? nome)
+    {
+        var partes = (nome ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return partes switch
+        {
+            [] => "?",
+            [var unico] => unico[..1].ToUpperInvariant(),
+            _ => (partes[0][..1] + partes[^1][..1]).ToUpperInvariant(),
+        };
     }
 
     public void Dispose() => Nav.LocationChanged -= AoNavegar;

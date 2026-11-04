@@ -1,5 +1,6 @@
 using Inovabens.Core.Admin;
 using Inovabens.Core.Agenda;
+using Inovabens.Core.Comum;
 using Inovabens.Core.Crm;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Financeiro;
@@ -24,12 +25,17 @@ public static class Registro
         services.AddSingleton(op);
         services.AddSingleton<Migrador>();
         services.AddSingleton<DadosIniciais>();
-        services.AddSingleton<StorageService>();
+        services.AddSingleton<IArmazenamento, GoogleDriveArmazenamento>();
+        services.AddScoped<PastasDriveService>();
         services.AddScoped<ContextoConexao>();
         services.AddScoped<AuditService>();
         services.AddScoped<AuthService>();
         services.AddScoped<OpcoesService>();
         services.AddScoped<ImoveisService>();
+        services.AddSingleton<GeocodificacaoService>();
+        services.AddSingleton<CepService>();
+        services.AddSingleton(sp => new MagnificCliente(new HttpClient { Timeout = TimeSpan.FromMinutes(2) }, op));
+        services.AddScoped<MelhoriaFotosService>();
         services.AddScoped<AquisicaoService>();
         services.AddScoped<DespesasService>();
         services.AddScoped<ReceitasService>();
@@ -44,6 +50,7 @@ public static class Registro
         services.AddScoped<PainelService>();
         services.AddScoped<UsuariosService>();
         services.AddScoped<PerfisService>();
+        services.AddScoped<CadastrosService>();
         services.AddScoped<AuditoriaService>();
         services.AddScoped<RelatoriosService>();
         return services;

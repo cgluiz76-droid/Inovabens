@@ -8,7 +8,7 @@ Sistema web para a Inovabens (investimento imobiliário): ficha dos imóveis, cu
 |---|---|
 | Aplicação | C# / .NET 10, Blazor Server (telas e regras no servidor, sem API HTTP intermediária) |
 | Banco | PostgreSQL 16 + EF Core (Npgsql); esquema em scripts SQL versionados em `dotnet/src/Inovabens.Core/Dados/Migracoes` |
-| Arquivos | S3 compatível (AWS S3, Cloudflare R2, MinIO, Cloud Storage) com URLs assinadas |
+| Arquivos | Google Drive (drive compartilhado do Workspace): uma pasta por imóvel com as subpastas 01 a 06 |
 | Relatórios | PDF (QuestPDF) e Excel (ClosedXML) no servidor |
 | Testes | xUnit + Testcontainers (PostgreSQL real) e Playwright (navegador) |
 
@@ -31,13 +31,32 @@ Requer Docker Desktop. Na pasta do projeto:
 ```bash
 docker compose up --build
 ```
-Abra http://localhost:5051 e entre com `admin@inovabens.com.br` / `Trocar@123456` (troque em *Minha conta*). Nesse modo o envio de fotos/documentos fica **desligado** (não é necessário para testar o restante). Para ligá-lo, crie um arquivo `.env` ao lado do `docker-compose.yml` com
+Abra http://localhost:5051 e entre com `admin@inovabens.com.br` / `Trocar@123456` (troque em *Minha conta*). Sem a configuração do Google Drive o envio de fotos/documentos fica **desligado** (não é necessário para testar o restante). Para ligá-lo, crie um arquivo `.env` ao lado do `docker-compose.yml` com o ID do drive compartilhado e o conteúdo da chave JSON da conta de serviço (veja *Fotos e documentos no Google Drive* abaixo):
 ```
-S3_ENDPOINT=http://minio:9000
-S3_ACCESS_KEY=minioadmin
-S3_SECRET_KEY=minioadmin
+GOOGLE_DRIVE_ID=0A...
+GOOGLE_DRIVE_CREDENCIAIS_JSON={"type":"service_account",...}
 ```
-e rode `docker compose --profile arquivos up --build` (sobe também um MinIO local, console em http://localhost:9001, `minioadmin`/`minioadmin`).
+Com `MAGNIFIC_API_KEY=...` no mesmo `.env`, as fotos enviadas são melhoradas automaticamente pelo Magnific.
+
+Com `dotnet run` (opção B), no PowerShell, antes do `dotnet run`:
+```powershell
+$env:GOOGLE_DRIVE_ID="0A..."; $env:GOOGLE_DRIVE_CREDENCIAIS="C:\caminho\da\chave.json"
+$env:MAGNIFIC_API_KEY="sua-chave"   # opcional: melhoria automática das fotos
+```
+
+### Fotos e documentos no Google Drive
+Os arquivos ficam num **drive compartilhado** do Google Workspace, acessado por uma **conta de serviço** do Google Cloud
+(com a Google Drive API ativada) que é membro do drive como **Administrador de conteúdo**. Conta de serviço não tem
+espaço próprio no Drive, por isso precisa ser um drive compartilhado.
+
+- Cada imóvel tem o campo **Nome para Drive do Empreendimento**: ao cadastrar, o sistema cria a pasta com esse nome na
+  raiz do drive e, dentro dela, `01 - Matrícula`, `02 - Projetos`, `03 - Comercial`, `04 - Fotos e Vídeos`,
+  `05 - Documentos em Geral` e `06 - Protocolos`. Se a pasta já existir com esse nome, ela é reaproveitada.
+  Mudar o nome no cadastro renomeia a pasta.
+- No envio de arquivos, escolhe-se a subpasta de destino. Só imagens e vídeos em `04 - Fotos e Vídeos` entram na
+  galeria do imóvel (capa, limite de fotos, site); nas outras pastas tudo é documento.
+- O Drive é privado: as telas mostram os arquivos pelo próprio sistema (`/imoveis/midias/...`), que confere o acesso.
+- Excluir um arquivo no sistema manda para a **lixeira** do Drive (recuperável por 30 dias).
 
 ### Opção B — desenvolvimento (Visual Studio / `dotnet run`)
 Requer o SDK do .NET 10 e um PostgreSQL 16 (o compose fornece um: `docker compose up -d db`).

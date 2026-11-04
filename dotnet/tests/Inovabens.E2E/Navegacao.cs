@@ -58,6 +58,7 @@ internal static class Navegacao
         await p.GotoAsync("/imoveis/novo");
         await p.Interativa();
         await p.GetByLabel("Título *").FillAsync(titulo);
+        await p.GetByLabel("Nome para Drive do Empreendimento *").FillAsync($"{titulo} {Guid.NewGuid():N}");
         await p.Botao("Cadastrar imóvel").ClickAsync();
         await Expect(p.GetByRole(AriaRole.Heading, new() { Name = titulo, Level = 1 })).ToBeVisibleAsync();
         return Guid.Parse(p.Url.TrimEnd('/').Split('/')[^1]);

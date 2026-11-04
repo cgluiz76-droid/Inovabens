@@ -7,9 +7,10 @@ public enum FinalidadeImovel { VENDA, LOCACAO, AMBOS }
 
 public enum SituacaoImovel { CAPTACAO, EM_AQUISICAO, EM_REGULARIZACAO, EM_RETROFIT, DISPONIVEL, VENDIDO, LOCADO, ARQUIVADO }
 
-public enum PapelPessoa { CLIENTE, PROPRIETARIO, FIADOR, PARCEIRO, PRESTADOR, TERCEIRO }
-
 public enum TipoMidia { FOTO, VIDEO, PLANTA, DOCUMENTO }
+
+/// <summary>Melhoria da foto pelo Magnific. Gravado como texto (varchar + CHECK), não é enum do PostgreSQL.</summary>
+public enum StatusMelhoria { PENDENTE, PROCESSANDO, CONCLUIDA, FALHA }
 
 public enum TipoRegularizacao { DOCUMENTACAO, TRIBUTOS_ATRASO, DESMEMBRAMENTO, FRACIONAMENTO, RETIFICACAO_AREA, OUTRO }
 
@@ -26,6 +27,9 @@ public enum TipoReceita { VENDA, LOCACAO, OUTRA }
 public enum CodigoIndice { IPCA, INCC, IGPM, SELIC }
 
 public enum TipoPessoa { PF, PJ }
+
+/// <summary>Unidades da federação (ordem alfabética do nome). Gravado como texto (a sigla), não é enum do PostgreSQL.</summary>
+public enum Uf { AC, AL, AP, AM, BA, CE, DF, ES, GO, MA, MT, MS, MG, PA, PB, PR, PE, PI, RJ, RN, RS, RO, RR, SC, SP, SE, TO }
 
 public enum TipoMemorando { MEMORANDO, ACAO_ESTRATEGICA, ACAO_OPERACIONAL }
 

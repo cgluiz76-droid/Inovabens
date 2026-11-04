@@ -41,6 +41,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Alerta> Alertas => Set<Alerta>();
 
     public DbSet<PessoaPapel> PessoaPapeis => Set<PessoaPapel>();
+    public DbSet<PerfilPessoa> PerfisPessoa => Set<PerfilPessoa>();
+    public DbSet<TipoImovel> TiposImovel => Set<TipoImovel>();
     public DbSet<Memorando> Memorandos => Set<Memorando>();
     public DbSet<Compromisso> Compromissos => Set<Compromisso>();
     public DbSet<CompromissoParticipante> CompromissoParticipantes => Set<CompromissoParticipante>();
@@ -58,7 +60,6 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             var semTraducao = new NpgsqlNullNameTranslator();
             n.MapEnum<FinalidadeImovel>("finalidade_imovel", nameTranslator: semTraducao);
             n.MapEnum<SituacaoImovel>("situacao_imovel", nameTranslator: semTraducao);
-            n.MapEnum<PapelPessoa>("papel_pessoa", nameTranslator: semTraducao);
             n.MapEnum<TipoMidia>("tipo_midia", nameTranslator: semTraducao);
             n.MapEnum<TipoRegularizacao>("tipo_regularizacao", nameTranslator: semTraducao);
             n.MapEnum<StatusRegularizacao>("status_regularizacao", nameTranslator: semTraducao);
@@ -118,6 +119,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             e.HasMany(x => x.Proprietarios).WithOne().HasForeignKey(x => x.ImovelId);
             e.HasMany(x => x.Envolvidos).WithOne().HasForeignKey(x => x.ImovelId);
         });
+        mb.Entity<ImovelMidia>().Property(x => x.MelhoriaStatus).HasConversion<string>();
         mb.Entity<ImovelProprietario>().HasOne(x => x.Pessoa).WithMany().HasForeignKey(x => x.PessoaId);
         mb.Entity<ImovelEnvolvido>().HasOne(x => x.Pessoa).WithMany().HasForeignKey(x => x.PessoaId);
         mb.Entity<Regularizacao>().HasOne(x => x.Profissional).WithMany().HasForeignKey(x => x.ProfissionalId);
@@ -144,6 +146,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
 
         mb.Entity<Pessoa>().HasMany(x => x.Papeis).WithOne().HasForeignKey(x => x.PessoaId);
         mb.Entity<PessoaPapel>().HasKey(x => new { x.PessoaId, x.Papel });
+        mb.Entity<PerfilPessoa>().HasKey(x => x.Codigo);
         mb.Entity<Memorando>().HasOne(x => x.Autor).WithMany().HasForeignKey(x => x.AutorId);
         mb.Entity<Compromisso>(e =>
         {

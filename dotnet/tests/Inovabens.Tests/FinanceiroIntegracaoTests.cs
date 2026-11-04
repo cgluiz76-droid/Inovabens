@@ -49,8 +49,8 @@ public class FinanceiroIntegracaoTests
 
         var admin = (await auth.LoginAsync("admin@inovabens.com.br", "Trocar@123456", null)).Usuario!;
         var corretor = (await auth.LoginAsync("carla@inovabens.com.br", "Trocar@123456", null)).Usuario!;
-        var id = await imoveis.CriarAsync(admin, new ImovelForm { Titulo = "Casa para flip", Tipo = "casa" });
-        var idCorretor = await imoveis.CriarAsync(corretor, new ImovelForm { Titulo = "Casa da Carla", Tipo = "casa" });
+        var id = await imoveis.CriarAsync(admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa para flip", Tipo = "casa" });
+        var idCorretor = await imoveis.CriarAsync(corretor, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa da Carla", Tipo = "casa" });
 
         // --- aquisição: total é coluna gerada; itens antes da aquisição são recusados ---
         Assert.Null(await aquisicao.ObterAsync(admin, id));
@@ -108,10 +108,12 @@ public class FinanceiroIntegracaoTests
         await despesas.ExcluirAsync(admin, condominio);
         Assert.DoesNotContain(await despesas.ListarAsync(admin, id), d => d.Dados.Id == condominio);
 
-        // --- receitas: líquido é coluna gerada ---
+        // --- receitas: líquido é coluna gerada; a venda marca o imóvel como Vendido ---
+        Assert.NotEqual(SituacaoImovel.VENDIDO, (await imoveis.DetalheAsync(admin, id)).Dados.Situacao);
         var venda = await receitas.CriarAsync(admin, id, new ReceitaForm
         { Tipo = TipoReceita.VENDA, Data = D(2025, 7, 20), ValorBruto = 150000m, CustosVenda = 9000m, Tributos = 1000m });
         Assert.Equal(140000m, (await receitas.ListarAsync(admin, id)).Single(x => x.Id == venda.Id).ValorLiquido);
+        Assert.Equal(SituacaoImovel.VENDIDO, (await imoveis.DetalheAsync(admin, id)).Dados.Situacao);
         var extra = await receitas.CriarAsync(admin, id, new ReceitaForm { Tipo = TipoReceita.OUTRA, Data = D(2025, 6, 1), ValorBruto = 1m });
         await receitas.ExcluirAsync(admin, extra.Id);
         Assert.Single(await receitas.ListarAsync(admin, id));
