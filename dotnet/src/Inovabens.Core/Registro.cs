@@ -54,6 +54,7 @@ public static class Registro
         services.AddScoped<UsuariosService>();
         services.AddScoped<PerfisService>();
         services.AddScoped<CadastrosService>();
+        services.AddScoped<ConfiguracoesService>();
         services.AddScoped<AuditoriaService>();
         services.AddScoped<RelatoriosService>();
         return services;

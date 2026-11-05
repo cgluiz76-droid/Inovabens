@@ -391,3 +391,20 @@ pre.json { background: #f8f9fc; border: 1px solid var(--borda); border-radius: v
 .busca-opcoes li.destaque, .busca-opcoes li[role=option]:hover { background: var(--azul-claro); color: var(--azul-escuro); border: 0; padding: .45rem .65rem; }
 .busca-opcoes li.busca-vazio { color: var(--mudo); cursor: default; }
 .busca-opcoes li.busca-vazio:hover { background: none; }
+
+/* Administração → Configurações: integrações em blocos recolhíveis */
+.w-email { width: 20rem; max-width: 100%; }
+.config-grupo { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: .1rem .9rem; margin-top: .6rem; background: var(--superficie); }
+.config-grupo[open] { padding-bottom: .9rem; }
+.config-grupo > summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem 0; cursor: pointer; list-style: none; }
+.config-grupo > summary::-webkit-details-marker { display: none; }
+.config-grupo > summary::before { content: "▸"; color: var(--mudo); margin-right: .25rem; transition: transform .15s; }
+.config-grupo[open] > summary::before { transform: rotate(90deg); }
+.config-titulo { flex: 1; font-weight: 600; color: var(--marinho); }
+.config-campos { display: grid; gap: .9rem 1.25rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: .5rem; }
+.config-campos .campo-largo { grid-column: 1 / -1; }
+.config-campos textarea.input { font-family: ui-monospace, Consolas, monospace; font-size: .78rem; }
+.badge-ok { background: var(--ok-fundo); color: var(--ok); border-color: #c7ead6; }
+.badge-neutro { background: #f0f2f7; color: var(--mudo); border-color: var(--borda); }
+.btn-link { background: none; border: 0; padding: 0; margin-left: .35rem; color: var(--erro); font-size: inherit; cursor: pointer; text-decoration: underline; }
+@media (max-width: 760px) { .config-campos { grid-template-columns: 1fr; } }

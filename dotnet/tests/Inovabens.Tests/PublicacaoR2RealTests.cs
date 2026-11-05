@@ -48,7 +48,7 @@ public class PublicacaoR2RealTests
         });
         async Task<long?> Tamanho(string k)
         {
-            try { return (await s3.GetObjectMetadataAsync(op.R2Bucket, k)).ContentLength; }
+            try { return (await s3.GetObjectMetadataAsync(op.Integracoes.R2Bucket, k)).ContentLength; }
             catch (AmazonS3Exception e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound) { return null; }
         }
 
@@ -75,7 +75,7 @@ public class PublicacaoR2RealTests
             prefixo = foto.Midia.PublicaChave!;
             foreach (var largura in PublicacaoFotosService.Larguras)
                 Assert.True(await Tamanho(PublicacaoFotosService.ChaveVersao(prefixo, largura)) > 0);
-            Assert.Equal(3, (await s3.ListObjectsV2Async(new() { BucketName = op.R2Bucket, Prefix = $"imoveis/{id:N}/" })).S3Objects.Count);
+            Assert.Equal(3, (await s3.ListObjectsV2Async(new() { BucketName = op.Integracoes.R2Bucket, Prefix = $"imoveis/{id:N}/" })).S3Objects.Count);
 
             await imoveis.AtualizarMidiaAsync(admin, foto.Midia.Id, new MidiaAlteracao { Publica = false });
             await publicacao.ProcessarAsync();

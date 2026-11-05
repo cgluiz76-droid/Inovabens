@@ -40,8 +40,12 @@ Comportamento: compromissos criados no sistema vão para o Google; alterações 
 - [ ] Backup automático do PostgreSQL ativado no provedor (inclui `audit_log` e as chaves de sessão).
 - [ ] Drive compartilhado sem link público; a chave JSON da conta de serviço só no servidor/segredos (o sistema entrega os arquivos conferindo o acesso).
 - [ ] Criar os usuários reais e atribuir perfis (Administrador, Corretor, Financeiro) em *Administração*.
+- [ ] Conferir as integrações em *Administração → Configurações → Integrações* (botão **Testar conexão** em Drive, R2, Magnific, Maps e Imobibrasil) e o e-mail do **administrador principal**.
 - [ ] Sincronizar os índices (*Administração → Configurações → Índices econômicos*) ou aguardar o job mensal.
 - [ ] Atrás de mais de um proxy, ajuste `TRUST_PROXY` (quantos há na frente; padrão 1) para o limite de tentativas de login usar o IP real.
+
+### Integrações pela tela
+Drive, R2, Magnific, Google Calendar, Google Maps, dados de contato do site, Imobibrasil e as contas nos portais (ZAP/Viva Real, ImovelWeb, OLX, Creci Brasil, Facebook) podem ser configurados em *Administração → Configurações* por quem tem a permissão `admin:config`. O valor salvo na tela vale na hora e tem prioridade sobre a variável de ambiente; apagar o campo volta a valer a variável. Chaves e senhas ficam cifradas no banco com a `TOKEN_ENC_KEY` (por isso ela precisa ser a mesma ao trocar de servidor) e nunca são exibidas de volta. Com mais de uma instância, as outras só leem a mudança ao reiniciar. As variáveis de ambiente continuam valendo para quem preferir configurar só no servidor.
 
 ## 5. Atualizações
 Cada deploy aplica as migrações pendentes e os dados-base na subida (idempotente, com lock entre instâncias). Para rodar só essa parte como passo de release: `dotnet Inovabens.Web.dll migrar`. Novas alterações de esquema: um novo arquivo `dotnet/src/Inovabens.Core/Dados/Migracoes/NNNN_descricao.sql` (o próximo número). Nunca edite um script já aplicado.

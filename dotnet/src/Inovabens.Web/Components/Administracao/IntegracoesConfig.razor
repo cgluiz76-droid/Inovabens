@@ -1,0 +1,238 @@
+@inherits ComponenteBase
+@inject ConfiguracoesService Configuracoes
+@inject IJSRuntime JS
+
+@* Administrador principal e integrações (Drive, R2, Magnific, Google, site e portais), em Administração → Configurações. *@
+
+<section class="card espaco-topo">
+    <h2>Administrador principal</h2>
+    @if (admin is null)
+    {
+        <p class="pequeno mudo">Nenhum administrador ativo encontrado.</p>
+    }
+    else
+    {
+        <p class="pequeno mudo">
+            @admin.Nome. O e-mail é o login dele; a senha e o 2FA não mudam.
+            @if (!Usuario.Pode(Permissoes.UsuariosGerir))
+            {
+                <span>Para alterar é preciso também a permissão de gerir usuários.</span>
+            }
+        </p>
+        <div class="linha-form">
+            <label class="campo-inline">
+                E-mail do administrador
+                <input class="input w-email" type="email" @bind="emailAdmin" disabled="@(!Usuario.Pode(Permissoes.UsuariosGerir))" />
+            </label>
+            <button class="btn-primary" disabled="@(Ocupado || !Usuario.Pode(Permissoes.UsuariosGerir) || emailAdmin.Trim().Equals(admin.Email, StringComparison.OrdinalIgnoreCase))"
+                    @onclick="SalvarEmailAdmin">Alterar e-mail</button>
+        </div>
+    }
+    @if (grupoMensagem == "_admin")
+    {
+        <MensagemErro Texto="@Erro" />
+        <MensagemErro Texto="@Sucesso" Sucesso />
+    }
+</section>
+
+<section class="card espaco-topo">
+    <h2>Integrações</h2>
+    <p class="pequeno mudo">
+        O valor salvo aqui vale na hora e tem prioridade sobre a variável de ambiente do servidor. Em branco volta a valer a
+        variável (ou o padrão). Chaves e senhas são gravadas cifradas e nunca são exibidas de volta.
+    </p>
+    @if (itens is null)
+    {
+        <p class="pequeno mudo">Carregando…</p>
+    }
+    else
+    {
+        @foreach (var g in CatalogoConfiguracoes.Grupos)
+        {
+            var doGrupo = itens.Where(i => i.Item.Grupo == g.Codigo).ToList();
+            <details class="config-grupo" open="@(aberto == g.Codigo)">
+                <summary @onclick="() => aberto = aberto == g.Codigo ? null : g.Codigo" @onclick:preventDefault>
+                    <span class="config-titulo">@g.Titulo</span>
+                    <span class="badge @(Situacao(g, doGrupo).Ok ? "badge-ok" : "badge-neutro")">@Situacao(g, doGrupo).Texto</span>
+                </summary>
+                <p class="pequeno mudo">@g.Descricao</p>
+                <div class="config-campos">
+                    @foreach (var c in doGrupo)
+                    {
+                        var i = c.Item;
+                        <div class="campo @(i.Tipo == TipoCampoConfig.Multilinha ? "campo-largo" : "")">
+                            @if (i.Tipo == TipoCampoConfig.Booleano)
+                            {
+                                <label class="check">
+                                    <input type="checkbox" checked="@(Valor(c) == "true")" @onchange="e => Marcar(i, e)" />
+                                    @i.Rotulo
+                                </label>
+                            }
+                            else
+                            {
+                                <span>@i.Rotulo</span>
+                                @if (i.Tipo == TipoCampoConfig.Multilinha)
+                                {
+                                    <textarea class="input" rows="@(i.Secreto ? 4 : 3)" placeholder="@Dica(c)" value="@Valor(c)"
+                                              @onchange="e => Editar(i, e.Value?.ToString())"></textarea>
+                                }
+                                else
+                                {
+                                    <input class="input" type="@TipoInput(i)" autocomplete="off" placeholder="@Dica(c)" value="@Valor(c)"
+                                           @onchange="e => Editar(i, e.Value?.ToString())" />
+                                }
+                            }
+                            <p class="pequeno mudo">
+                                @Origem(c)
+                                @if (i.Secreto && c.Origem == OrigemConfig.Tela)
+                                {
+                                    <button class="btn-link" disabled="@Ocupado" @onclick="() => RemoverSegredo(c)">Remover</button>
+                                }
+                                @if (i.Ajuda is not null)
+                                {
+                                    <br />@i.Ajuda
+                                }
+                            </p>
+                        </div>
+                    }
+                </div>
+                <div class="acoes">
+                    <button class="btn-primary" disabled="@(Ocupado || !Alterados(g.Codigo).Any())" @onclick="() => Salvar(g)">Salvar</button>
+                    @if (g.Testavel)
+                    {
+                        <button class="btn-ghost" disabled="@Ocupado" @onclick="() => Testar(g)">Testar conexão</button>
+                    }
+                    @if (Alterados(g.Codigo).Any())
+                    {
+                        <button class="btn-ghost" disabled="@Ocupado" @onclick="() => Descartar(g.Codigo)">Descartar alterações</button>
+                    }
+                </div>
+                @if (grupoMensagem == g.Codigo)
+                {
+                    <MensagemErro Texto="@Erro" />
+                    <MensagemErro Texto="@Sucesso" Sucesso />
+                }
+            </details>
+        }
+    }
+</section>
+
+@code {
+    private AdministradorPrincipal? admin;
+    private string emailAdmin = "";
+    private IReadOnlyList<ConfiguracaoItem>? itens;
+    // valores digitados e ainda não salvos (chave → texto)
+    private readonly Dictionary<string, string> edicoes = [];
+    private string? aberto;
+    private string? grupoMensagem;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarAdmin();
+        await Carregar();
+    }
+
+    private Task CarregarAdmin() => Executar(async () =>
+    {
+        admin = await Configuracoes.AdministradorAsync(Usuario);
+        emailAdmin = admin?.Email ?? "";
+    });
+
+    private Task Carregar() => Executar(async () => itens = await Configuracoes.ListarAsync(Usuario));
+
+    private string Valor(ConfiguracaoItem c) =>
+        edicoes.TryGetValue(c.Item.Chave, out var v) ? v : c.Item.Secreto ? "" : c.Valor ?? "";
+
+    private void Editar(ItemConfiguracao i, string? valor)
+    {
+        var original = itens!.First(c => c.Item.Chave == i.Chave);
+        valor ??= "";
+        // segredo em branco = manter; campo comum igual ao atual = nada a salvar
+        if ((i.Secreto && valor.Trim().Length == 0) || (!i.Secreto && valor == (original.Valor ?? ""))) edicoes.Remove(i.Chave);
+        else edicoes[i.Chave] = valor;
+    }
+
+    private void Marcar(ItemConfiguracao i, ChangeEventArgs e) => Editar(i, e.Value is true ? "true" : "false");
+
+    private IEnumerable<KeyValuePair<string, string>> Alterados(string grupo) =>
+        edicoes.Where(e => CatalogoConfiguracoes.Item(e.Key)?.Grupo == grupo);
+
+    private void Descartar(string grupo)
+    {
+        foreach (var k in Alterados(grupo).Select(e => e.Key).ToList()) edicoes.Remove(k);
+    }
+
+    private async Task Salvar(GrupoConfiguracao g)
+    {
+        grupoMensagem = g.Codigo;
+        var valores = Alterados(g.Codigo).ToDictionary(e => e.Key, e => e.Value);
+        if (!await Executar(() => Configuracoes.SalvarAsync(Usuario, g.Codigo, valores))) return;
+        Descartar(g.Codigo);
+        await Carregar();
+        grupoMensagem = g.Codigo;
+        Sucesso = "Configuração salva e em vigor.";
+    }
+
+    private async Task RemoverSegredo(ConfiguracaoItem c)
+    {
+        var volta = c.Item.Variavel is null ? "" : " Se houver a variável de ambiente, ela volta a valer.";
+        if (!await JS.InvokeAsync<bool>("confirm", $"Remover o valor salvo de \"{c.Item.Rotulo}\"?{volta}")) return;
+        grupoMensagem = c.Item.Grupo;
+        if (!await Executar(() => Configuracoes.SalvarAsync(Usuario, c.Item.Grupo, new Dictionary<string, string> { [c.Item.Chave] = "" }))) return;
+        edicoes.Remove(c.Item.Chave);
+        await Carregar();
+        grupoMensagem = c.Item.Grupo;
+        Sucesso = "Valor removido.";
+    }
+
+    private async Task Testar(GrupoConfiguracao g)
+    {
+        grupoMensagem = g.Codigo;
+        string? msg = null;
+        var ok = await Executar(async () => msg = await Configuracoes.TestarAsync(Usuario, g.Codigo));
+        grupoMensagem = g.Codigo;
+        if (ok)
+            Sucesso = Alterados(g.Codigo).Any() ? msg + " (testado com a configuração salva; salve as alterações para testá-las)" : msg;
+    }
+
+    private async Task SalvarEmailAdmin()
+    {
+        grupoMensagem = "_admin";
+        if (!await JS.InvokeAsync<bool>("confirm", $"Trocar o e-mail de login do administrador para {emailAdmin.Trim()}?")) return;
+        if (!await Executar(() => Configuracoes.DefinirEmailAdministradorAsync(Usuario, emailAdmin))) return;
+        await CarregarAdmin();
+        grupoMensagem = "_admin";
+        Sucesso = "E-mail do administrador alterado. Use o novo e-mail no próximo login.";
+    }
+
+    private static string TipoInput(ItemConfiguracao i) => i.Secreto ? "password" : i.Tipo switch
+    {
+        TipoCampoConfig.Url => "url",
+        TipoCampoConfig.Email => "email",
+        TipoCampoConfig.Telefone => "tel",
+        _ => "text",
+    };
+
+    private static string? Dica(ConfiguracaoItem c) => c.Item.Secreto
+        ? (c.Definido ? "•••••••• definido (em branco mantém)" : "não definido")
+        : c.Origem == OrigemConfig.Padrao ? c.Valor : null;
+
+    private static string Origem(ConfiguracaoItem c) => c.Origem switch
+    {
+        OrigemConfig.Tela => $"Salvo aqui em {Texto.DataHora(c.AtualizadoEm)}.",
+        OrigemConfig.Ambiente => $"Vem da variável de ambiente {c.Item.Variavel}.",
+        OrigemConfig.Padrao => "Valor padrão.",
+        _ => "Não definido.",
+    };
+
+    private static (bool Ok, string Texto) Situacao(GrupoConfiguracao g, IReadOnlyList<ConfiguracaoItem> doGrupo)
+    {
+        if (g.Codigo.StartsWith("portal_", StringComparison.Ordinal))
+            return doGrupo.FirstOrDefault(c => c.Item.Chave.EndsWith(".ativo", StringComparison.Ordinal))?.Valor == "true"
+                ? (true, "Ativo") : (false, "Desligado");
+        var definidos = doGrupo.Count(c => c.Definido);
+        return definidos == doGrupo.Count ? (true, "Configurado")
+            : definidos == 0 ? (false, "Não configurado")
+            : (false, $"{definidos} de {doGrupo.Count} definidos");
+    }
+}

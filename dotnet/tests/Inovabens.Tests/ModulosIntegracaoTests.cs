@@ -562,7 +562,7 @@ public class ModulosIntegracaoTests
 
         var servicos = new ServiceCollection();
         foreach (var t in new[] { typeof(MemorandosService), typeof(AgendaService), typeof(OpcoesService), typeof(UsuariosService), typeof(PerfisService),
-                     typeof(DespesasService), typeof(IndicesService), typeof(CrmService), typeof(AuditoriaService) })
+                     typeof(DespesasService), typeof(IndicesService), typeof(CrmService), typeof(AuditoriaService), typeof(ConfiguracoesService) })
             servicos.AddSingleton(t, a.S<IServiceProvider>().GetRequiredService(t));
         servicos.AddSingleton(a.S<ILoggerFactory>());
         servicos.AddSingleton<IJSRuntime, SemJs>();
@@ -605,6 +605,10 @@ public class ModulosIntegracaoTests
         Assert.Contains("Novo Lead", config);
         Assert.Contains("IPTU", config);
         Assert.DoesNotContain("msg-erro", config);
+        Assert.Contains("Administrador principal", config);
+        Assert.Contains("admin@inovabens.com.br", config);
+        Assert.Contains("Cloudflare R2", config);
+        Assert.Contains("ImovelWeb", config);
         var auditoria = await Renderizar<Web.Components.Administracao.AuditoriaAdmin>(a.Admin);
         Assert.Contains("memorandos", auditoria);
         Assert.DoesNotContain("msg-erro", auditoria);

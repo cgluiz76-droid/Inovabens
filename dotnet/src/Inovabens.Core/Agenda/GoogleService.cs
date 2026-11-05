@@ -98,7 +98,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private readonly ConcurrentDictionary<Guid, (string Token, DateTime Expira)> _tokens = new();
 
-    public bool Configurado => op.GoogleConfigurado;
+    public bool Configurado => op.Integracoes.GoogleConfigurado;
 
     private void Exigir()
     {
@@ -123,7 +123,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
         Exigir();
         var q = new Dictionary<string, string>
         {
-            ["client_id"] = op.GoogleClientId!, ["redirect_uri"] = op.GoogleRedirectUri!, ["response_type"] = "code",
+            ["client_id"] = op.Integracoes.GoogleClientId!, ["redirect_uri"] = op.Integracoes.GoogleRedirectUri!, ["response_type"] = "code",
             ["scope"] = "https://www.googleapis.com/auth/calendar.events openid email", ["access_type"] = "offline",
             ["prompt"] = "consent", ["state"] = AssinaturaGoogle.AssinarEstado(op.SegredoHmac, u.Id, DateTimeOffset.UtcNow),
         };
@@ -137,8 +137,8 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
         var usuarioId = AssinaturaGoogle.LerEstado(op.SegredoHmac, state, DateTimeOffset.UtcNow) ?? throw new RegraNegocioException("state", "Estado OAuth inválido ou expirado");
         using var r = await Http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["code"] = code, ["client_id"] = op.GoogleClientId!, ["client_secret"] = op.GoogleClientSecret!,
-            ["redirect_uri"] = op.GoogleRedirectUri!, ["grant_type"] = "authorization_code",
+            ["code"] = code, ["client_id"] = op.Integracoes.GoogleClientId!, ["client_secret"] = op.Integracoes.GoogleClientSecret!,
+            ["redirect_uri"] = op.Integracoes.GoogleRedirectUri!, ["grant_type"] = "authorization_code",
         }));
         var t = await r.Content.ReadFromJsonAsync<JsonElement>();
         var refresh = t.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
@@ -190,7 +190,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
         if (_tokens.TryGetValue(conta.Id, out var c) && c.Expira > DateTime.UtcNow.AddMinutes(1)) return c.Token;
         using var r = await Http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["client_id"] = op.GoogleClientId!, ["client_secret"] = op.GoogleClientSecret!,
+            ["client_id"] = op.Integracoes.GoogleClientId!, ["client_secret"] = op.Integracoes.GoogleClientSecret!,
             ["refresh_token"] = Cripto.Decifrar(conta.RefreshTokenCifrado, op.TokenEncKey), ["grant_type"] = "refresh_token",
         }));
         var t = await r.Content.ReadFromJsonAsync<JsonElement>();
@@ -382,12 +382,12 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
 
     private async Task IniciarWatchAsync(Guid usuarioId)
     {
-        if (op.GoogleWebhookUrl is null || !Configurado) return;
+        if (op.Integracoes.GoogleWebhookUrl is null || !Configurado) return;
         await using var db = await fabrica.CreateDbContextAsync();
         if (await ContaDe(db, usuarioId) is not { } conta) return;
         var canal = Guid.NewGuid().ToString();
         var r = await ChamarAsync<JsonElement>(conta, HttpMethod.Post, "/events/watch",
-            new { id = canal, type = "web_hook", address = op.GoogleWebhookUrl, token = AssinaturaGoogle.TokenDoCanal(op.SegredoHmac, canal) });
+            new { id = canal, type = "web_hook", address = op.Integracoes.GoogleWebhookUrl, token = AssinaturaGoogle.TokenDoCanal(op.SegredoHmac, canal) });
         conta.CanalWatchId = canal;
         conta.CanalResourceId = r.Dados.ValueKind == JsonValueKind.Object && r.Dados.TryGetProperty("resourceId", out var rid) ? rid.GetString() : null;
         conta.CanalExpiraEm = r.Dados.ValueKind == JsonValueKind.Object && r.Dados.TryGetProperty("expiration", out var exp)
@@ -434,7 +434,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
     /// <summary>Renova os canais de webhook que vencem em até 2 dias (diário, 04:00).</summary>
     public async Task RenovarCanaisAsync(CancellationToken ct)
     {
-        if (!Configurado || op.GoogleWebhookUrl is null) return;
+        if (!Configurado || op.Integracoes.GoogleWebhookUrl is null) return;
         var limite = DateTime.UtcNow.AddDays(2);
         List<Guid> usuarios;
         await using (var db = await fabrica.CreateDbContextAsync(ct))

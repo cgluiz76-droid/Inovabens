@@ -13,14 +13,14 @@ public sealed class GeocodificacaoService(InovabensOpcoes op, ILogger<Geocodific
 {
     private static readonly HttpClient Http = CriarCliente();
 
-    public string Provedor => op.GoogleMapsApiKey is null ? "OpenStreetMap" : "Google";
+    public string Provedor => op.Integracoes.GoogleMapsApiKey is null ? "OpenStreetMap" : "Google";
 
     /// <summary>Coordenadas do endereço ou null se não encontrado / serviço indisponível.</summary>
     public async Task<(double Latitude, double Longitude)?> LocalizarAsync(string endereco, CancellationToken ct = default)
     {
         try
         {
-            return op.GoogleMapsApiKey is { } chave ? await Google(endereco, chave, ct) : await Nominatim(endereco, ct);
+            return op.Integracoes.GoogleMapsApiKey is { } chave ? await Google(endereco, chave, ct) : await Nominatim(endereco, ct);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {

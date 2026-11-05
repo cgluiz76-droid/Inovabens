@@ -25,28 +25,40 @@ public interface IArmazenamentoPublico
 /// <summary>Cloudflare R2 pela API compatível com S3. Desabilitado sem endpoint e chaves.</summary>
 public sealed class R2ArmazenamentoPublico : IArmazenamentoPublico, IDisposable
 {
-    private readonly AmazonS3Client? _s3;
-    private readonly string _bucket;
-    private readonly string? _urlPublica;
+    private readonly InovabensOpcoes _op;
     private readonly ILogger<R2ArmazenamentoPublico> _log;
+    private readonly Lock _trava = new();
+    // cliente montado com as integrações em vigor; refeito quando a configuração é salva na tela
+    private (Integracoes? Fonte, AmazonS3Client? S3) _atual;
 
     public R2ArmazenamentoPublico(InovabensOpcoes op, ILogger<R2ArmazenamentoPublico> log)
     {
+        _op = op;
         _log = log;
-        _bucket = op.R2Bucket;
-        _urlPublica = op.R2UrlPublica;
-        var (endpoint, chave, segredo) = (op.R2Endpoint, op.R2AccessKeyId, op.R2SecretAccessKey);
-        if (op.R2Credenciais is { } arquivo && File.Exists(arquivo))
+        if (S3 is null) log.LogWarning("Cloudflare R2 não configurado (R2_*): fotos públicas não vão para o site.");
+    }
+
+    private AmazonS3Client? S3
+    {
+        get
         {
-            var lido = LerArquivoCloudflare(File.ReadAllLines(arquivo));
-            endpoint ??= lido.Endpoint; chave ??= lido.Chave; segredo ??= lido.Segredo;
+            var fonte = _op.Integracoes;
+            if (ReferenceEquals(_atual.Fonte, fonte)) return _atual.S3;
+            lock (_trava)
+            {
+                if (ReferenceEquals(_atual.Fonte, fonte)) return _atual.S3;
+                var s3 = fonte.R2Configurado ? Criar(fonte.R2Endpoint!, fonte.R2AccessKeyId!, fonte.R2SecretAccessKey!) : null;
+                // o cliente anterior não é descartado: pode haver envio em andamento com ele
+                _atual = (fonte, s3);
+                return s3;
+            }
         }
-        if (endpoint is null || chave is null || segredo is null)
-        {
-            log.LogWarning("Cloudflare R2 não configurado (R2_*): fotos públicas não vão para o site.");
-            return;
-        }
-        _s3 = new AmazonS3Client(new BasicAWSCredentials(chave, segredo), new AmazonS3Config
+    }
+
+    private string Bucket => _op.Integracoes.R2Bucket;
+
+    internal static AmazonS3Client Criar(string endpoint, string chave, string segredo) =>
+        new(new BasicAWSCredentials(chave, segredo), new AmazonS3Config
         {
             ServiceURL = endpoint,
             ForcePathStyle = true,
@@ -55,41 +67,52 @@ public sealed class R2ArmazenamentoPublico : IArmazenamentoPublico, IDisposable
             RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
             ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
         });
-    }
 
-    public bool Habilitado => _s3 is not null;
+    public bool Habilitado => S3 is not null;
+
+    /// <summary>Confere o acesso ao bucket (lista no máximo um objeto).</summary>
+    public async Task TestarAsync(CancellationToken ct = default)
+    {
+        var s3 = S3 ?? throw new InvalidOperationException("Cloudflare R2 não configurado.");
+        await s3.ListObjectsV2Async(new ListObjectsV2Request { BucketName = Bucket, MaxKeys = 1 }, ct);
+    }
 
     public async Task EnviarAsync(string chave, byte[] dados, string contentType, CancellationToken ct = default)
     {
-        if (_s3 is null) throw new InvalidOperationException("Armazenamento público desabilitado.");
+        var s3 = S3 ?? throw new InvalidOperationException("Armazenamento público desabilitado.");
         using var conteudo = new MemoryStream(dados);
         var req = new PutObjectRequest
         {
-            BucketName = _bucket, Key = chave, InputStream = conteudo, ContentType = contentType,
+            BucketName = Bucket, Key = chave, InputStream = conteudo, ContentType = contentType,
             UseChunkEncoding = false, AutoCloseStream = false,
         };
         // a chave muda quando a foto muda: o navegador e a CDN podem guardar para sempre
         req.Headers.CacheControl = "public, max-age=31536000, immutable";
-        await _s3.PutObjectAsync(req, ct);
+        await s3.PutObjectAsync(req, ct);
     }
 
     public async Task RemoverAsync(string chave)
     {
-        if (_s3 is null) return;
-        try { await _s3.DeleteObjectAsync(_bucket, chave); }
+        if (S3 is not { } s3) return;
+        try { await s3.DeleteObjectAsync(Bucket, chave); }
         catch (Exception e) { _log.LogWarning("Falha ao remover {Chave} do R2: {Erro}", chave, e.Message); }
     }
 
     public string? Url(string? chave) =>
-        _urlPublica is null || string.IsNullOrEmpty(chave) ? null : $"{_urlPublica}/{chave}";
+        _op.Integracoes.R2UrlPublica is not { } url || string.IsNullOrEmpty(chave) ? null : $"{url}/{chave}";
 
-    /// <summary>Texto do painel da Cloudflare ("Access Key ID", "Secret Access Key", "S3 API endpoint"): o valor vem na linha seguinte.</summary>
+    /// <summary>
+    /// Texto do painel da Cloudflare ("Access Key ID", "Secret Access Key" e o endpoint): o valor vem na linha seguinte ao
+    /// rótulo. O endpoint aparece como "S3 API endpoint" ou, nos tokens mais novos, como "Default" (endpoint sem jurisdição).
+    /// </summary>
     internal static (string? Endpoint, string? Chave, string? Segredo) LerArquivoCloudflare(IReadOnlyList<string> linhas)
     {
         var l = linhas.Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
         string? Valor(string rotulo) => l.IndexOf(rotulo) is var i and >= 0 && i + 1 < l.Count ? l[i + 1] : null;
-        return (Valor("S3 API endpoint"), Valor("Access Key ID"), Valor("Secret Access Key"));
+        var endpoint = Valor("S3 API endpoint") ?? Valor("Default")
+            ?? l.FirstOrDefault(x => x.StartsWith("https://", StringComparison.Ordinal) && x.Contains(".r2.cloudflarestorage.com", StringComparison.Ordinal));
+        return (endpoint, Valor("Access Key ID"), Valor("Secret Access Key"));
     }
 
-    public void Dispose() => _s3?.Dispose();
+    public void Dispose() => _atual.S3?.Dispose();
 }

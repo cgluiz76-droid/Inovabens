@@ -20,7 +20,7 @@ public sealed class MagnificCliente(HttpClient http, InovabensOpcoes op)
     public const string Endpoint = "https://api.magnific.com/v1/ai/image-upscaler-precision-v2";
     private const long TamanhoMaximoResultado = 100 * 1024 * 1024;
 
-    public bool Configurado => op.MagnificApiKey is not null;
+    public bool Configurado => op.Integracoes.MagnificApiKey is not null;
 
     /// <summary>Envia a foto (JPEG) para ampliar 2x com o perfil "photo".</summary>
     public async Task<TarefaMagnific> CriarAsync(byte[] jpeg, CancellationToken ct = default)
@@ -61,10 +61,18 @@ public sealed class MagnificCliente(HttpClient http, InovabensOpcoes op)
         return destino.ToArray();
     }
 
+    /// <summary>Confere a chave numa consulta gratuita (lista de estilos).</summary>
+    public async Task TestarAsync(CancellationToken ct = default)
+    {
+        using var req = Requisicao(HttpMethod.Get, "https://api.magnific.com/v1/ai/loras");
+        using var resp = await http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode) throw new MagnificRecusouException($"Magnific recusou a chave ({(int)resp.StatusCode}).");
+    }
+
     private HttpRequestMessage Requisicao(HttpMethod metodo, string url)
     {
         var req = new HttpRequestMessage(metodo, url);
-        req.Headers.Add("x-magnific-api-key", op.MagnificApiKey ?? throw new InvalidOperationException("MAGNIFIC_API_KEY não configurada."));
+        req.Headers.Add("x-magnific-api-key", op.Integracoes.MagnificApiKey ?? throw new InvalidOperationException("MAGNIFIC_API_KEY não configurada."));
         return req;
     }
 

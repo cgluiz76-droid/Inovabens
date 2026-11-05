@@ -62,6 +62,15 @@ public class PublicacaoFotosUnidadeTests
         ];
         Assert.Equal(("https://conta.r2.cloudflarestorage.com", "chave-123", "segredo-456"), R2ArmazenamentoPublico.LerArquivoCloudflare(linhas));
         Assert.Equal((null, null, null), R2ArmazenamentoPublico.LerArquivoCloudflare(["Access Key ID"]));
+
+        // formato dos tokens novos: o endpoint vem logo depois de "Default", sem "S3 API endpoint"
+        string[] novo =
+        [
+            "Token value", "tok", "Use the following credentials for S3 clients:", "Access Key ID", "chave-789", "Secret Access Key", "segredo-000",
+            "Use jurisdiction-specific endpoints for S3 clients:", "Default", "https://outra.r2.cloudflarestorage.com",
+            "For security reasons, these token values will not be shown again.",
+        ];
+        Assert.Equal(("https://outra.r2.cloudflarestorage.com", "chave-789", "segredo-000"), R2ArmazenamentoPublico.LerArquivoCloudflare(novo));
     }
 
     [Fact]

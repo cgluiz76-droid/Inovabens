@@ -25,7 +25,7 @@ public abstract class Rotina(IServiceScopeFactory escopos, InovabensOpcoes opcoe
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        if (opcoes.DesativarJobs || !Habilitada) return;
+        if (opcoes.DesativarJobs) return;
         while (!ct.IsCancellationRequested)
         {
             var espera = DatasBR.ParaUtc(ProximaBR(DatasBR.Agora())) - DateTime.UtcNow;
@@ -35,6 +35,8 @@ public abstract class Rotina(IServiceScopeFactory escopos, InovabensOpcoes opcoe
                 continue;
             }
             if (espera > TimeSpan.Zero) await Task.Delay(espera, ct);
+            // conferido a cada vez: a integração pode ser ligada ou desligada pela tela sem reiniciar
+            if (!Habilitada) continue;
             try
             {
                 using var escopo = escopos.CreateScope();
@@ -94,7 +96,7 @@ public sealed class RotinaFinanceiraDiariaJob(IServiceScopeFactory e, InovabensO
 public sealed class SincronizacaoGoogleJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<SincronizacaoGoogleJob> log) : Rotina(e, o, log)
 {
     protected override string Nome => "sincronização Google";
-    protected override bool Habilitada => Opcoes.GoogleConfigurado;
+    protected override bool Habilitada => Opcoes.Integracoes.GoogleConfigurado;
     protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 10);
 
     protected override Task Rodar(IServiceProvider sp, CancellationToken ct) => sp.GetRequiredService<GoogleService>().SincronizarTodasAsync(ct);
@@ -104,7 +106,7 @@ public sealed class SincronizacaoGoogleJob(IServiceScopeFactory e, InovabensOpco
 public sealed class RenovacaoCanaisGoogleJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<RenovacaoCanaisGoogleJob> log) : Rotina(e, o, log)
 {
     protected override string Nome => "renovação de canais Google";
-    protected override bool Habilitada => Opcoes.GoogleConfigurado;
+    protected override bool Habilitada => Opcoes.Integracoes.GoogleConfigurado;
     protected internal override DateTime ProximaBR(DateTime agoraBR) => Diaria(agoraBR, 4);
 
     protected override Task Rodar(IServiceProvider sp, CancellationToken ct) => sp.GetRequiredService<GoogleService>().RenovarCanaisAsync(ct);
@@ -114,7 +116,7 @@ public sealed class RenovacaoCanaisGoogleJob(IServiceScopeFactory e, InovabensOp
 public sealed class MelhoriaFotosJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<MelhoriaFotosJob> log) : Rotina(e, o, log)
 {
     protected override string Nome => "melhoria de fotos (Magnific)";
-    protected override bool Habilitada => Opcoes.MagnificApiKey is not null;
+    protected override bool Habilitada => Opcoes.Integracoes.MagnificApiKey is not null;
     protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 1);
 
     protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
@@ -128,7 +130,7 @@ public sealed class MelhoriaFotosJob(IServiceScopeFactory e, InovabensOpcoes o, 
 public sealed class PublicacaoFotosJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<PublicacaoFotosJob> log) : Rotina(e, o, log)
 {
     protected override string Nome => "publicação de fotos (R2)";
-    protected override bool Habilitada => Opcoes.R2Endpoint is not null || Opcoes.R2Credenciais is not null;
+    protected override bool Habilitada => Opcoes.Integracoes.R2Configurado;
     protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 1);
 
     protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)

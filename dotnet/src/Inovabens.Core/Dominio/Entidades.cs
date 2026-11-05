@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
@@ -139,6 +140,17 @@ public class ImovelProprietario
     public DateOnly? InicioEm { get; set; }
     public DateOnly? FimEm { get; set; }
     [JsonIgnore] public Pessoa? Pessoa { get; set; }
+}
+
+/// <summary>Valor de uma integração salvo pela tela (chave do <see cref="CatalogoConfiguracoes"/>); segredos vêm cifrados.</summary>
+[Table("configuracoes")]
+public class Configuracao
+{
+    [Key] public string Chave { get; set; } = "";
+    public string Valor { get; set; } = "";
+    public bool Cifrado { get; set; }
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+    public Guid? AtualizadoPor { get; set; }
 }
 
 /// <summary>Tipo de imóvel, mantido na Administração; imoveis.tipo guarda o nome (renomear propaga por FK).</summary>

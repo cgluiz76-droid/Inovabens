@@ -92,6 +92,9 @@ var app = builder.Build();
 // `dotnet Inovabens.Web.dll migrar` faz só isso e sai — use como passo de release, se preferir.
 await app.Services.GetRequiredService<Migrador>().AplicarAsync();
 await app.Services.GetRequiredService<DadosIniciais>().GarantirAsync();
+// integrações salvas em Administração → Configurações valem por cima das variáveis de ambiente
+using (var escopo = app.Services.CreateScope())
+    await escopo.ServiceProvider.GetRequiredService<Inovabens.Core.Admin.ConfiguracoesService>().CarregarAsync();
 if (args.Contains("migrar")) return;
 
 // `dotnet Inovabens.Web.dll importar-imobibrasil [--usuario=email] [--site=https://...] [--sem-fotos]`
@@ -118,7 +121,7 @@ if (args.Contains("importar-imobibrasil"))
         return;
     }
     var itens = await sp.GetRequiredService<ImportacaoImobibrasilService>().ImportarAsync(usuario,
-        Arg("site") ?? "https://www.inovabens.com.br", comFotos: !args.Contains("--sem-fotos"), progresso: Console.WriteLine);
+        Arg("site") ?? opcoes.Integracoes.ImobibrasilSite, comFotos: !args.Contains("--sem-fotos"), progresso: Console.WriteLine);
     Console.WriteLine($"Concluído: {itens.Count(i => i.Novo)} novos, {itens.Count(i => !i.Novo && i.Codigo != "—")} atualizados, " +
                       $"{itens.Count(i => i.Codigo == "—")} com falha, {itens.Sum(i => i.FotosNovas)} fotos enviadas.");
     return;

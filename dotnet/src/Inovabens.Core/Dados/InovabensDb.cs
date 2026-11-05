@@ -43,6 +43,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<PessoaPapel> PessoaPapeis => Set<PessoaPapel>();
     public DbSet<PerfilPessoa> PerfisPessoa => Set<PerfilPessoa>();
     public DbSet<TipoImovel> TiposImovel => Set<TipoImovel>();
+    public DbSet<Configuracao> Configuracoes => Set<Configuracao>();
     public DbSet<Memorando> Memorandos => Set<Memorando>();
     public DbSet<Compromisso> Compromissos => Set<Compromisso>();
     public DbSet<CompromissoParticipante> CompromissoParticipantes => Set<CompromissoParticipante>();
