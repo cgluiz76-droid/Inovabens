@@ -1,5 +1,7 @@
 # Inovabens — Gestão Imobiliária e Financeira
 
+Projeto Controle de Projetos e Processos da Inovabens.
+
 Sistema web para a Inovabens (investimento imobiliário): ficha dos imóveis, custo de aquisição (CAPEX) e despesas recorrentes (OPEX) com checklist mensal, retorno do investimento corrigido por índice (IPCA/INCC/IGP-M/Selic), memorandos, agenda com Google Calendar, alertas, CRM em kanban e controle de acesso por perfil.
 
 ## Arquitetura
