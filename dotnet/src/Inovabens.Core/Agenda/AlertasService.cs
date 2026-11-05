@@ -100,4 +100,30 @@ public sealed class AlertasService(IDbContextFactory<InovabensDb> fabrica)
             """, ct);
         return new ResultadoVerificacao(criados, resolvidos);
     }
+
+    /// <summary>
+    /// REGRA: bucket público (Cloudflare R2) com <paramref name="bytes"/> acima de <paramref name="limiteGb"/> gera um alerta
+    /// aberto para cada usuário com admin:config (o texto é atualizado a cada medição); abaixo do limite, os abertos se resolvem.
+    /// </summary>
+    public async Task<ResultadoVerificacao> VerificarLimiteGratuitoAsync(long bytes, decimal limiteGb, CancellationToken ct = default)
+    {
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var abertos = db.Alertas.Where(a => a.Tipo == TipoAlerta.LIMITE_GRATUITO && a.ResolvidoEm == null);
+        if (bytes < (long)(limiteGb * 1024 * 1024 * 1024))
+            return new ResultadoVerificacao(0, await abertos.ExecuteUpdateAsync(x => x.SetProperty(a => a.ResolvidoEm, DateTime.UtcNow), ct));
+
+        var mensagem = $"Fotos públicas no Cloudflare R2: {Servicos.R2ArmazenamentoPublico.DescreverUso(bytes)}, acima do aviso de " +
+                       $"{limiteGb.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"))} GB. " +
+                       $"Acima de {Servicos.R2ArmazenamentoPublico.GratuitoGb} GB a Cloudflare cobra cerca de US$ 0,015 por GB por mês.";
+        await abertos.ExecuteUpdateAsync(x => x.SetProperty(a => a.Mensagem, mensagem), ct);
+        var jaAvisados = abertos.Select(a => a.UsuarioId);
+        var destinatarios = await db.Usuarios
+            .Where(u => u.Ativo && u.ExcluidoEm == null && !jaAvisados.Contains(u.Id))
+            .Where(u => db.PerfilPermissoes.Any(pp => pp.PerfilId == u.PerfilId && pp.Permissao!.Codigo == Permissoes.AdminConfig))
+            .Select(u => u.Id).ToListAsync(ct);
+        foreach (var id in destinatarios)
+            db.Alertas.Add(new Alerta { Id = Guid.NewGuid(), Tipo = TipoAlerta.LIMITE_GRATUITO, UsuarioId = id, Mensagem = mensagem });
+        await db.SaveChangesAsync(ct);
+        return new ResultadoVerificacao(destinatarios.Count, 0);
+    }
 }

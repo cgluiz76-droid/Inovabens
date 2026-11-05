@@ -37,7 +37,7 @@ public enum TipoCompromisso { TAREFA, REUNIAO, VISITA }
 
 public enum StatusCompromisso { PENDENTE, CONCLUIDO, CANCELADO }
 
-public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, DESPESA_NAO_PAGA }
+public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, DESPESA_NAO_PAGA, LIMITE_GRATUITO }
 
 public enum FinalidadeLead { COMPRA, LOCACAO }
 

@@ -2,7 +2,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Inovabens.Core;
 
-public enum TipoCampoConfig { Texto, Url, Email, Telefone, Multilinha, Booleano }
+public enum TipoCampoConfig { Texto, Url, Email, Telefone, Multilinha, Booleano, Numero }
 
 /// <summary>
 /// Uma configuração editável em Administração → Configurações. <see cref="Variavel"/> é a variável de ambiente
@@ -63,6 +63,9 @@ public static class CatalogoConfiguracoes
         new("r2.bucket", R2, "Bucket", Variavel: "R2_BUCKET", Padrao: "inovabens-site"),
         new("r2.url_publica", R2, "Endereço público das fotos", "Domínio próprio (ex.: https://fotos.inovabens.com.br) ou o r2.dev do bucket.",
             Variavel: "R2_URL_PUBLICA", Tipo: TipoCampoConfig.Url),
+        new("r2.alerta_gb", R2, "Avisar quando o bucket passar de (GB)",
+            $"O R2 é grátis até {Servicos.R2ArmazenamentoPublico.GratuitoGb} GB guardados por mês. Uma vez por dia o sistema mede o bucket e avisa os administradores no sino.",
+            Variavel: "R2_ALERTA_GB", Tipo: TipoCampoConfig.Numero, Padrao: "8"),
 
         new("magnific.api_key", Magnific, "Chave da API", Secreto: true, Variavel: "MAGNIFIC_API_KEY"),
 
@@ -146,6 +149,9 @@ public sealed class Integracoes(IReadOnlyDictionary<string, string> valores)
     public string? R2SecretAccessKey => this["r2.secret_access_key"];
     public string R2Bucket => this["r2.bucket"] ?? "inovabens-site";
     public string? R2UrlPublica => this["r2.url_publica"]?.TrimEnd('/');
+    /// <summary>Tamanho do bucket (GB) a partir do qual os administradores recebem alerta.</summary>
+    public decimal R2AlertaGb =>
+        decimal.TryParse(this["r2.alerta_gb"], System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var gb) && gb > 0 ? gb : 8m;
     public bool R2Configurado => R2Endpoint is not null && R2AccessKeyId is not null && R2SecretAccessKey is not null;
 
     public string? MagnificApiKey => this["magnific.api_key"];

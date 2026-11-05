@@ -120,10 +120,11 @@ public sealed partial class ConfiguracoesService(
                     return "Conexão com o drive compartilhado funcionando.";
                 case CatalogoConfiguracoes.R2:
                     if (publico is not R2ArmazenamentoPublico r2 || !r2.Habilitado) throw Falta("Informe endpoint, Access Key ID e Secret Access Key.");
-                    await r2.TestarAsync(ct);
+                    var (bytes, arquivos) = await r2.UsoAsync(ct);
+                    var uso = $" Uso: {arquivos} arquivo(s), {R2ArmazenamentoPublico.DescreverUso(bytes)}.";
                     return i.R2UrlPublica is null
-                        ? "Acesso ao bucket funcionando. Falta o endereço público para as fotos aparecerem no site."
-                        : "Acesso ao bucket funcionando.";
+                        ? "Acesso ao bucket funcionando." + uso + " Falta o endereço público para as fotos aparecerem no site."
+                        : "Acesso ao bucket funcionando." + uso;
                 case CatalogoConfiguracoes.Magnific:
                     if (!magnific.Configurado) throw Falta("Informe a chave da API.");
                     await magnific.TestarAsync(ct);
@@ -239,6 +240,10 @@ public sealed partial class ConfiguracoesService(
                 var digitos = new string(v.Where(char.IsDigit).ToArray());
                 if (digitos.Length is < 10 or > 13) throw new RegraNegocioException(item.Chave, $"{item.Rotulo}: informe DDD e número (10 a 13 dígitos).");
                 return digitos;
+            case TipoCampoConfig.Numero:
+                if (!decimal.TryParse(v.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var n) || n <= 0 || n > 100_000)
+                    throw new RegraNegocioException(item.Chave, $"{item.Rotulo}: informe um número maior que zero.");
+                return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
             case TipoCampoConfig.Booleano:
                 return v.Equals("true", StringComparison.OrdinalIgnoreCase) ? "true" : "false";
         }

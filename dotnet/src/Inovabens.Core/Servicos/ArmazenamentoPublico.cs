@@ -70,6 +70,34 @@ public sealed class R2ArmazenamentoPublico : IArmazenamentoPublico, IDisposable
 
     public bool Habilitado => S3 is not null;
 
+    /// <summary>Armazenamento gratuito do R2 por mês (GB); acima disso a Cloudflare cobra por GB guardado.</summary>
+    public const int GratuitoGb = 10;
+
+    /// <summary>Soma do tamanho dos arquivos do bucket (lista tudo: 1 operação de leitura a cada 1.000 arquivos).</summary>
+    public async Task<(long Bytes, int Arquivos)> UsoAsync(CancellationToken ct = default)
+    {
+        var s3 = S3 ?? throw new InvalidOperationException("Cloudflare R2 não configurado.");
+        long bytes = 0;
+        var arquivos = 0;
+        var req = new ListObjectsV2Request { BucketName = Bucket, MaxKeys = 1000 };
+        while (true)
+        {
+            var r = await s3.ListObjectsV2Async(req, ct);
+            foreach (var o in r.S3Objects ?? []) { bytes += o.Size ?? 0; arquivos++; }
+            if (r.IsTruncated != true) return (bytes, arquivos);
+            req.ContinuationToken = r.NextContinuationToken;
+        }
+    }
+
+    /// <summary>"59,6 MB de 10 GB gratuitos (0,6%)".</summary>
+    public static string DescreverUso(long bytes)
+    {
+        var pt = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+        var gb = bytes / 1024d / 1024 / 1024;
+        var tamanho = gb >= 1 ? gb.ToString("0.##", pt) + " GB" : (bytes / 1024d / 1024).ToString("0.#", pt) + " MB";
+        return $"{tamanho} de {GratuitoGb} GB gratuitos ({(gb / GratuitoGb * 100).ToString("0.#", pt)}%)";
+    }
+
     /// <summary>Confere o acesso ao bucket (lista no máximo um objeto).</summary>
     public async Task TestarAsync(CancellationToken ct = default)
     {

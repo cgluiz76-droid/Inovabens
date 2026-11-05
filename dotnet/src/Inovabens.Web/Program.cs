@@ -28,6 +28,7 @@ builder.Services.AddHostedService<SincronizacaoGoogleJob>();
 builder.Services.AddHostedService<RenovacaoCanaisGoogleJob>();
 builder.Services.AddHostedService<MelhoriaFotosJob>();
 builder.Services.AddHostedService<PublicacaoFotosJob>();
+builder.Services.AddHostedService<LimiteGratuitoR2Job>();
 builder.Services.AddSingleton<RenovacaoSessao>();
 
 builder.Services.AddRazorComponents()

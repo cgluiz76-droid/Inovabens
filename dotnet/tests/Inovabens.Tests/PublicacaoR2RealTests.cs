@@ -76,6 +76,9 @@ public class PublicacaoR2RealTests
             foreach (var largura in PublicacaoFotosService.Larguras)
                 Assert.True(await Tamanho(PublicacaoFotosService.ChaveVersao(prefixo, largura)) > 0);
             Assert.Equal(3, (await s3.ListObjectsV2Async(new() { BucketName = op.Integracoes.R2Bucket, Prefix = $"imoveis/{id:N}/" })).S3Objects.Count);
+            // a medição do bucket (alerta do limite gratuito) enxerga os arquivos publicados
+            var (bytes, arquivos) = await ((R2ArmazenamentoPublico)S<IArmazenamentoPublico>()).UsoAsync();
+            Assert.True(arquivos >= 3 && bytes > 0);
 
             await imoveis.AtualizarMidiaAsync(admin, foto.Midia.Id, new MidiaAlteracao { Publica = false });
             await publicacao.ProcessarAsync();

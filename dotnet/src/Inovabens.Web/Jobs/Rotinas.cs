@@ -3,6 +3,7 @@ using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Financeiro;
 using Inovabens.Core.Imoveis;
+using Inovabens.Core.Servicos;
 
 namespace Inovabens.Web.Jobs;
 
@@ -137,5 +138,26 @@ public sealed class PublicacaoFotosJob(IServiceScopeFactory e, InovabensOpcoes o
     {
         var n = await sp.GetRequiredService<PublicacaoFotosService>().ProcessarAsync(ct);
         if (n > 0) Log.LogInformation("R2: {Qtd} foto(s) publicada(s)", n);
+    }
+}
+
+/// <summary>
+/// Todo dia às 07:00: mede o bucket público (Cloudflare R2) e avisa os administradores no sino quando passa do limite
+/// configurado (padrão 8 GB dos 10 GB gratuitos). Leituras e gravações não entram na conta: para elas, use o alerta de
+/// cobrança da própria Cloudflare (Notifications → Usage Based Billing).
+/// </summary>
+public sealed class LimiteGratuitoR2Job(IServiceScopeFactory e, InovabensOpcoes o, ILogger<LimiteGratuitoR2Job> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "limite gratuito do R2";
+    protected override bool Habilitada => Opcoes.Integracoes.R2Configurado;
+    protected internal override DateTime ProximaBR(DateTime agoraBR) => Diaria(agoraBR, 7);
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        if (sp.GetRequiredService<IArmazenamentoPublico>() is not R2ArmazenamentoPublico r2 || !r2.Habilitado) return;
+        var (bytes, arquivos) = await r2.UsoAsync(ct);
+        var r = await sp.GetRequiredService<AlertasService>().VerificarLimiteGratuitoAsync(bytes, Opcoes.Integracoes.R2AlertaGb, ct);
+        Log.LogInformation("R2: {Arquivos} arquivo(s), {Uso}; alertas {Criados} criado(s), {Resolvidos} resolvido(s)",
+            arquivos, R2ArmazenamentoPublico.DescreverUso(bytes), r.Criados, r.Resolvidos);
     }
 }
