@@ -191,6 +191,51 @@ public class FluxosTests(Aplicacao app)
     }
 
     [Fact]
+    public async Task Site_tem_logo_e_menus_navegaveis_e_simulador_com_regras_da_caixa()
+    {
+        var s = Navegacao.Sufixo();
+        var titulo = $"Casa Vitrine {s}";
+        var p = await app.NovaPaginaAsync();
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+        var id = await p.CriarImovelAsync(titulo);
+        await p.GetByLabel("Situação").SelectOptionAsync("DISPONIVEL");
+        await p.GetByLabel("Preço de venda (R$)").FillAsync("500000");
+        await p.GetByLabel("Divulgar no site").CheckAsync();
+        await p.Botao("Salvar").ClickAsync();
+        await Expect(p.GetByText("Dados salvos.")).ToBeVisibleAsync();
+
+        // ficha no site: simulação SAC com 20% de entrada, 420 meses, 11,49% a.a. nominal (Caixa, balcão)
+        await p.GotoAsync($"/site/imovel/{id}");
+        await Expect(p.GetByRole(AriaRole.Heading, new() { Name = "Simule o financiamento" })).ToBeVisibleAsync();
+        await Expect(p.GetByText("Isto é uma simulação.")).ToBeVisibleAsync();
+        await Expect(p.GetByText("depende de análise de crédito e aprovação da instituição financeira", new() { Exact = false })).ToBeVisibleAsync();
+        await Expect(p.Locator("#rPrimeira")).ToHaveTextAsync("R$ 4.782,38");
+        await Expect(p.Locator("#rFinanciado")).ToHaveTextAsync("R$ 400.000,00");
+        // Price: a Caixa financia até 70%, então a entrada sobe para 30% e a parcela fica fixa
+        await p.GetByText("Price", new() { Exact = true }).ClickAsync();
+        await Expect(p.Locator("#rPrimeiraRotulo")).ToHaveTextAsync("Parcela fixa");
+        await Expect(p.Locator("#rFinanciado")).ToHaveTextAsync("R$ 350.000,00");
+        await Expect(p.Locator("#simEntrada")).ToHaveValueAsync("150000");
+        // idade + prazo até 80 anos e 6 meses
+        await p.Locator("#simIdade").FillAsync("60");
+        await Expect(p.Locator("#simPrazoTxt")).ToHaveTextAsync("20 anos e 6 meses (246 meses)");
+
+        // logo volta ao início; "Comprar" lista todos à venda; o cartão abre a ficha
+        await p.GetByRole(AriaRole.Banner).GetByRole(AriaRole.Link, new() { Name = "Inovabens: página inicial" }).ClickAsync();
+        await Expect(p).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/site$"));
+        await Expect(p.GetByRole(AriaRole.Heading, new() { Name = "Imóveis à venda" })).ToBeVisibleAsync();
+        await p.GetByRole(AriaRole.Navigation, new() { Name = "Principal" }).GetByRole(AriaRole.Link, new() { Name = "Comprar" }).ClickAsync();
+        await Expect(p).ToHaveURLAsync(new System.Text.RegularExpressions.Regex(@"/site/imoveis\?finalidade=venda$"));
+        await Expect(p.GetByRole(AriaRole.Heading, new() { Name = "Imóveis à venda", Level = 1 })).ToBeVisibleAsync();
+        await p.GetByRole(AriaRole.Link, new() { Name = titulo }).ClickAsync();
+        await Expect(p.GetByRole(AriaRole.Heading, new() { Name = titulo, Level = 1 })).ToBeVisibleAsync();
+        // "Alugar" não mostra o imóvel que é só de venda
+        await p.GetByRole(AriaRole.Navigation, new() { Name = "Principal" }).GetByRole(AriaRole.Link, new() { Name = "Alugar" }).ClickAsync();
+        await Expect(p.GetByRole(AriaRole.Heading, new() { Name = "Imóveis para alugar", Level = 1 })).ToBeVisibleAsync();
+        await Expect(p.GetByRole(AriaRole.Link, new() { Name = titulo })).ToHaveCountAsync(0);
+    }
+
+    [Fact]
     public async Task Dois_fatores_ativado_pela_conta_passa_a_ser_exigido_no_login()
     {
         var s = Navegacao.Sufixo();

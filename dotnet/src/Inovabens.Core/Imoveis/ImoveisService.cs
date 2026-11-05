@@ -51,6 +51,33 @@ public sealed class ImoveisService(
         return new Paginado<ImovelListaItem>(itens, total, pagina, tamanho);
     }
 
+    /// <summary>
+    /// Imóveis que o site público mostra: disponíveis e marcados para divulgar, com a capa entre as fotos públicas.
+    /// Usado pela pré-visualização do site (início e busca por venda/aluguel).
+    /// </summary>
+    public async Task<IReadOnlyList<VitrineItem>> VitrineAsync(UsuarioAtual u, FiltroVitrine f)
+    {
+        u.Exigir(P.ImoveisVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var q = db.Imoveis.AsNoTracking().VisiveisPara(u)
+            .Where(i => i.ExcluidoEm == null && i.DivulgarSite && i.Situacao == SituacaoImovel.DISPONIVEL);
+        if (f.Finalidade is { } fi && fi != FinalidadeImovel.AMBOS)
+            q = q.Where(i => i.Finalidade == fi || i.Finalidade == FinalidadeImovel.AMBOS);
+        if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.ILike(i.Tipo, Texto.LikeLiteral(tipo), @"\"));
+        if (Texto.Limpo(f.Cidade) is { } cidade) q = q.Where(i => EF.Functions.ILike(i.Cidade!, Texto.LikeLiteral(cidade), @"\"));
+        var imoveis = await q.OrderByDescending(i => i.AtualizadoEm).Take(Math.Clamp(f.Maximo, 1, 200)).ToListAsync();
+
+        var ids = imoveis.Select(i => i.Id).ToList();
+        var fotos = await db.ImovelMidias.AsNoTracking()
+            .Where(m => ids.Contains(m.ImovelId) && m.Publica && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
+            .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
+        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.UrlPublica ?? d.Url : null);
+
+        return [.. imoveis.Select(i => new VitrineItem(i.Id, i.Referencia ?? i.Codigo, i.Titulo, i.Subtipo ?? i.Tipo, i.Finalidade,
+            i.Cidade, i.Bairro, i.Uf, i.PrecoVenda, i.PrecoLocacao, i.Quartos, i.Suites, i.Vagas,
+            i.AreaConstruidaM2 ?? i.AreaTerrenoM2 ?? i.AreaTotalM2 ?? i.AreaUtilM2, capas.GetValueOrDefault(i.Id)))];
+    }
+
     public async Task<ImovelDetalhe> DetalheAsync(UsuarioAtual u, Guid id)
     {
         u.Exigir(P.ImoveisVer);

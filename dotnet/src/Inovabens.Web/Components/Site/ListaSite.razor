@@ -1,0 +1,76 @@
+@* Busca do site (rota /site/imoveis?finalidade=venda|locacao&tipo=&cidade=&ordem=): todos os imóveis divulgados daquela finalidade. *@
+
+<SiteMoldura Titulo="@Titulo" Ativo="@(Locacao ? "locacao" : "venda")">
+    <main class="miolo">
+        <nav class="trilha" aria-label="Você está em">
+            <a href="site">Início</a><span>›</span><span aria-current="page">@(Locacao ? "Alugar" : "Comprar")</span>
+        </nav>
+        <div class="secao-cab" style="margin-top:14px">
+            <div>
+                <h1>@Titulo</h1>
+                <span class="mudo">@Contagem</span>
+            </div>
+            <a href="site/imoveis?finalidade=@(Locacao ? "venda" : "locacao")">@(Locacao ? "Ver imóveis à venda →" : "Ver imóveis para alugar →")</a>
+        </div>
+
+        <form class="busca busca-linha" action="site/imoveis" method="get" role="search">
+            <input type="hidden" name="finalidade" value="@(Locacao ? "locacao" : "venda")" />
+            <label><span>Tipo</span>
+                <select name="tipo" onchange="this.form.submit()"><option value="">Todos</option>
+                    @foreach (var t in Tipos) { <option value="@t" selected="@string.Equals(t, Tipo, StringComparison.OrdinalIgnoreCase)">@Texto.Rotulo(t)</option> }
+                </select>
+            </label>
+            <label><span>Cidade</span>
+                <select name="cidade" onchange="this.form.submit()"><option value="">Todas</option>
+                    @foreach (var c in Cidades) { <option value="@c" selected="@string.Equals(c, Cidade, StringComparison.OrdinalIgnoreCase)">@c</option> }
+                </select>
+            </label>
+            <label><span>Ordenar</span>
+                <select name="ordem" onchange="this.form.submit()">
+                    <option value="" selected="@(Ordem is null)">Mais recentes</option>
+                    <option value="menor" selected="@(Ordem == "menor")">Menor preço</option>
+                    <option value="maior" selected="@(Ordem == "maior")">Maior preço</option>
+                </select>
+            </label>
+            <noscript><button class="btn btn-ouro" type="submit">Filtrar</button></noscript>
+            @if (Tipo is not null || Cidade is not null)
+            {
+                <a class="limpar" href="site/imoveis?finalidade=@(Locacao ? "locacao" : "venda")">Limpar filtros</a>
+            }
+        </form>
+
+        @if (Ordenados.Count == 0)
+        {
+            <p class="mudo vazio">Nenhum imóvel encontrado com esses filtros.</p>
+        }
+        else
+        {
+            <div class="cartoes">@foreach (var i in Ordenados) { <CartaoImovel Item="i" Aluguel="Locacao" /> }</div>
+        }
+    </main>
+</SiteMoldura>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<VitrineItem> Itens { get; set; } = [];
+    /// <summary>Todos os da finalidade, sem os filtros (para montar as opções de tipo e cidade).</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<VitrineItem> Todos { get; set; } = [];
+    [Parameter] public bool Locacao { get; set; }
+    [Parameter] public string? Tipo { get; set; }
+    [Parameter] public string? Cidade { get; set; }
+    [Parameter] public string? Ordem { get; set; }
+
+    private string Titulo => Locacao ? "Imóveis para alugar" : "Imóveis à venda";
+    private string Contagem => Itens.Count == 1 ? "1 imóvel encontrado" : $"{Itens.Count} imóveis encontrados";
+    private IEnumerable<string> Tipos => Todos.Select(i => i.Tipo).Distinct(StringComparer.OrdinalIgnoreCase).Order();
+    private IEnumerable<string> Cidades => Todos.Select(i => i.Cidade).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Order();
+
+    private List<VitrineItem> Ordenados => Ordem switch
+    {
+        // sem preço ("Consulte") vai para o fim nas duas ordens
+        "menor" => [.. Itens.OrderBy(i => Valor(i) is null).ThenBy(Valor)],
+        "maior" => [.. Itens.OrderBy(i => Valor(i) is null).ThenByDescending(Valor)],
+        _ => [.. Itens],
+    };
+
+    private decimal? Valor(VitrineItem i) => Locacao ? i.PrecoLocacao : i.PrecoVenda;
+}

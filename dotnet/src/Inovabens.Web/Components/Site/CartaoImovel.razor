@@ -1,0 +1,42 @@
+@* Cartão de imóvel da vitrine do site (início e busca). Clicar abre a ficha do imóvel no site. *@
+@using System.Globalization
+
+<a class="cartao" href="site/imovel/@Item.Id">
+    <div class="cartao-foto">
+        @if (Item.Capa is not null)
+        {
+            <img src="@Item.Capa" alt="" loading="lazy" />
+        }
+        else
+        {
+            <span class="mudo">Sem foto</span>
+        }
+        <span class="cartao-etiqueta">@(Locacao ? "Aluguel" : "Venda")</span>
+    </div>
+    <div class="cartao-corpo">
+        <span class="rotulo">@Texto.Rotulo(Item.Tipo) · @Item.Codigo</span>
+        <h3>@Item.Titulo</h3>
+        <span class="local mudo"><svg class="ico"><use href="#i-pino" /></svg>@Onde</span>
+        <div class="cartao-numeros mudo num">
+            @if (Item.Area is { } a) { <span><svg class="ico"><use href="#i-area" /></svg>@Area(a)</span> }
+            @if (Item.Quartos is > 0 and var q) { <span title="Quartos"><svg class="ico"><use href="#i-cama" /></svg>@q</span> }
+            @if (Item.Suites is > 0 and var s) { <span title="Suítes"><svg class="ico"><use href="#i-suite" /></svg>@s</span> }
+            @if (Item.Vagas is > 0 and var v) { <span title="Vagas"><svg class="ico"><use href="#i-carro" /></svg>@v</span> }
+        </div>
+        <b class="cartao-preco num">@Preco</b>
+    </div>
+</a>
+
+@code {
+    [Parameter, EditorRequired] public VitrineItem Item { get; set; } = default!;
+    /// <summary>Página de aluguel: mostra o valor do aluguel em vez do de venda.</summary>
+    [Parameter] public bool Aluguel { get; set; }
+
+    private static readonly CultureInfo Br = Texto.PtBr;
+    private bool Locacao => Item.Finalidade == FinalidadeImovel.LOCACAO || (Aluguel && Item.PrecoLocacao is not null);
+    private string Onde => string.Join(", ", new[] { Item.Bairro, Item.Cidade }.Where(x => !string.IsNullOrWhiteSpace(x)));
+    private string Preco => Locacao
+        ? Item.PrecoLocacao is { } l ? l.ToString("C0", Br) + "/mês" : "Consulte"
+        : Item.PrecoVenda is { } p ? p.ToString("C0", Br) : "Consulte";
+    private static string Area(decimal m2) => m2 >= 10_000 ? $"{(m2 / 10_000).ToString("0.##", Br)} ha" : $"{m2.ToString("N0", Br)} m²";
+}

@@ -2,299 +2,319 @@
    Mostra só o que o site mostraria: fotos públicas, características públicas e o endereço apenas se for público. *@
 @using System.Globalization
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <base href="/" />
-    <meta name="robots" content="noindex" />
-    <meta name="theme-color" content="#03075f" />
-    <title>@Im.Titulo · Inovabens (pré-visualização)</title>
-    <link rel="icon" type="image/svg+xml" href="img/marca.svg" />
-    <link rel="stylesheet" href="site-previa.css" />
-</head>
-<body>
-    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-        <symbol id="i-cama" viewBox="0 0 24 24"><path d="M3 18v-7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v7M3 14h18M3 18v2M21 18v2M7 9V6h10v3" /></symbol>
-        <symbol id="i-carro" viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1.5H6V19H3zM7.5 13.5h.01M16.5 13.5h.01" /></symbol>
-        <symbol id="i-area" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></symbol>
-        <symbol id="i-banho" viewBox="0 0 24 24"><path d="M4 12h16v3a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM6 12V6a2 2 0 0 1 4 0M7 20l-1 2M17 20l1 2" /></symbol>
-        <symbol id="i-suite" viewBox="0 0 24 24"><path d="M4 20V10l8-6 8 6v10M9 20v-6h6v6" /></symbol>
-        <symbol id="i-pino" viewBox="0 0 24 24"><path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z" /><circle cx="12" cy="10" r="2.2" /></symbol>
-        <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z" /><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.6-1.8-.9-.9.9a4 4 0 0 1-2.2-2.2l.9-.9-.9-1.8z" /></symbol>
-        <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></symbol>
-        <symbol id="i-ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></symbol>
-        <symbol id="i-fotos" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="12" rx="2" /><path d="M7 21h12a2 2 0 0 0 2-2V9" /><path d="M3 14l4-4 4 4 2-2 4 4" /></symbol>
-        <symbol id="i-sala" viewBox="0 0 24 24"><path d="M4 18v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5M3 18h18M7 11V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" /></symbol>
-    </svg>
-
-    <div class="previa-faixa">
-        <div class="miolo">
-            <span>
-                <b>Pré-visualização</b> · é assim que o @Im.Codigo aparece no site público.
-                @if (!Im.DivulgarSite)
-                {
-                    <span class="alerta"> Este imóvel não está marcado para divulgar no site.</span>
-                }
-                @if (Fotos.Count == 0)
-                {
-                    <span class="alerta"> Nenhuma foto marcada como pública.</span>
-                }
-            </span>
-            <span>
-                @if (LinkImobibrasil is not null)
-                {
-                    <a href="@LinkImobibrasil" target="_blank" rel="noopener">Ver no site atual (Imobibrasil) ↗</a>
-                    <span> · </span>
-                }
-                <a href="imoveis/@Im.Id">← Voltar à ficha do sistema</a>
-            </span>
-        </div>
-    </div>
-
-    <header class="topo">
-        <div class="miolo">
-            <span class="marca" aria-label="Inovabens">
-                <img src="img/marca.svg" alt="" />
-                <span class="marca-txt"><b>INOVA<span>BENS</span></b><small>GESTÃO PATRIMONIAL</small></span>
-            </span>
-            <nav class="nav" aria-label="Principal"><span>Comprar</span><span>Alugar</span><span>Anunciar</span><span>Sobre</span></nav>
-            <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener"><svg class="ico"><use href="#i-zap" /></svg> <span>WhatsApp</span></a>
-        </div>
-    </header>
-
-    <main class="miolo imovel-pag">
-        <nav class="trilha" aria-label="Você está em">
-            <span>Início</span><span>›</span><span>@(Locacao ? "Alugar" : "Comprar")</span>
-            @if (Im.Cidade is not null) { <span>›</span><span>@Im.Cidade</span> }
-            @if (Im.Bairro is not null) { <span>›</span><span>@Im.Bairro</span> }
-            <span>›</span><span>@Codigo</span>
-        </nav>
-
+<SiteMoldura Titulo="@Im.Titulo" Ativo="@(Locacao ? "locacao" : "venda")" MensagemWhatsapp="@MensagemWhatsapp">
+    <Faixa>
+        é assim que o @Im.Codigo aparece no site público.
+        @if (!Im.DivulgarSite)
+        {
+            <span class="alerta"> Este imóvel não está marcado para divulgar no site (não aparece no início nem na busca).</span>
+        }
         @if (Fotos.Count == 0)
         {
-            <div class="sem-fotos mudo">Sem fotos públicas. Marque as fotos como públicas na ficha do imóvel.</div>
+            <span class="alerta"> Nenhuma foto marcada como pública.</span>
         }
-        else
+    </Faixa>
+    <FaixaLinks>
+        @if (LinkImobibrasil is not null)
         {
-            <div class="galeria @(Fotos.Count < 5 ? "poucas" : "")">
-                @foreach (var (f, k) in Fotos.Take(Fotos.Count < 5 ? 1 : 5).Select((f, k) => (f, k)))
-                {
-                    <button type="button" class="@(k == 0 ? "principal" : "")" data-luz="@k" aria-label="Ampliar foto @(k + 1) de @Fotos.Count">
-                        <img src="@f.Src" alt="@(f.Legenda ?? Im.Titulo)" loading="@(k == 0 ? "eager" : "lazy")" />
-                    </button>
-                }
-                <button type="button" class="ver-todas" data-luz="0"><svg class="ico"><use href="#i-fotos" /></svg> Ver as @Fotos.Count fotos</button>
-            </div>
+            <a href="@LinkImobibrasil" target="_blank" rel="noopener">Ver no site atual (Imobibrasil) ↗</a>
+            <span> · </span>
         }
+        <a href="imoveis/@Im.Id">Ficha do sistema</a>
+    </FaixaLinks>
+    <ChildContent>
+        <main class="miolo imovel-pag">
+            <nav class="trilha" aria-label="Você está em">
+                <a href="site">Início</a><span>›</span><a href="@LinkLista">@(Locacao ? "Alugar" : "Comprar")</a>
+                @if (Im.Cidade is not null) { <span>›</span><a href="@(LinkLista + "&cidade=" + Uri.EscapeDataString(Im.Cidade))">@Im.Cidade</a> }
+                @if (Im.Bairro is not null) { <span>›</span><span>@Im.Bairro</span> }
+                <span>›</span><span>@Codigo</span>
+            </nav>
 
-        <div class="cab-imovel">
-            <span class="rotulo">@TipoRotulo @(Locacao ? "para alugar" : "à venda") · @Codigo</span>
-            <h1>@Im.Titulo</h1>
-            @if (Onde.Length > 0)
+            @if (Fotos.Count == 0)
             {
-                <div class="local"><svg class="ico"><use href="#i-pino" /></svg>@Onde</div>
+                <div class="sem-fotos mudo">Sem fotos públicas. Marque as fotos como públicas na ficha do imóvel.</div>
             }
-        </div>
+            else
+            {
+                <div class="galeria @(Fotos.Count < 5 ? "poucas" : "")">
+                    @foreach (var (f, k) in Fotos.Take(Fotos.Count < 5 ? 1 : 5).Select((f, k) => (f, k)))
+                    {
+                        <button type="button" class="@(k == 0 ? "principal" : "")" data-luz="@k" aria-label="Ampliar foto @(k + 1) de @Fotos.Count">
+                            <img src="@f.Src" alt="@(f.Legenda ?? Im.Titulo)" loading="@(k == 0 ? "eager" : "lazy")" />
+                        </button>
+                    }
+                    <button type="button" class="ver-todas" data-luz="0"><svg class="ico"><use href="#i-fotos" /></svg> Ver as @Fotos.Count fotos</button>
+                </div>
+            }
 
-        <div class="imovel-grade">
-            <div style="min-width:0">
-                @if (Numeros.Count > 0)
+            <div class="cab-imovel">
+                <span class="rotulo">@TipoRotulo @(Locacao ? "para alugar" : "à venda") · @Codigo</span>
+                <h1>@Im.Titulo</h1>
+                @if (Onde.Length > 0)
                 {
-                    <div class="bloco">
-                        <div class="numeros">
-                            @foreach (var (ico, valor, rotulo) in Numeros)
-                            {
-                                <div class="numero"><svg class="ico"><use href="#i-@ico" /></svg><b class="num">@valor</b><small>@rotulo</small></div>
-                            }
-                        </div>
-                    </div>
+                    <div class="local"><svg class="ico"><use href="#i-pino" /></svg>@Onde</div>
                 }
+            </div>
 
-                @if (Paragrafos.Count > 0)
-                {
-                    <div class="bloco">
-                        <h2>Sobre o imóvel</h2>
-                        <div class="descricao">
-                            @foreach (var p in Paragrafos)
-                            {
-                                if (p.Itens is { } itens)
+            <div class="imovel-grade">
+                <div style="min-width:0">
+                    @if (Numeros.Count > 0)
+                    {
+                        <div class="bloco">
+                            <div class="numeros">
+                                @foreach (var (ico, valor, rotulo) in Numeros)
                                 {
+                                    <div class="numero"><svg class="ico"><use href="#i-@ico" /></svg><b class="num">@valor</b><small>@rotulo</small></div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (Paragrafos.Count > 0)
+                    {
+                        <div class="bloco">
+                            <h2>Sobre o imóvel</h2>
+                            <div class="descricao">
+                                @foreach (var p in Paragrafos)
+                                {
+                                    if (p.Itens is { } itens)
+                                    {
+                                        <ul class="carac">
+                                            @foreach (var it in itens)
+                                            {
+                                                <li><svg class="ico"><use href="#i-ok" /></svg>@it</li>
+                                            }
+                                        </ul>
+                                    }
+                                    else
+                                    {
+                                        <p>@p.Texto</p>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (Grupos.Count > 0)
+                    {
+                        <div class="bloco">
+                            <h2>Características</h2>
+                            @foreach (var g in Grupos)
+                            {
+                                <div class="grupo">
+                                    @if (Grupos.Count > 1 || g.Key is not null)
+                                    {
+                                        <h3>@(g.Key ?? "Outras")</h3>
+                                    }
                                     <ul class="carac">
-                                        @foreach (var it in itens)
+                                        @foreach (var c in g)
                                         {
-                                            <li><svg class="ico"><use href="#i-ok" /></svg>@it</li>
+                                            <li><svg class="ico"><use href="#i-ok" /></svg>@(c.Valor is null ? c.Chave : $"{c.Chave}: {c.Valor}")</li>
                                         }
                                     </ul>
-                                }
-                                else
-                                {
-                                    <p>@p.Texto</p>
-                                }
+                                </div>
                             }
                         </div>
-                    </div>
-                }
+                    }
 
-                @if (Grupos.Count > 0)
-                {
-                    <div class="bloco">
-                        <h2>Características</h2>
-                        @foreach (var g in Grupos)
-                        {
-                            <div class="grupo">
-                                @if (Grupos.Count > 1 || g.Key is not null)
-                                {
-                                    <h3>@(g.Key ?? "Outras")</h3>
-                                }
-                                <ul class="carac">
-                                    @foreach (var c in g)
-                                    {
-                                        <li><svg class="ico"><use href="#i-ok" /></svg>@(c.Valor is null ? c.Chave : $"{c.Chave}: {c.Valor}")</li>
-                                    }
-                                </ul>
-                            </div>
-                        }
-                    </div>
-                }
-
-                @if (Dados.Count > 0)
-                {
-                    <div class="bloco">
-                        <h2>Ficha técnica</h2>
-                        <dl class="ficha-dados">
-                            @foreach (var (rotulo, valor) in Dados)
-                            {
-                                <div><dt>@rotulo</dt><dd>@valor</dd></div>
-                            }
-                        </dl>
-                    </div>
-                }
-
-                @if (YoutubeId is not null || Videos.Count > 0)
-                {
-                    <div class="bloco">
-                        <h2>Vídeo do imóvel</h2>
-                        @if (YoutubeId is not null)
-                        {
-                            <div class="video-quadro">
-                                <iframe src="https://www.youtube-nocookie.com/embed/@YoutubeId" title="Vídeo do imóvel" loading="lazy"
-                                        allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen></iframe>
-                            </div>
-                        }
-                        @foreach (var v in Videos)
-                        {
-                            <div class="video-quadro"><video src="@v" controls preload="metadata" style="width:100%;height:100%"></video></div>
-                        }
-                    </div>
-                }
-
-                @if (ConsultaMapa is not null)
-                {
-                    <div class="bloco">
-                        <h2>Localização</h2>
-                        <div class="mapa-quadro">
-                            <iframe src="https://www.google.com/maps?q=@Uri.EscapeDataString(ConsultaMapa)&z=@(Im.EnderecoPublico ? 16 : 13)&output=embed"
-                                    title="Mapa da localização" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-                        </div>
-                        @if (Im.EnderecoPublico)
-                        {
-                            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-                                <span>@EnderecoCompleto</span>
-                                @if (LinkMapa is not null)
-                                {
-                                    <a class="btn btn-linha" href="@LinkMapa" target="_blank" rel="noopener"><svg class="ico"><use href="#i-mapa" /></svg> Abrir no Google Maps</a>
-                                }
-                            </div>
-                        }
-                        else
-                        {
-                            <p class="mudo" style="font-size:.85rem">Mostramos a região aproximada. O endereço exato é informado no atendimento.</p>
-                        }
-                    </div>
-                }
-            </div>
-
-            <aside class="contato" aria-label="Fale com a Inovabens">
-                <div>
-                    <span class="mudo" style="font-size:.82rem">@(Locacao ? "Aluguel" : "Valor de venda")</span>
-                    <div class="preco num">@PrecoTexto</div>
-                    @if (Custos.Count > 0)
+                    @if (Dados.Count > 0)
                     {
-                        <div class="mudo num" style="font-size:.84rem">@string.Join(" · ", Custos)</div>
+                        <div class="bloco">
+                            <h2>Ficha técnica</h2>
+                            <dl class="ficha-dados">
+                                @foreach (var (rotulo, valor) in Dados)
+                                {
+                                    <div><dt>@rotulo</dt><dd>@valor</dd></div>
+                                }
+                            </dl>
+                        </div>
+                    }
+
+                    @if (Simulador is { } sim)
+                    {
+                        <div class="bloco" id="simulador">
+                            <h2>Simule o financiamento</h2>
+                            <p class="aviso-simulacao" role="note">
+                                <b>Isto é uma simulação.</b> O financiamento real pode ter variação nas parcelas e depende de
+                                análise de crédito e aprovação da instituição financeira.
+                            </p>
+                            <form class="simulador" id="simForm" onsubmit="return false">
+                                <fieldset class="sim-sistema">
+                                    <legend>Sistema de amortização</legend>
+                                    <label><input type="radio" name="sistema" value="sac" checked /> <span><b>SAC</b><small>parcelas que diminuem · financia até @Pct(FinanciamentoCaixa.CotaSac)</small></span></label>
+                                    <label><input type="radio" name="sistema" value="price" /> <span><b>Price</b><small>parcelas fixas · financia até @Pct(FinanciamentoCaixa.CotaPrice)</small></span></label>
+                                </fieldset>
+                                <label>Valor do imóvel (R$)
+                                    <input id="simValor" type="number" min="0" step="1000" inputmode="numeric" value="@Num(Preco ?? 0)" />
+                                </label>
+                                <label>Entrada (R$) <small class="mudo" id="simEntradaPct">@Pct(sim.Entrada / (Preco ?? 1)) do valor</small>
+                                    <input id="simEntrada" type="number" min="0" step="1000" inputmode="numeric" value="@Num(sim.Entrada)" />
+                                </label>
+                                <label>Prazo <output id="simPrazoTxt" for="simPrazo">@PrazoTexto(sim.Prazo)</output>
+                                    <input id="simPrazo" type="range" min="12" max="@FinanciamentoCaixa.PrazoMaximo" step="6" value="@sim.Prazo" />
+                                </label>
+                                <label>Idade do comprador mais velho <small class="mudo">(opcional)</small>
+                                    <input id="simIdade" type="number" min="18" max="80" inputmode="numeric" placeholder="ex.: 35" />
+                                </label>
+                                <label>Juros nominais ao ano (+ TR)
+                                    <input id="simTaxa" type="number" min="0" max="30" step="0.01" inputmode="decimal" value="@Num(sim.TaxaNominalAnual * 100, "0.00")" />
+                                </label>
+                            </form>
+                            <div class="sim-resultado" aria-live="polite">
+                                <div><small>Valor financiado</small><b class="num" id="rFinanciado">@Brl(sim.ValorFinanciado)</b></div>
+                                <div class="destaque"><small id="rPrimeiraRotulo">1ª parcela</small><b class="num" id="rPrimeira">@Brl(sim.PrimeiraParcela)</b></div>
+                                <div id="rUltimaCaixa"><small>Última parcela</small><b class="num" id="rUltima">@Brl(sim.UltimaParcela)</b></div>
+                                <div><small>Renda familiar mínima</small><b class="num" id="rRenda">@Brl(sim.RendaMinima)</b></div>
+                                <div><small>Total de juros</small><b class="num" id="rJuros">@Brl(sim.TotalJuros)</b></div>
+                                <div><small>Taxa efetiva</small><b class="num" id="rEfetiva">@Pct(sim.TaxaEfetivaAnual) a.a.</b></div>
+                            </div>
+                            <ul class="sim-notas" id="simNotas">
+                                @foreach (var n in NotasSimulador) { <li>@n</li> }
+                            </ul>
+                            <div class="sim-letras mudo">
+                                <p>
+                                    Cálculo com os parâmetros do crédito imobiliário da Caixa Econômica Federal (SBPE, conferidos em @FinanciamentoCaixa.ConferidoEm):
+                                    financia até @Pct(FinanciamentoCaixa.CotaSac) do valor no SAC e até @Pct(FinanciamentoCaixa.CotaPrice) na Price;
+                                    prazo de até @FinanciamentoCaixa.PrazoMaximo meses; idade mais prazo até 80 anos e 6 meses;
+                                    parcela de até @Pct(FinanciamentoCaixa.ComprometimentoRenda) da renda bruta familiar;
+                                    juros mensais iguais à taxa nominal anual dividida por 12.
+                                    Imóveis de até @Brl0(FinanciamentoCaixa.TetoSfh) entram no SFH (de @Pct(FinanciamentoCaixa.TaxaSfhMinima) a @Pct(FinanciamentoCaixa.TaxaSfhBalcao) ao ano + TR);
+                                    acima disso, no SFI (de @Pct(FinanciamentoCaixa.TaxaSfiMinima) a @Pct(FinanciamentoCaixa.TaxaSfiBalcao) ao ano + TR).
+                                </p>
+                                <p>
+                                    Não entram na conta: a TR (atualiza o saldo todo mês), os seguros obrigatórios MIP e DFI (variam com a idade e o valor do imóvel),
+                                    a taxa de administração de @Brl(FinanciamentoCaixa.TarifaAdministracao) por mês, ITBI, registro em cartório e avaliação do imóvel.
+                                </p>
+                                <a href="@FinanciamentoCaixa.SimuladorOficial" target="_blank" rel="noopener">Fazer a simulação oficial no site da Caixa ↗</a>
+                            </div>
+                            <script id="sim-dados" type="application/json">@((MarkupString)ParametrosSimulador)</script>
+                        </div>
+                    }
+
+                    @if (YoutubeId is not null || Videos.Count > 0)
+                    {
+                        <div class="bloco">
+                            <h2>Vídeo do imóvel</h2>
+                            @if (YoutubeId is not null)
+                            {
+                                <div class="video-quadro">
+                                    <iframe src="https://www.youtube-nocookie.com/embed/@YoutubeId" title="Vídeo do imóvel" loading="lazy"
+                                            allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen></iframe>
+                                </div>
+                            }
+                            @foreach (var v in Videos)
+                            {
+                                <div class="video-quadro"><video src="@v" controls preload="metadata" style="width:100%;height:100%"></video></div>
+                            }
+                        </div>
+                    }
+
+                    @if (ConsultaMapa is not null)
+                    {
+                        <div class="bloco">
+                            <h2>Localização</h2>
+                            <div class="mapa-quadro">
+                                <iframe src="https://www.google.com/maps?q=@Uri.EscapeDataString(ConsultaMapa)&z=@(Im.EnderecoPublico ? 16 : 13)&output=embed"
+                                        title="Mapa da localização" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                            </div>
+                            @if (Im.EnderecoPublico)
+                            {
+                                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                                    <span>@EnderecoCompleto</span>
+                                    @if (LinkMapa is not null)
+                                    {
+                                        <a class="btn btn-linha" href="@LinkMapa" target="_blank" rel="noopener"><svg class="ico"><use href="#i-mapa" /></svg> Abrir no Google Maps</a>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="mudo" style="font-size:.85rem">Mostramos a região aproximada. O endereço exato é informado no atendimento.</p>
+                            }
+                        </div>
                     }
                 </div>
-                @if (Selos.Count > 0)
-                {
-                    <div class="selos">
-                        @foreach (var s in Selos)
+
+                <aside class="contato" aria-label="Fale com a Inovabens">
+                    <div>
+                        <span class="mudo" style="font-size:.82rem">@(Locacao ? "Aluguel" : "Valor de venda")</span>
+                        <div class="preco num">@PrecoTexto</div>
+                        @if (Custos.Count > 0)
                         {
-                            <span class="selo">@s</span>
+                            <div class="mudo num" style="font-size:.84rem">@string.Join(" · ", Custos)</div>
                         }
                     </div>
-                }
-                <div class="corretor">
-                    <span class="avatar">@Iniciais</span>
-                    <div><b>@(CorretorNome ?? "Equipe Inovabens")</b><div class="mudo" style="font-size:.82rem">Inovabens · CRECI 50457-J</div></div>
-                </div>
-                <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-zap" /></svg> Conversar no WhatsApp</a>
-                <p class="mudo" style="font-size:.8rem">No site publicado aqui entram também o agendamento de visita e o formulário de contato, que vira lead no CRM.</p>
-            </aside>
-        </div>
-    </main>
-
-    <footer class="rodape">
-        <div class="miolo">
-            <span><b>Inova Bens Gestão Patrimonial</b> · CRECI 50457-J</span>
-            <span>Av. Pres. Juscelino K. de Oliveira, 391 · Jardim Panorama · São José do Rio Preto - SP · @TelefoneTexto</span>
-        </div>
-    </footer>
-
-    @if (Fotos.Count > 0)
-    {
-        <dialog class="luz" id="luz" aria-label="Fotos do imóvel">
-            <div class="luz-topo"><span class="num" id="luzConta"></span><button type="button" class="btn-ico" id="luzFechar" aria-label="Fechar">✕</button></div>
-            <div class="luz-palco">
-                <button type="button" class="luz-nav ant" id="luzAnt" aria-label="Foto anterior">‹</button>
-                <img id="luzFoto" alt="" />
-                <button type="button" class="luz-nav prox" id="luzProx" aria-label="Próxima foto">›</button>
+                    @if (Selos.Count > 0)
+                    {
+                        <div class="selos">
+                            @foreach (var s in Selos)
+                            {
+                                <span class="selo">@s</span>
+                            }
+                        </div>
+                    }
+                    <div class="corretor">
+                        <span class="avatar">@Iniciais</span>
+                        <div><b>@(CorretorNome ?? "Equipe Inovabens")</b><div class="mudo" style="font-size:.82rem">Inovabens · CRECI 50457-J</div></div>
+                    </div>
+                    <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-zap" /></svg> Conversar no WhatsApp</a>
+                    @if (Simulador is not null)
+                    {
+                        @* com <base href="/">, "#simulador" iria para a raiz: o clique só rola a página até o simulador *@
+                        <a class="btn btn-linha" href="site/imovel/@Im.Id#simulador" style="width:100%"
+                           onclick="document.getElementById('simulador').scrollIntoView({behavior:'smooth'});return false;"><svg class="ico"><use href="#i-calc" /></svg> Simular financiamento</a>
+                    }
+                    <p class="mudo" style="font-size:.8rem">No site publicado aqui entram também o agendamento de visita e o formulário de contato, que vira lead no CRM.</p>
+                </aside>
             </div>
-            <div class="luz-legenda" id="luzLegenda"></div>
-        </dialog>
-        <script id="fotos-dados" type="application/json">@((MarkupString)FotosJson)</script>
-        <script>
-            (() => {
-                const fotos = JSON.parse(document.getElementById("fotos-dados").textContent);
-                const luz = document.getElementById("luz"), img = document.getElementById("luzFoto");
-                let atual = 0;
-                const mostrar = k => {
-                    atual = (k + fotos.length) % fotos.length;
-                    img.src = fotos[atual].src;
-                    img.alt = fotos[atual].legenda || "";
-                    document.getElementById("luzLegenda").textContent = fotos[atual].legenda || "";
-                    document.getElementById("luzConta").textContent = `${atual + 1} / ${fotos.length}`;
-                    new Image().src = fotos[(atual + 1) % fotos.length].src;
-                };
-                document.querySelectorAll("[data-luz]").forEach(b => b.addEventListener("click", () => { mostrar(+b.dataset.luz); luz.showModal(); }));
-                document.getElementById("luzAnt").onclick = () => mostrar(atual - 1);
-                document.getElementById("luzProx").onclick = () => mostrar(atual + 1);
-                document.getElementById("luzFechar").onclick = () => luz.close();
-                luz.addEventListener("keydown", e => { if (e.key === "ArrowLeft") mostrar(atual - 1); if (e.key === "ArrowRight") mostrar(atual + 1); });
-                let x0 = null;
-                luz.addEventListener("touchstart", e => x0 = e.touches[0].clientX, { passive: true });
-                luz.addEventListener("touchend", e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) mostrar(atual + (dx < 0 ? 1 : -1)); x0 = null; });
-            })();
-        </script>
-    }
-</body>
-</html>
+        </main>
+    </ChildContent>
+    <Scripts>
+        @if (Fotos.Count > 0)
+        {
+            <dialog class="luz" id="luz" aria-label="Fotos do imóvel">
+                <div class="luz-topo"><span class="num" id="luzConta"></span><button type="button" class="btn-ico" id="luzFechar" aria-label="Fechar">✕</button></div>
+                <div class="luz-palco">
+                    <button type="button" class="luz-nav ant" id="luzAnt" aria-label="Foto anterior">‹</button>
+                    <img id="luzFoto" alt="" />
+                    <button type="button" class="luz-nav prox" id="luzProx" aria-label="Próxima foto">›</button>
+                </div>
+                <div class="luz-legenda" id="luzLegenda"></div>
+            </dialog>
+            <script id="fotos-dados" type="application/json">@((MarkupString)FotosJson)</script>
+            <script>
+                (() => {
+                    const fotos = JSON.parse(document.getElementById("fotos-dados").textContent);
+                    const luz = document.getElementById("luz"), img = document.getElementById("luzFoto");
+                    let atual = 0;
+                    const mostrar = k => {
+                        atual = (k + fotos.length) % fotos.length;
+                        img.src = fotos[atual].src;
+                        img.alt = fotos[atual].legenda || "";
+                        document.getElementById("luzLegenda").textContent = fotos[atual].legenda || "";
+                        document.getElementById("luzConta").textContent = `${atual + 1} / ${fotos.length}`;
+                        new Image().src = fotos[(atual + 1) % fotos.length].src;
+                    };
+                    document.querySelectorAll("[data-luz]").forEach(b => b.addEventListener("click", () => { mostrar(+b.dataset.luz); luz.showModal(); }));
+                    document.getElementById("luzAnt").onclick = () => mostrar(atual - 1);
+                    document.getElementById("luzProx").onclick = () => mostrar(atual + 1);
+                    document.getElementById("luzFechar").onclick = () => luz.close();
+                    luz.addEventListener("keydown", e => { if (e.key === "ArrowLeft") mostrar(atual - 1); if (e.key === "ArrowRight") mostrar(atual + 1); });
+                    let x0 = null;
+                    luz.addEventListener("touchstart", e => x0 = e.touches[0].clientX, { passive: true });
+                    luz.addEventListener("touchend", e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) mostrar(atual + (dx < 0 ? 1 : -1)); x0 = null; });
+                })();
+            </script>
+        }
+        @if (Simulador is not null)
+        {
+            <script src="site-simulador.js"></script>
+        }
+    </Scripts>
+</SiteMoldura>
 
 @code {
-    /// <summary>WhatsApp e telefone do site atual da Inovabens.</summary>
-    public const string Whatsapp = "5517981850171";
-    public const string TelefoneTexto = "(17) 98185-0171";
-
     [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
     [Parameter] public string? LinkImobibrasil { get; set; }
 
@@ -340,8 +360,36 @@
         ? string.Concat(n.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(p => char.ToUpperInvariant(p[0])))
         : "IB";
 
-    private string LinkWhatsapp => $"https://wa.me/{Whatsapp}?text=" + Uri.EscapeDataString(
-        $"Olá! Tenho interesse no imóvel {Codigo} ({Im.Titulo}). Pode me passar mais informações?");
+    private string MensagemWhatsapp => $"Olá! Tenho interesse no imóvel {Codigo} ({Im.Titulo}). Pode me passar mais informações?";
+    private string LinkWhatsapp => $"https://wa.me/{SiteMoldura.Whatsapp}?text=" + Uri.EscapeDataString(MensagemWhatsapp);
+    private string LinkLista => $"site/imoveis?finalidade={(Locacao ? "locacao" : "venda")}";
+
+    /* ---------------- simulador de financiamento (parâmetros em FinanciamentoCaixa) ---------------- */
+
+    /// <summary>Primeira simulação, feita no servidor (SAC, entrada mínima, prazo máximo); o script recalcula ao mudar os campos.</summary>
+    private SimulacaoFinanciamento? Simulador;
+    private List<string> NotasSimulador = [];
+    private string ParametrosSimulador = "{}";
+
+    private static string Brl(decimal v) => v.ToString("C2", Br);
+    private static string Brl0(decimal v) => v.ToString("C0", Br);
+    private static string Pct(decimal v) => (v * 100).ToString("0.##", Br) + "%";
+    private static string Num(decimal v, string formato = "0") => v.ToString(formato, CultureInfo.InvariantCulture);
+    private static string PrazoTexto(int meses) => $"{meses / 12} anos{(meses % 12 > 0 ? $" e {meses % 12} meses" : "")} ({meses} meses)";
+
+    /// <summary>Avisos que dependem do valor do imóvel (o script mostra os mesmos ao recalcular).</summary>
+    private static List<string> Notas(decimal valor)
+    {
+        List<string> n = [];
+        if (!FinanciamentoCaixa.Sfh(valor))
+            n.Add($"Imóvel acima de {Brl0(FinanciamentoCaixa.TetoSfh)}: financiamento pelo SFI, com juros a partir de {Pct(FinanciamentoCaixa.TaxaSfiMinima)} ao ano + TR.");
+        else
+            n.Add($"Taxa de balcão da Caixa no SFH; clientes com relacionamento (conta, salário, débito automático) podem ter a partir de {Pct(FinanciamentoCaixa.TaxaSfhMinima)} ao ano + TR.");
+        if (valor <= FinanciamentoCaixa.TetoLinhasSociais)
+            n.Add("Conforme a renda e o uso do FGTS, o imóvel pode se enquadrar no Minha Casa, Minha Vida ou no Pró-Cotista, com juros menores.");
+        return n;
+    }
+
 
     protected override void OnParametersSet()
     {
@@ -400,6 +448,22 @@
         Custos = [];
         if (Im.ValorCondominio is { } cond) Custos.Add($"Condomínio {cond.ToString("C0", Br)}");
         if (Im.ValorIptu is { } iptu) Custos.Add($"IPTU {iptu.ToString("C0", Br)}");
+
+        Simulador = null;
+        if (!Locacao && Im.PrecoVenda is { } venda and > 0)
+        {
+            Simulador = FinanciamentoCaixa.Simular(venda, 0, FinanciamentoCaixa.PrazoMaximo, FinanciamentoCaixa.TaxaPadrao(venda), sac: true);
+            NotasSimulador = Notas(venda);
+            ParametrosSimulador = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                cotaSac = FinanciamentoCaixa.CotaSac, cotaPrice = FinanciamentoCaixa.CotaPrice,
+                prazoMax = FinanciamentoCaixa.PrazoMaximo, idadeMaxMeses = FinanciamentoCaixa.IdadeMaximaMeses,
+                comprometimento = FinanciamentoCaixa.ComprometimentoRenda, tetoSfh = FinanciamentoCaixa.TetoSfh,
+                tetoSociais = FinanciamentoCaixa.TetoLinhasSociais,
+                taxaSfh = FinanciamentoCaixa.TaxaSfhBalcao, taxaSfhMin = FinanciamentoCaixa.TaxaSfhMinima,
+                taxaSfi = FinanciamentoCaixa.TaxaSfiBalcao, taxaSfiMin = FinanciamentoCaixa.TaxaSfiMinima,
+            });
+        }
 
         Selos = [];
         if (Im.AceitaPermuta) Selos.Add("Aceita permuta");

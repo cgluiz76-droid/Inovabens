@@ -1,0 +1,78 @@
+@* Página inicial da pré-visualização do site (rota /site): busca, destaques à venda e para alugar, anunciar e sobre. *@
+
+<SiteMoldura Titulo="Imóveis em São José do Rio Preto">
+    <main>
+        <section class="hero">
+            <div class="miolo hero-miolo">
+                <span class="rotulo">Inovabens · Gestão patrimonial</span>
+                <h1>Encontre o imóvel certo em São José do Rio Preto e região</h1>
+                <form class="busca" action="site/imoveis" method="get" role="search">
+                    <label><span>Quero</span>
+                        <select name="finalidade"><option value="venda">Comprar</option><option value="locacao">Alugar</option></select>
+                    </label>
+                    <label><span>Tipo</span>
+                        <select name="tipo"><option value="">Todos</option>@foreach (var t in Tipos) { <option value="@t">@Texto.Rotulo(t)</option> }</select>
+                    </label>
+                    <label><span>Cidade</span>
+                        <select name="cidade"><option value="">Todas</option>@foreach (var c in Cidades) { <option value="@c">@c</option> }</select>
+                    </label>
+                    <button class="btn btn-ouro" type="submit">Buscar imóveis</button>
+                </form>
+                <div class="hero-atalhos">
+                    <a class="btn btn-claro" href="site/imoveis?finalidade=venda">Ver todos à venda (@Venda.Count)</a>
+                    <a class="btn btn-claro" href="site/imoveis?finalidade=locacao">Ver todos para alugar (@Aluguel.Count)</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="miolo secao">
+            <div class="secao-cab">
+                <h2>Imóveis à venda</h2>
+                <a href="site/imoveis?finalidade=venda">Ver todos →</a>
+            </div>
+            @if (Venda.Count == 0)
+            {
+                <p class="mudo">Nenhum imóvel à venda divulgado no site.</p>
+            }
+            else
+            {
+                <div class="cartoes">@foreach (var i in Venda.Take(6)) { <CartaoImovel Item="i" /> }</div>
+            }
+        </section>
+
+        @if (Aluguel.Count > 0)
+        {
+            <section class="miolo secao">
+                <div class="secao-cab">
+                    <h2>Imóveis para alugar</h2>
+                    <a href="site/imoveis?finalidade=locacao">Ver todos →</a>
+                </div>
+                <div class="cartoes">@foreach (var i in Aluguel.Take(3)) { <CartaoImovel Item="i" Aluguel /> }</div>
+            </section>
+        }
+
+        <section class="miolo secao faixa-dupla">
+            <div id="anunciar" class="painel">
+                <span class="rotulo">Anunciar</span>
+                <h2>Quer vender ou alugar seu imóvel?</h2>
+                <p class="mudo">Avaliamos, cuidamos da documentação e divulgamos no site e nos principais portais.</p>
+                <a class="btn btn-zap" target="_blank" rel="noopener" href="@LinkAnunciar"><svg class="ico"><use href="#i-zap" /></svg> Anunciar pelo WhatsApp</a>
+            </div>
+            <div id="sobre" class="painel">
+                <span class="rotulo">Sobre</span>
+                <h2>Inova Bens Gestão Patrimonial</h2>
+                <p class="mudo">Imobiliária em São José do Rio Preto (CRECI 50457-J): compra, venda, locação e regularização de imóveis.</p>
+                <span>Av. Pres. Juscelino K. de Oliveira, 391 · Jardim Panorama · @SiteMoldura.TelefoneTexto</span>
+            </div>
+        </section>
+    </main>
+</SiteMoldura>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<VitrineItem> Venda { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<VitrineItem> Aluguel { get; set; } = [];
+
+    private IEnumerable<string> Tipos => Venda.Concat(Aluguel).Select(i => i.Tipo).Distinct(StringComparer.OrdinalIgnoreCase).Order();
+    private IEnumerable<string> Cidades => Venda.Concat(Aluguel).Select(i => i.Cidade).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Order();
+    private static string LinkAnunciar => $"https://wa.me/{SiteMoldura.Whatsapp}?text=" + Uri.EscapeDataString("Olá! Quero anunciar meu imóvel com a Inovabens.");
+}

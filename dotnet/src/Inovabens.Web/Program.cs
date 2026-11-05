@@ -182,19 +182,44 @@ imovel.MapGet("ficha-financeira.pdf", (Guid id, CodigoIndice? indice, HttpContex
 imovel.MapGet("ficha-financeira.xlsx", (Guid id, CodigoIndice? indice, HttpContext c, RelatoriosService r) =>
     Baixar(c, u => r.FichaFinanceiraXlsxAsync(u, id, indice ?? CodigoIndice.IPCA))).RequireAuthorization(Permissoes.FinanceiroExportar);
 
-// Pré-visualização do imóvel como no site público (página própria, aberta em outra aba pelo botão "Ver no site").
-imovel.MapGet("site", async (Guid id, HttpContext c, ImoveisService s) =>
+// Pré-visualização do site público (páginas próprias, abertas em outra aba pelo botão "Ver no site"):
+// /site (início), /site/imoveis?finalidade=venda|locacao (busca) e /site/imovel/{id} (ficha). Logo e menu ligam as três.
+async Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s)
 {
     try
     {
         var d = await s.DetalheAsync(UsuarioAtual.De(c.User)!, id);
         var linkAtual = d.Dados.ImobibrasilId is { } ib ? $"https://www.inovabens.com.br/imovel/{ib}" : null;
-        return (IResult)new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
+        return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
             new { Detalhe = d, LinkImobibrasil = linkAtual });
     }
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
-}).RequireAuthorization(Permissoes.ImoveisVer);
+}
+imovel.MapGet("site", FichaSite).RequireAuthorization(Permissoes.ImoveisVer);
+
+var site = app.MapGroup("/site").RequireAuthorization(Permissoes.ImoveisVer);
+site.MapGet("imovel/{id:guid}", FichaSite);
+site.MapGet("", async (HttpContext c, ImoveisService s) =>
+{
+    var u = UsuarioAtual.De(c.User)!;
+    var venda = await s.VitrineAsync(u, new FiltroVitrine(FinalidadeImovel.VENDA));
+    var aluguel = await s.VitrineAsync(u, new FiltroVitrine(FinalidadeImovel.LOCACAO));
+    return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.InicioSite>(
+        new { Venda = venda, Aluguel = aluguel });
+});
+site.MapGet("imoveis", async (string? finalidade, string? tipo, string? cidade, string? ordem, HttpContext c, ImoveisService s) =>
+{
+    var u = UsuarioAtual.De(c.User)!;
+    var locacao = string.Equals(finalidade, "locacao", StringComparison.OrdinalIgnoreCase);
+    var fin = locacao ? FinalidadeImovel.LOCACAO : FinalidadeImovel.VENDA;
+    tipo = string.IsNullOrWhiteSpace(tipo) ? null : tipo.Trim();
+    cidade = string.IsNullOrWhiteSpace(cidade) ? null : cidade.Trim();
+    var todos = await s.VitrineAsync(u, new FiltroVitrine(fin, Maximo: 200));
+    var itens = tipo is null && cidade is null ? todos : await s.VitrineAsync(u, new FiltroVitrine(fin, tipo, cidade, 200));
+    return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.ListaSite>(
+        new { Itens = itens, Todos = todos, Locacao = locacao, Tipo = tipo, Cidade = cidade, Ordem = ordem is "menor" or "maior" ? ordem : null });
+});
 
 // Fotos e documentos: o Drive é privado, então o sistema confere o acesso ao imóvel e repassa o arquivo.
 // O id do arquivo no Drive vai na URL e muda quando a foto é trocada, por isso o navegador pode guardar em cache.

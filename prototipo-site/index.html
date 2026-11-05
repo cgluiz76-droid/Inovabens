@@ -322,6 +322,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sim { background: var(--sup); border: 1px solid var(--borda); border-radius: 14px; padding: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .sim .campos-sim { display: grid; gap: 14px; }
 .sim-res { background: var(--sup-2); border-radius: 12px; padding: 16px; display: grid; gap: 10px; align-content: start; }
+.sim-aviso { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 10px; border-left: 4px solid var(--ouro); background: color-mix(in srgb, var(--ouro) 12%, var(--sup)); font-size: .88rem; }
+.sim-letras { grid-column: 1 / -1; margin: 0; font-size: .75rem; }
+.linha-val[hidden] { display: none; }
 .sim-res .grande { font-family: var(--f-titulo); font-size: 1.7rem; font-weight: 700; color: var(--titulo); }
 .linha-val { display: flex; justify-content: space-between; gap: 10px; font-size: .9rem; }
 @media (max-width: 620px) { .sim { grid-template-columns: 1fr; } }
@@ -879,16 +882,19 @@ body.com-barra .toast { bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
           </div>
           ${i.fin === "venda" ? `<div class="bloco"><h2>Simule o financiamento</h2>
             <div class="sim">
+              <p class="sim-aviso" role="note"><b>Isto é uma simulação.</b> O financiamento real pode ter variação nas parcelas e depende de análise de crédito e aprovação da instituição financeira.</p>
               <div class="campos-sim">
-                <div class="campo"><label for="sEntrada">Entrada: <span class="num" id="sEntradaTxt"></span></label><input class="faixa" type="range" id="sEntrada" min="20" max="80" step="5" value="30"></div>
-                <div class="campo"><label for="sPrazo">Prazo</label><select class="entrada" id="sPrazo"><option value="240">20 anos</option><option value="300">25 anos</option><option value="360" selected>30 anos</option><option value="420">35 anos</option></select></div>
-                <div class="campo"><label for="sTaxa">Juros ao ano (%)</label><input class="entrada num" id="sTaxa" type="number" min="5" max="20" step="0.1" value="11.5"></div>
+                <div class="campo"><label for="sSistema">Sistema de amortização</label><select class="entrada" id="sSistema"><option value="sac">SAC (parcelas que diminuem, financia até 80%)</option><option value="price">Price (parcelas fixas, financia até 70%)</option></select></div>
+                <div class="campo"><label for="sEntrada">Entrada: <span class="num" id="sEntradaTxt"></span></label><input class="faixa" type="range" id="sEntrada" min="20" max="90" step="5" value="20"></div>
+                <div class="campo"><label for="sPrazo">Prazo</label><select class="entrada" id="sPrazo"><option value="240">20 anos</option><option value="300">25 anos</option><option value="360">30 anos</option><option value="420" selected>35 anos</option></select></div>
+                <div class="campo"><label for="sTaxa">Juros nominais ao ano + TR (%)</label><input class="entrada num" id="sTaxa" type="number" min="0" max="30" step="0.01" value="${i.preco > 2250000 ? "12.00" : "11.49"}"></div>
               </div>
-              <div class="sim-res" aria-live="polite"><span class="mudo" style="font-size:.85rem">Parcela estimada (Price)</span><span class="grande num" id="sParcela"></span>
-                <div class="linha-val"><span class="mudo">SAC: 1ª parcela</span><b class="num" id="sSac1"></b></div>
+              <div class="sim-res" aria-live="polite"><span class="mudo" style="font-size:.85rem" id="sParcelaTxt">1ª parcela (SAC)</span><span class="grande num" id="sParcela"></span>
+                <div class="linha-val" id="sUltLinha"><span class="mudo">Última parcela</span><b class="num" id="sUlt"></b></div>
                 <div class="linha-val"><span class="mudo">Valor financiado</span><b class="num" id="sFin"></b></div>
-                <div class="linha-val"><span class="mudo">Renda familiar sugerida</span><b class="num" id="sRenda"></b></div>
-                <span class="mudo" style="font-size:.75rem">Estimativa sem seguros e taxas. A aprovação depende da análise do banco.</span></div>
+                <div class="linha-val"><span class="mudo">Renda familiar mínima</span><b class="num" id="sRenda"></b></div>
+                <span class="mudo" id="sNota" style="font-size:.75rem"></span></div>
+              <p class="sim-letras mudo">Parâmetros da Caixa Econômica Federal (SBPE, conferidos em novembro de 2026): até 80% do valor no SAC e 70% na Price; prazo de até 420 meses; idade mais prazo até 80 anos e 6 meses; parcela de até 30% da renda; juros mensais = taxa nominal anual ÷ 12. Até R$ 2,25 milhões (SFH) de 10,99% a 11,49% ao ano + TR; acima disso (SFI) de 11,80% a 12%. Não incluem TR, seguros MIP e DFI, taxa de administração de R$ 25,00/mês, ITBI e registro. <a href="https://habitacao.caixa.gov.br/siopiweb-web/simulaOperacaoInternet.do?method=inicializarCasoUso" target="_blank" rel="noopener">Simulação oficial da Caixa ↗</a></p>
             </div></div>`
           : `<div class="bloco"><h2>Custo mensal</h2><div class="custos num"><div class="linha-val"><span>Aluguel</span><span>${brl(i.preco)}</span></div><div class="linha-val"><span>Condomínio</span><span>${brl(i.cond)}</span></div><div class="linha-val"><span>IPTU (mensal)</span><span>${brl(i.iptu)}</span></div><div class="linha-val total"><span>Total</span><span>${brl(i.preco + i.cond + i.iptu)}</span></div></div></div>`}
           <div class="bloco"><h2>Compartilhe</h2>
@@ -921,15 +927,25 @@ body.com-barra .toast { bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
     <div class="barra-movel"><div class="preco num">${precoTxt(i)}</div><button class="btn btn-linha" type="button" data-ir-contato style="padding:11px 12px">Agendar</button><button class="btn btn-zap" type="button" data-zap="${i.id}">${ico("zap")} WhatsApp</button></div>`;
   }
 
+  /* Parâmetros da Caixa (SBPE): mesmos do sistema (FinanciamentoCaixa.cs) */
+  const CAIXA = { cotaSac: 0.8, cotaPrice: 0.7, comprometimento: 0.3, tetoSfh: 2250000 };
   function simular(i) {
-    const ent = +$("#sEntrada").value / 100, n = +$("#sPrazo").value, a = (+$("#sTaxa").value || 0) / 100;
-    const P = i.preco * (1 - ent), im = Math.pow(1 + a, 1 / 12) - 1;
-    const price = im > 0 ? P * im / (1 - Math.pow(1 + im, -n)) : P / n;
+    const sac = $("#sSistema").value === "sac";
+    const minEnt = Math.round((1 - (sac ? CAIXA.cotaSac : CAIXA.cotaPrice)) * 100);
+    const faixa = $("#sEntrada");
+    faixa.min = minEnt;
+    if (+faixa.value < minEnt) faixa.value = minEnt;
+    const ent = +faixa.value / 100, n = +$("#sPrazo").value;
+    const P = i.preco * (1 - ent), im = (+$("#sTaxa").value || 0) / 100 / 12; // Caixa: taxa nominal ÷ 12
+    const primeira = sac ? P / n + P * im : (im > 0 ? P * im / (1 - Math.pow(1 + im, -n)) : P / n);
     $("#sEntradaTxt").textContent = `${Math.round(ent * 100)}% (${brl(i.preco * ent)})`;
-    $("#sParcela").textContent = brl(price);
-    $("#sSac1").textContent = brl(P / n + P * im);
+    $("#sParcelaTxt").textContent = sac ? "1ª parcela (SAC)" : "Parcela fixa (Price)";
+    $("#sParcela").textContent = brl(primeira);
+    $("#sUltLinha").hidden = !sac;
+    $("#sUlt").textContent = brl(P / n * (1 + im));
     $("#sFin").textContent = brl(P);
-    $("#sRenda").textContent = brl(price / 0.3);
+    $("#sRenda").textContent = brl(primeira / CAIXA.comprometimento);
+    $("#sNota").textContent = `Entrada mínima de ${minEnt}% no ${sac ? "SAC" : "Price"}.` + (i.preco > CAIXA.tetoSfh ? " Imóvel acima de R$ 2,25 milhões: SFI." : "");
   }
 
   /* ================= galeria em tela cheia ================= */
@@ -1044,7 +1060,7 @@ body.com-barra .toast { bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
   }
   function simularSePrecisa(i) {
     if (i.fin !== "venda") return;
-    ["sEntrada", "sPrazo", "sTaxa"].forEach(id => $("#" + id).addEventListener("input", () => simular(i)));
+    ["sSistema", "sEntrada", "sPrazo", "sTaxa"].forEach(id => $("#" + id).addEventListener("input", () => simular(i)));
     simular(i);
   }
   function trocar(fn) {
