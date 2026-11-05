@@ -94,6 +94,36 @@ await app.Services.GetRequiredService<Migrador>().AplicarAsync();
 await app.Services.GetRequiredService<DadosIniciais>().GarantirAsync();
 if (args.Contains("migrar")) return;
 
+// `dotnet Inovabens.Web.dll importar-imobibrasil [--usuario=email] [--site=https://...] [--sem-fotos]`
+// traz os anúncios ativos do site atual (Imobibrasil); rodar de novo atualiza sem duplicar.
+if (args.Contains("importar-imobibrasil"))
+{
+    string? Arg(string nome) => args.FirstOrDefault(a => a.StartsWith($"--{nome}=", StringComparison.Ordinal))?[(nome.Length + 3)..];
+    using var escopo = app.Services.CreateScope();
+    var sp = escopo.ServiceProvider;
+    var fabricaDb = sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<InovabensDb>>();
+    Guid usuarioId;
+    await using (var db = await fabricaDb.CreateDbContextAsync())
+    {
+        var email = Arg("usuario");
+        usuarioId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            db.Usuarios.Where(x => x.Ativo && x.ExcluidoEm == null && (email == null ? x.Perfil!.Nome == "Administrador" : x.Email == email))
+                .OrderBy(x => x.CriadoEm).Select(x => x.Id));
+    }
+    var usuario = usuarioId == Guid.Empty ? null : await sp.GetRequiredService<AuthService>().RecarregarAsync(usuarioId);
+    if (usuario is null)
+    {
+        Console.Error.WriteLine("Usuário não encontrado (informe --usuario=email de um usuário ativo).");
+        Environment.ExitCode = 1;
+        return;
+    }
+    var itens = await sp.GetRequiredService<ImportacaoImobibrasilService>().ImportarAsync(usuario,
+        Arg("site") ?? "https://www.inovabens.com.br", comFotos: !args.Contains("--sem-fotos"), progresso: Console.WriteLine);
+    Console.WriteLine($"Concluído: {itens.Count(i => i.Novo)} novos, {itens.Count(i => !i.Novo && i.Codigo != "—")} atualizados, " +
+                      $"{itens.Count(i => i.Codigo == "—")} com falha, {itens.Sum(i => i.FotosNovas)} fotos enviadas.");
+    return;
+}
+
 app.UseForwardedHeaders();
 app.UseRateLimiter(); // depois do UseForwardedHeaders: limita pelo IP real do cliente
 
@@ -151,6 +181,20 @@ imovel.MapGet("ficha-financeira.pdf", (Guid id, CodigoIndice? indice, HttpContex
     Baixar(c, u => r.FichaFinanceiraPdfAsync(u, id, indice ?? CodigoIndice.IPCA))).RequireAuthorization(Permissoes.FinanceiroExportar);
 imovel.MapGet("ficha-financeira.xlsx", (Guid id, CodigoIndice? indice, HttpContext c, RelatoriosService r) =>
     Baixar(c, u => r.FichaFinanceiraXlsxAsync(u, id, indice ?? CodigoIndice.IPCA))).RequireAuthorization(Permissoes.FinanceiroExportar);
+
+// Pré-visualização do imóvel como no site público (página própria, aberta em outra aba pelo botão "Ver no site").
+imovel.MapGet("site", async (Guid id, HttpContext c, ImoveisService s) =>
+{
+    try
+    {
+        var d = await s.DetalheAsync(UsuarioAtual.De(c.User)!, id);
+        var linkAtual = d.Dados.ImobibrasilId is { } ib ? $"https://www.inovabens.com.br/imovel/{ib}" : null;
+        return (IResult)new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
+            new { Detalhe = d, LinkImobibrasil = linkAtual });
+    }
+    catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
+    catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
+}).RequireAuthorization(Permissoes.ImoveisVer);
 
 // Fotos e documentos: o Drive é privado, então o sistema confere o acesso ao imóvel e repassa o arquivo.
 // O id do arquivo no Drive vai na URL e muda quando a foto é trocada, por isso o navegador pode guardar em cache.

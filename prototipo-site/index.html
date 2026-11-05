@@ -1,0 +1,1232 @@
+<meta charset="utf-8">
+<title>Inovabens Imóveis</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Protótipo do site oficial da Inovabens: busca de imóveis, página do imóvel, contato por WhatsApp, SEO e medição de anúncios.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icones/icone-192.png">
+<link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+<meta name="theme-color" content="#03075f">
+<meta name="apple-mobile-web-app-title" content="Inovabens">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@500;600;700;800&display=swap">
+<style>
+/* Layout: cabeçalho fixo, hero fotográfico cortado pela curva dourada do logotipo; conteúdo em coluna de 1200px.
+   Três páginas na mesma tela (início, busca, imóvel), trocadas com transição animada do navegador. */
+:root {
+  --marinho: #03075f;
+  --azul: #0b34a0;
+  --ouro: #c8902f;
+  --ouro-claro: #e2b04f;
+  --degrade-ouro: linear-gradient(90deg, #b8801f, #e2b04f 55%, #c8902f);
+
+  --bg: #f5f6fb;
+  --sup: #ffffff;
+  --sup-2: #eef1f9;
+  --texto: #0f1535;
+  --mudo: #5b6486;
+  --borda: #e0e4f0;
+  --titulo: #03075f;
+  --acento: #0b34a0;
+  --ouro-txt: #8f6214;
+  --ok: #127a46;
+  --sombra: 0 18px 40px -18px rgb(3 7 95 / .28), 0 4px 12px -6px rgb(15 21 53 / .10);
+  --sombra-s: 0 1px 2px rgb(15 21 53 / .06), 0 2px 6px rgb(15 21 53 / .05);
+
+  --f-titulo: "Montserrat", "Segoe UI", system-ui, sans-serif;
+  --f-texto: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --raio: 14px;
+  --raio-p: 9px;
+  --max: 1200px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #060a2b; --sup: #0d1340; --sup-2: #131a50; --texto: #e8ebf8; --mudo: #a1a8c9; --borda: #222a63;
+    --titulo: #ffffff; --acento: #9db7ff; --ouro-txt: #e2b04f; --ok: #4fd08b;
+    --sombra: 0 18px 40px -18px rgb(0 0 0 / .6); --sombra-s: 0 1px 2px rgb(0 0 0 / .4);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #060a2b; --sup: #0d1340; --sup-2: #131a50; --texto: #e8ebf8; --mudo: #a1a8c9; --borda: #222a63;
+  --titulo: #ffffff; --acento: #9db7ff; --ouro-txt: #e2b04f; --ok: #4fd08b;
+  --sombra: 0 18px 40px -18px rgb(0 0 0 / .6); --sombra-s: 0 1px 2px rgb(0 0 0 / .4);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--texto); font-family: var(--f-texto); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--marinho); }
+h1, h2, h3 { font-family: var(--f-titulo); color: var(--titulo); letter-spacing: -.015em; text-wrap: balance; margin: 0; }
+p { margin: 0; }
+a { color: var(--acento); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--ouro-claro); outline-offset: 2px; border-radius: 6px; }
+.rotulo { font-size: .72rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ouro-txt); }
+.mudo { color: var(--mudo); }
+.num { font-variant-numeric: tabular-nums; }
+.miolo { max-width: var(--max); margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.ico { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- aviso de protótipo ---------- */
+.aviso { background: var(--marinho); color: #dfe5ff; font-size: .78rem; text-align: center; padding-block: 6px; }
+.aviso b { color: var(--ouro-claro); font-weight: 600; }
+.aviso .miolo { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- cabeçalho ---------- */
+.topo { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: color-mix(in srgb, var(--sup) 88%, transparent); backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid var(--borda); transition: background .3s, border-color .3s; }
+.topo.sobre-foto { background: linear-gradient(180deg, rgb(3 7 40 / .55), rgb(3 7 40 / 0)); border-color: transparent; backdrop-filter: none; }
+.topo .miolo { display: flex; align-items: center; gap: 20px; min-height: 68px; }
+.marca { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--titulo); }
+.marca svg { width: 38px; height: 38px; border-radius: 9px; }
+.marca-txt { display: grid; line-height: 1; }
+.marca-txt b { font-family: var(--f-titulo); font-weight: 700; font-size: 1.2rem; letter-spacing: .02em; }
+.marca-txt b span { background: var(--degrade-ouro); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.marca-txt small { font-size: .58rem; letter-spacing: .28em; margin-top: 4px; color: var(--mudo); font-weight: 600; }
+.sobre-foto .marca, .sobre-foto .nav a, .sobre-foto .btn-fav { color: #fff; }
+.sobre-foto .marca-txt small { color: #c9d2ff; }
+.nav { display: flex; gap: 4px; margin-left: auto; }
+.nav a { color: var(--texto); text-decoration: none; font-weight: 500; padding: 8px 12px; border-radius: 8px; }
+.nav a:hover { background: color-mix(in srgb, var(--acento) 10%, transparent); }
+.nav a[aria-current="page"] { color: var(--acento); }
+.sobre-foto .nav a[aria-current="page"] { color: var(--ouro-claro); }
+.btn-fav { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; cursor: pointer; padding: 8px 10px; border-radius: 8px; color: var(--texto); font-weight: 500; }
+.btn-fav .cont { min-width: 20px; height: 20px; border-radius: 10px; background: var(--ouro); color: #fff; font-size: .72rem; display: grid; place-items: center; padding: 0 5px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px; padding: 11px 18px; font-weight: 600; cursor: pointer; text-decoration: none; transition: transform .15s, box-shadow .2s, background .2s; }
+.btn:active { transform: translateY(1px); }
+.btn-ouro { background: var(--degrade-ouro); color: #1b1300; box-shadow: 0 8px 20px -10px rgb(200 144 47 / .9); }
+.btn-ouro:hover { box-shadow: 0 12px 26px -10px rgb(200 144 47 / 1); }
+.btn-azul { background: var(--azul); color: #fff; }
+.btn-azul:hover { background: #0a2e8f; }
+.btn-zap { background: #128c4a; color: #fff; }
+.btn-zap:hover { background: #0e773e; }
+.btn-linha { background: transparent; color: var(--texto); border: 1px solid var(--borda); }
+.btn-linha:hover { border-color: var(--acento); color: var(--acento); }
+.menu-btn { display: none; margin-left: auto; background: none; border: 0; padding: 8px; color: inherit; cursor: pointer; }
+.sobre-foto .menu-btn { color: #fff; }
+@media (max-width: 860px) {
+  .nav, .topo .btn-zap span { display: none; }
+  .menu-btn { display: inline-flex; }
+  .nav.aberto { display: grid; position: absolute; top: 100%; left: 0; right: 0; background: var(--sup); border-bottom: 1px solid var(--borda); padding: 8px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); box-shadow: var(--sombra); }
+  .nav.aberto a { color: var(--texto); padding: 12px; }
+}
+
+/* ---------- hero ---------- */
+.hero { position: relative; margin-top: -69px; color: #fff; overflow: hidden; background: #0b1030; }
+.hero-foto { position: absolute; inset: 0; background: url("casa.jpg") center 62% / cover no-repeat; transform: scale(1.06); animation: aproximar 14s ease-out forwards; }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, rgb(3 7 60 / .86) 0%, rgb(3 7 60 / .55) 45%, rgb(3 7 60 / .15) 75%), linear-gradient(0deg, rgb(3 7 40 / .45), transparent 40%); }
+.hero .miolo { position: relative; z-index: 2; padding-block: 150px 150px; display: grid; gap: 22px; }
+.hero h1 { color: #fff; font-size: clamp(2.1rem, 5.2vw, 3.9rem); font-weight: 700; line-height: 1.05; max-width: 15ch; }
+.hero h1 em { font-style: normal; background: var(--degrade-ouro); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero p.sub { font-size: 1.1rem; max-width: 46ch; color: #dde3ff; }
+.curva { position: absolute; left: 0; right: 0; bottom: -1px; width: 100%; height: 110px; z-index: 3; display: block; }
+.curva .linha { stroke-dasharray: 1700; stroke-dashoffset: 1700; animation: tracar 1.6s .25s cubic-bezier(.65,0,.35,1) forwards; }
+@keyframes tracar { to { stroke-dashoffset: 0; } }
+@keyframes aproximar { to { transform: scale(1); } }
+@keyframes subir { from { opacity: .001; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+/* busca do hero */
+.busca { position: relative; z-index: 4; margin-top: -120px; }
+.busca-caixa { background: var(--sup); border: 1px solid var(--borda); border-radius: 18px; box-shadow: var(--sombra); padding: 14px; display: grid; gap: 12px; animation: subir .7s .5s both; }
+.abas { display: inline-flex; background: var(--sup-2); border-radius: 10px; padding: 4px; gap: 4px; justify-self: start; }
+.abas button { border: 0; background: transparent; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; color: var(--mudo); }
+.abas button[aria-pressed="true"] { background: var(--sup); color: var(--titulo); box-shadow: var(--sombra-s); }
+.campos { display: grid; grid-template-columns: 1.6fr 1fr 1fr auto; gap: 10px; }
+.campo { display: grid; gap: 4px; min-width: 0; }
+.campo label, .campo .lbl { font-size: .74rem; font-weight: 600; color: var(--mudo); }
+.entrada { width: 100%; border: 1px solid var(--borda); background: var(--bg); border-radius: 10px; padding: 11px 12px; min-height: 46px; }
+.entrada:focus { outline: none; border-color: var(--acento); box-shadow: 0 0 0 3px color-mix(in srgb, var(--acento) 20%, transparent); }
+.campos .btn { align-self: end; min-height: 46px; padding-inline: 26px; }
+.atalhos { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--borda); background: var(--sup); border-radius: 999px; padding: 6px 12px; font-size: .84rem; cursor: pointer; color: var(--texto); }
+.chip:hover { border-color: var(--acento); }
+.chip[aria-pressed="true"] { background: var(--marinho); border-color: var(--marinho); color: #fff; }
+@media (max-width: 860px) { .campos { grid-template-columns: 1fr 1fr; } .campos .campo:first-child, .campos .btn { grid-column: 1 / -1; } }
+
+.portais { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; padding-block: 22px 6px; color: var(--mudo); font-size: .86rem; }
+.portais b { font-family: var(--f-titulo); font-weight: 600; color: var(--texto); letter-spacing: .01em; }
+
+/* ---------- seções ---------- */
+.secao { padding-block: 56px 8px; }
+.secao-cab { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+.secao-cab h2 { font-size: clamp(1.45rem, 2.6vw, 2rem); font-weight: 700; margin-top: 6px; }
+.link-seta { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; text-decoration: none; }
+
+/* cartões de imóvel */
+.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 22px; }
+.cartao { position: relative; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; display: grid; transition: transform .25s, box-shadow .25s; }
+.cartao:hover { transform: translateY(-3px); box-shadow: var(--sombra); }
+.cartao a.cobre { position: absolute; inset: 0; z-index: 1; }
+.cartao a.cobre:focus-visible { outline-offset: -3px; border-radius: var(--raio); }
+.foto { background-image: url("casa.jpg"); background-repeat: no-repeat; background-color: #0b1030; aspect-ratio: 4 / 3; max-width: 100%; }
+.f1 { background-size: cover; background-position: 50% 62%; }
+.f2 { background-size: 560%; background-position: 34% 56%; }
+.f3 { background-size: 430%; background-position: 82% 55%; }
+.f4 { background-size: 190%; background-position: 62% 92%; }
+.f5 { background-size: 260%; background-position: 48% 36%; }
+.f6 { background-size: 250%; background-position: 4% 62%; }
+.f7 { background-size: 340%; background-position: 94% 40%; }
+.cartao .foto { transition: transform .6s cubic-bezier(.2,.7,.2,1); }
+.cartao:hover .foto { transform: scale(1.04); }
+.cartao .foto-caixa { overflow: hidden; position: relative; }
+.selos { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; z-index: 2; }
+.selo { background: rgb(255 255 255 / .92); color: #03075f; font-size: .72rem; font-weight: 700; padding: 4px 9px; border-radius: 999px; letter-spacing: .02em; }
+.selo.ouro { background: var(--degrade-ouro); color: #1b1300; }
+.coracao { position: absolute; top: 10px; right: 10px; z-index: 2; width: 38px; height: 38px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgb(255 255 255 / .92); color: #03075f; cursor: pointer; }
+.coracao .ico { width: 19px; height: 19px; }
+.coracao[aria-pressed="true"] .ico { fill: #d33b52; stroke: #d33b52; }
+.cartao-corpo { padding: 16px 18px 18px; display: grid; gap: 6px; }
+.preco { font-family: var(--f-titulo); font-weight: 700; font-size: 1.32rem; color: var(--titulo); }
+.preco small { font-size: .8rem; font-weight: 500; color: var(--mudo); font-family: var(--f-texto); }
+.cartao h3 { font-size: .98rem; font-weight: 600; font-family: var(--f-texto); color: var(--texto); letter-spacing: 0; }
+.local { display: flex; gap: 5px; align-items: center; color: var(--mudo); font-size: .86rem; }
+.local .ico { width: 15px; height: 15px; }
+.specs { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--borda); color: var(--mudo); font-size: .84rem; }
+.specs span { display: inline-flex; gap: 5px; align-items: center; }
+.specs .ico { width: 16px; height: 16px; }
+.codigo { font-size: .72rem; color: var(--mudo); letter-spacing: .04em; }
+@media (max-width: 640px) {
+  .grade.rolagem { grid-auto-flow: column; grid-auto-columns: 82%; grid-template-columns: none; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; scrollbar-width: none; }
+  .grade.rolagem > * { scroll-snap-align: start; }
+}
+
+/* bairros */
+.bairros { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 170px; gap: 14px; }
+.bairro { position: relative; border-radius: var(--raio); overflow: hidden; text-decoration: none; color: #fff; display: flex; align-items: end; padding: 16px; isolation: isolate; }
+.bairro .foto { position: absolute; inset: 0; aspect-ratio: auto; z-index: -2; transition: transform .6s; }
+.bairro::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(0deg, rgb(3 7 60 / .85), rgb(3 7 60 / .05) 65%); }
+.bairro:hover .foto { transform: scale(1.06); }
+.bairro b { font-family: var(--f-titulo); font-size: 1.12rem; display: block; }
+.bairro small { color: #d6dcff; }
+.bairro.grande { grid-row: span 2; grid-column: span 2; }
+.bairro.grande b { font-size: 1.5rem; }
+@media (max-width: 860px) { .bairros { grid-template-columns: 1fr 1fr; grid-auto-rows: 140px; } }
+
+/* diferenciais */
+.diferenciais { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; background: var(--marinho); color: #e3e8ff; border-radius: 22px; padding: clamp(24px, 4vw, 52px); position: relative; overflow: hidden; }
+.diferenciais::before { content: ""; position: absolute; right: -120px; bottom: -160px; width: 520px; height: 360px; border-top: 3px solid var(--ouro); border-radius: 50% 50% 0 0; transform: rotate(-14deg); opacity: .8; }
+.diferenciais h2 { color: #fff; font-size: clamp(1.5rem, 2.8vw, 2.2rem); }
+.diferenciais .rotulo { color: var(--ouro-claro); }
+.lista-dif { display: grid; gap: 18px; position: relative; }
+.item-dif { display: grid; grid-template-columns: 44px 1fr; gap: 14px; align-items: start; }
+.item-dif .ico-caixa { width: 44px; height: 44px; border-radius: 12px; background: rgb(255 255 255 / .08); display: grid; place-items: center; color: var(--ouro-claro); }
+.item-dif b { color: #fff; font-family: var(--f-titulo); font-weight: 600; display: block; margin-bottom: 2px; }
+.item-dif p { font-size: .92rem; color: #c6cdf2; }
+@media (max-width: 860px) { .diferenciais { grid-template-columns: 1fr; } }
+
+/* anuncie */
+.anuncie { display: grid; grid-template-columns: 1fr 1.1fr; gap: 32px; align-items: center; background: var(--sup); border: 1px solid var(--borda); border-radius: 22px; padding: clamp(22px, 4vw, 44px); }
+.anuncie form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.anuncie form .btn, .anuncie form .consent { grid-column: 1 / -1; }
+.consent { display: flex; gap: 8px; align-items: start; font-size: .8rem; color: var(--mudo); }
+.consent input { margin-top: 3px; accent-color: var(--azul); }
+@media (max-width: 860px) { .anuncie { grid-template-columns: 1fr; } .anuncie form { grid-template-columns: 1fr; } }
+
+/* rodapé */
+.rodape { margin-top: 72px; background: var(--marinho); color: #c7cef3; font-size: .9rem; }
+.rodape .miolo { padding-block: 44px 28px; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 28px; }
+.rodape h4 { margin: 0 0 10px; font-family: var(--f-titulo); color: #fff; font-size: .9rem; }
+.rodape a { color: #c7cef3; text-decoration: none; display: block; padding: 3px 0; }
+.rodape a:hover { color: #fff; }
+.rodape .marca, .rodape .marca-txt small { color: #fff; }
+.redes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.redes a { padding: 6px 10px; border: 1px solid rgb(255 255 255 / .18); border-radius: 999px; font-size: .78rem; }
+.rodape-base { border-top: 1px solid rgb(255 255 255 / .1); }
+.rodape-base .miolo { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-block: 16px; font-size: .8rem; grid-template-columns: none; }
+@media (max-width: 860px) { .rodape .miolo { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .rodape .miolo { grid-template-columns: 1fr; } }
+
+/* ---------- busca ---------- */
+.busca-pag { padding-block: 28px 0; }
+.busca-pag h1 { font-size: clamp(1.4rem, 2.6vw, 1.9rem); }
+.trilha { font-size: .82rem; color: var(--mudo); display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.trilha a { color: var(--mudo); text-decoration: none; }
+.trilha a:hover { color: var(--acento); }
+.busca-grade { display: grid; grid-template-columns: 280px 1fr; gap: 26px; margin-top: 20px; align-items: start; }
+.filtros { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 84px); background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); padding: 18px; display: grid; gap: 18px; max-height: calc(100vh - 110px); overflow: auto; }
+.filtros fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.filtros legend { font-size: .78rem; font-weight: 700; color: var(--titulo); margin-bottom: 8px; letter-spacing: .02em; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.check { display: flex; gap: 8px; align-items: center; font-size: .9rem; cursor: pointer; }
+.check input { accent-color: var(--azul); width: 16px; height: 16px; }
+.faixa { width: 100%; accent-color: var(--ouro); }
+.barra-res { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.alterna { display: inline-flex; border: 1px solid var(--borda); border-radius: 10px; padding: 3px; background: var(--sup); }
+.alterna button { border: 0; background: none; padding: 7px 12px; border-radius: 8px; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; color: var(--mudo); font-weight: 600; font-size: .86rem; }
+.alterna button[aria-pressed="true"] { background: var(--marinho); color: #fff; }
+.ordenar { border: 1px solid var(--borda); background: var(--sup); border-radius: 10px; padding: 8px 10px; }
+.btn-filtros { display: none; }
+.vazio { padding: 48px 20px; text-align: center; border: 1px dashed var(--borda); border-radius: var(--raio); color: var(--mudo); display: grid; gap: 10px; justify-items: center; }
+@media (max-width: 900px) {
+  .busca-grade { grid-template-columns: 1fr; }
+  .filtros { display: none; position: fixed; inset: auto 0 0 0; top: auto; max-height: 82vh; border-radius: 18px 18px 0 0; z-index: 70; box-shadow: var(--sombra); padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .filtros.aberto { display: grid; }
+  .btn-filtros { display: inline-flex; }
+}
+
+/* mapa ilustrativo */
+.mapa { position: relative; border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; background: var(--sup-2); }
+.mapa svg { display: block; width: 100%; height: auto; }
+.mapa .terra { fill: var(--sup); }
+.mapa .mar { fill: color-mix(in srgb, var(--acento) 16%, var(--sup-2)); }
+.mapa .rua { stroke: var(--borda); stroke-width: 2; fill: none; }
+.mapa .nome-bairro { fill: var(--mudo); font: 600 13px var(--f-texto); letter-spacing: .06em; text-transform: uppercase; }
+.pino { cursor: pointer; }
+.pino rect { fill: var(--marinho); }
+.pino text { fill: #fff; font: 700 12px var(--f-texto); }
+.pino:hover rect, .pino.ativo rect { fill: var(--ouro); }
+.pino:hover text, .pino.ativo text { fill: #1b1300; }
+.mapa-cartao { position: absolute; left: 16px; bottom: 16px; width: min(320px, calc(100% - 32px)); }
+.mapa-nota { position: absolute; right: 12px; top: 10px; font-size: .72rem; color: var(--mudo); background: var(--sup); padding: 3px 8px; border-radius: 6px; }
+
+/* ---------- imóvel ---------- */
+.imovel-pag { padding-block: 20px 0; }
+.galeria { display: grid; grid-template-columns: 2fr 1fr 1fr; grid-template-rows: 230px 230px; gap: 8px; border-radius: 18px; overflow: hidden; position: relative; }
+.galeria button { border: 0; padding: 0; cursor: zoom-in; overflow: hidden; background: #0b1030; }
+.galeria button .foto { width: 100%; height: 100%; aspect-ratio: auto; transition: transform .5s; }
+.galeria button:hover .foto { transform: scale(1.04); }
+.galeria .principal { grid-row: span 2; }
+.ver-todas { position: absolute; right: 14px; bottom: 14px; z-index: 2; background: var(--sup); color: var(--texto); border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 600; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; box-shadow: var(--sombra-s); }
+@media (max-width: 760px) {
+  .galeria { grid-template-columns: none; grid-template-rows: none; grid-auto-flow: column; grid-auto-columns: 100%; overflow-x: auto; scroll-snap-type: x mandatory; border-radius: 14px; scrollbar-width: none; }
+  .galeria button { scroll-snap-align: start; aspect-ratio: 4 / 3; }
+  .galeria .principal { grid-row: auto; }
+}
+.cab-imovel { display: flex; justify-content: space-between; gap: 18px; align-items: start; flex-wrap: wrap; margin-top: 22px; }
+.cab-imovel h1 { font-size: clamp(1.45rem, 3vw, 2.15rem); max-width: 26ch; }
+.acoes { display: flex; gap: 8px; }
+.imovel-grade { display: grid; grid-template-columns: 1fr 370px; gap: 36px; margin-top: 22px; align-items: start; }
+.bloco { padding-block: 26px; border-top: 1px solid var(--borda); display: grid; gap: 14px; min-width: 0; }
+.bloco h2 { font-size: 1.15rem; }
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.numero { background: var(--sup); border: 1px solid var(--borda); border-radius: 12px; padding: 12px 14px; display: grid; gap: 2px; }
+.numero .ico { color: var(--ouro-txt); width: 20px; height: 20px; }
+.numero b { font-family: var(--f-titulo); font-size: 1.15rem; color: var(--titulo); }
+.numero small { color: var(--mudo); font-size: .78rem; }
+.descricao { max-width: 68ch; display: grid; gap: 10px; }
+.carac { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 18px; padding: 0; margin: 0; list-style: none; }
+.carac li { display: flex; gap: 8px; align-items: center; }
+.carac .ico { color: var(--ok); width: 17px; height: 17px; }
+.doc-ok { display: flex; gap: 14px; align-items: start; background: color-mix(in srgb, var(--ok) 9%, var(--sup)); border: 1px solid color-mix(in srgb, var(--ok) 30%, var(--borda)); border-radius: 12px; padding: 14px 16px; }
+.doc-ok .ico { color: var(--ok); width: 24px; height: 24px; }
+.video { position: relative; border-radius: 14px; overflow: hidden; display: block; text-decoration: none; color: #fff; }
+.video .foto { aspect-ratio: 16 / 7; }
+.video::after { content: ""; position: absolute; inset: 0; background: rgb(3 7 60 / .45); }
+.video .play { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; align-content: center; gap: 10px; font-weight: 600; }
+.video .play span:first-child { width: 64px; height: 64px; border-radius: 50%; background: var(--degrade-ouro); display: grid; place-items: center; color: #1b1300; }
+.mapa-local svg { display: block; width: 100%; height: auto; }
+
+/* simulador */
+.sim { background: var(--sup); border: 1px solid var(--borda); border-radius: 14px; padding: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.sim .campos-sim { display: grid; gap: 14px; }
+.sim-res { background: var(--sup-2); border-radius: 12px; padding: 16px; display: grid; gap: 10px; align-content: start; }
+.sim-res .grande { font-family: var(--f-titulo); font-size: 1.7rem; font-weight: 700; color: var(--titulo); }
+.linha-val { display: flex; justify-content: space-between; gap: 10px; font-size: .9rem; }
+@media (max-width: 620px) { .sim { grid-template-columns: 1fr; } }
+.custos { display: grid; gap: 8px; background: var(--sup); border: 1px solid var(--borda); border-radius: 14px; padding: 16px 18px; max-width: 460px; }
+.custos .total { border-top: 1px solid var(--borda); padding-top: 8px; font-weight: 700; }
+
+/* contato lateral */
+.contato { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 84px); background: var(--sup); border: 1px solid var(--borda); border-radius: 18px; box-shadow: var(--sombra); padding: 20px; display: grid; gap: 14px; }
+.contato .preco { font-size: 1.7rem; }
+.contato form { display: grid; gap: 10px; }
+.contato textarea { min-height: 84px; resize: vertical; }
+.corretor { display: flex; gap: 12px; align-items: center; }
+.avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--marinho); color: var(--ouro-claro); display: grid; place-items: center; font-family: var(--f-titulo); font-weight: 700; }
+.dias { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.dia { border: 1px solid var(--borda); background: var(--bg); border-radius: 10px; padding: 7px 4px; text-align: center; cursor: pointer; font-size: .74rem; color: var(--mudo); line-height: 1.25; }
+.dia b { display: block; font-size: 1rem; color: var(--texto); font-family: var(--f-titulo); }
+.dia[aria-pressed="true"] { border-color: var(--azul); background: color-mix(in srgb, var(--azul) 10%, var(--sup)); color: var(--acento); }
+.ou { display: flex; align-items: center; gap: 10px; color: var(--mudo); font-size: .8rem; }
+.ou::before, .ou::after { content: ""; flex: 1; height: 1px; background: var(--borda); }
+@media (max-width: 980px) { .imovel-grade { grid-template-columns: 1fr; } .contato { position: static; } }
+
+/* barra fixa no celular */
+.barra-movel { display: none; }
+@media (max-width: 980px) {
+  .barra-movel { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 55; gap: 10px; align-items: center; background: var(--sup); border-top: 1px solid var(--borda); padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); box-shadow: 0 -10px 30px -18px rgb(3 7 95 / .4); }
+  .barra-movel .preco { font-size: 1.05rem; flex: 1; min-width: 0; }
+  body.com-barra .rodape { padding-bottom: 76px; }
+}
+
+/* compartilhar: prévia */
+.previa { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.bolha { background: #dcf8c6; color: #111; border-radius: 12px 12px 12px 2px; padding: 6px; max-width: 340px; box-shadow: var(--sombra-s); font-size: .86rem; }
+:root[data-theme="dark"] .bolha { background: #144d37; color: #e9fbe9; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bolha { background: #144d37; color: #e9fbe9; } }
+.bolha .og { background: rgb(0 0 0 / .06); border-radius: 8px; overflow: hidden; }
+.bolha .og .foto { aspect-ratio: 1.91 / 1; }
+.bolha .og div.txt { padding: 8px 10px; display: grid; gap: 2px; }
+.bolha .og b { font-size: .86rem; }
+.bolha .og small { opacity: .7; }
+.bolha .msg { padding: 6px 4px 2px; }
+@media (max-width: 620px) { .previa { grid-template-columns: 1fr; } }
+
+/* galeria em tela cheia */
+.luz { position: fixed; inset: 0; z-index: 90; background: rgb(3 5 30 / .96); display: grid; grid-template-rows: auto 1fr auto; padding: calc(10px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); color: #fff; }
+.luz-topo { display: flex; justify-content: space-between; align-items: center; }
+.luz-palco { display: grid; place-items: center; min-height: 0; touch-action: pan-y; }
+.luz-palco .foto { width: min(1100px, 100%); max-height: 100%; aspect-ratio: 3 / 2; border-radius: 10px; }
+.luz-nav { position: absolute; top: 50%; translate: 0 -50%; width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgb(255 255 255 / .12); color: #fff; cursor: pointer; display: grid; place-items: center; }
+.luz-nav:hover { background: rgb(255 255 255 / .22); }
+.luz-nav.ant { left: max(16px, env(safe-area-inset-left, 0px)); }
+.luz-nav.prox { right: max(16px, env(safe-area-inset-right, 0px)); }
+.miniaturas { display: flex; gap: 8px; justify-content: center; overflow-x: auto; padding-top: 10px; }
+.miniaturas button { border: 2px solid transparent; padding: 0; border-radius: 8px; overflow: hidden; width: 72px; flex: none; cursor: pointer; background: none; opacity: .6; }
+.miniaturas button[aria-current="true"] { border-color: var(--ouro-claro); opacity: 1; }
+.btn-ico { background: rgb(255 255 255 / .12); border: 0; color: #fff; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; }
+
+/* bastidores */
+.bast-btn { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 56; background: var(--marinho); color: #fff; border: 1px solid rgb(226 176 79 / .6); border-radius: 999px; padding: 10px 16px; font-weight: 600; font-size: .84rem; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; box-shadow: var(--sombra); }
+.bast-btn .ponto { width: 8px; height: 8px; border-radius: 50%; background: var(--ouro-claro); box-shadow: 0 0 0 0 rgb(226 176 79 / .7); animation: pulsar 2.2s infinite; }
+@keyframes pulsar { 70% { box-shadow: 0 0 0 9px rgb(226 176 79 / 0); } 100% { box-shadow: 0 0 0 0 rgb(226 176 79 / 0); } }
+body.com-barra .bast-btn { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+@media (min-width: 981px) { body.com-barra .bast-btn { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); } }
+.bast { position: fixed; top: 0; right: 0; bottom: 0; width: min(470px, 100%); z-index: 80; background: var(--sup); border-left: 1px solid var(--borda); box-shadow: var(--sombra); display: grid; grid-template-rows: auto 1fr; padding-top: env(safe-area-inset-top, 0px); }
+.bast-cab { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--borda); gap: 12px; }
+.bast-cab h2 { font-size: 1rem; }
+.bast-corpo { overflow: auto; padding: 16px 18px calc(24px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 22px; align-content: start; }
+.bast-corpo h3 { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ouro-txt); margin-bottom: 8px; font-family: var(--f-texto); }
+.serp { border: 1px solid var(--borda); border-radius: 12px; padding: 14px; display: grid; gap: 3px; background: var(--bg); }
+.serp .url { font-size: .78rem; color: var(--mudo); word-break: break-all; }
+.serp .t { color: #1a0dab; font-size: 1.08rem; line-height: 1.3; }
+:root[data-theme="dark"] .serp .t { color: #a8c7fa; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .serp .t { color: #a8c7fa; } }
+.serp .d { font-size: .84rem; color: var(--mudo); }
+.medida { font-size: .74rem; color: var(--mudo); display: flex; gap: 14px; flex-wrap: wrap; }
+.medida b.ok { color: var(--ok); }
+pre.codigo-bloco { margin: 0; background: #070b2c; color: #d8defc; border-radius: 10px; padding: 12px; font-size: .74rem; line-height: 1.5; overflow-x: auto; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; max-height: 300px; }
+.eventos { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.eventos li { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: .82rem; border: 1px solid var(--borda); border-radius: 10px; padding: 8px 10px; background: var(--bg); animation: subir .35s both; }
+.eventos time { color: var(--mudo); font-variant-numeric: tabular-nums; grid-row: span 2; }
+.eventos small { color: var(--mudo); }
+.tag-plat { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.tag-plat span { font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 5px; background: var(--sup-2); color: var(--acento); }
+
+/* convite para instalar o app (PWA) */
+.instalar { position: fixed; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 58; display: flex; gap: 12px; align-items: center; background: var(--sup); border: 1px solid var(--borda); border-radius: 16px; padding: 12px 14px; box-shadow: var(--sombra); animation: subir .45s 1.2s both; max-width: 520px; margin-inline: auto; }
+.instalar img { width: 48px; height: 48px; border-radius: 12px; flex: none; }
+.instalar div { flex: 1; min-width: 0; display: grid; line-height: 1.3; }
+.instalar small { color: var(--mudo); font-size: .8rem; }
+.instalar .btn { padding: 9px 14px; }
+.instalar .fechar { background: none; border: 0; color: var(--mudo); cursor: pointer; padding: 6px; }
+body.com-instalar .bast-btn { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+.passos-app { display: grid; gap: 4px; }
+
+/* toast */
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: 100; background: var(--marinho); color: #fff; padding: 12px 18px; border-radius: 12px; box-shadow: var(--sombra); max-width: min(520px, calc(100% - 32px)); font-size: .9rem; animation: subir .3s both; display: flex; gap: 10px; align-items: start; }
+.toast .ico { color: var(--ouro-claro); margin-top: 2px; }
+body.com-barra .toast { bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
+
+.fundo-escuro { position: fixed; inset: 0; z-index: 65; background: rgb(3 5 30 / .45); }
+
+/* transições entre páginas */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .32s; }
+::view-transition-group(foto-ativa) { animation-duration: .5s; animation-timing-function: cubic-bezier(.2,.75,.2,1); }
+.app-vista { animation: subir .45s both; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .curva .linha { stroke-dashoffset: 0; }
+  html { scroll-behavior: auto; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="ouroG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#B8801F"/><stop offset=".55" stop-color="#E2B04F"/><stop offset="1" stop-color="#C8902F"/></linearGradient>
+    <linearGradient id="azulG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0F3BB0"/><stop offset="1" stop-color="#0A2E96"/></linearGradient>
+    <clipPath id="clipMarca"><rect width="100" height="100" rx="18"/></clipPath>
+  </defs>
+  <symbol id="i-cama" viewBox="0 0 24 24"><path d="M3 18v-7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v7M3 14h18M3 18v2M21 18v2M7 9V6h10v3"/></symbol>
+  <symbol id="i-carro" viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1.5H6V19H3zM7.5 13.5h.01M16.5 13.5h.01"/></symbol>
+  <symbol id="i-area" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-banho" viewBox="0 0 24 24"><path d="M4 12h16v3a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM6 12V6a2 2 0 0 1 4 0M7 20l-1 2M17 20l1 2"/></symbol>
+  <symbol id="i-suite" viewBox="0 0 24 24"><path d="M4 20V10l8-6 8 6v10M9 20v-6h6v6"/></symbol>
+  <symbol id="i-coracao" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol>
+  <symbol id="i-pino" viewBox="0 0 24 24"><path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.6-1.8-.9-.9.9a4 4 0 0 1-2.2-2.2l.9-.9-.9-1.8z"/></symbol>
+  <symbol id="i-compart" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.5M8.2 13.2l7.6 4.5"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-volta" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-fecha" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-grade" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14"/></symbol>
+  <symbol id="i-filtro" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-escudo" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M8.8 12l2.2 2.2 4.4-4.4"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-fotos" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="12" rx="2"/><path d="M7 21h12a2 2 0 0 0 2-2V9"/><path d="M3 14l4-4 4 4 2-2 4 4"/></symbol>
+  <symbol id="i-codigo" viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></symbol>
+</svg>
+
+<div class="aviso"><div class="miolo"><b>Protótipo</b><span>O Sítio Cedral (IMV-000002) vem do cadastro real; os demais imóveis são exemplos.</span></div></div>
+
+<header class="topo" id="topo">
+  <div class="miolo">
+    <a class="marca" href="#inicio" aria-label="Inovabens, página inicial">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><g clip-path="url(#clipMarca)"><rect width="100" height="100" fill="url(#azulG)"/><path d="M0 77 C 38 74, 72 64, 100 45 L100 100 L0 100 Z" fill="#03075F"/><path d="M0 77 C 38 74, 72 64, 100 45" fill="none" stroke="url(#ouroG)" stroke-width="3.2"/></g><path fill="#fff" d="M29.5 11h41v2.6c-4.4.4-6.8 1.6-7.6 3.6v65.6c.8 2 3.2 3.2 7.6 3.6V89h-41v-2.6c4.4-.4 6.8-1.6 7.6-3.6V17.2c-.8-2-3.2-3.2-7.6-3.6z"/></svg>
+      <span class="marca-txt"><b>INOVA<span>BENS</span></b><small>GESTÃO PATRIMONIAL</small></span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Principal">
+      <a href="#busca" data-fin="venda" data-nav="comprar">Comprar</a>
+      <a href="#busca" data-fin="aluguel" data-nav="alugar">Alugar</a>
+      <a href="#inicio" data-ancora="anunciar">Anunciar</a>
+      <a href="#inicio" data-ancora="sobre">Sobre</a>
+    </nav>
+    <button class="btn-fav" id="btnFav" type="button" aria-label="Ver favoritos"><svg class="ico"><use href="#i-coracao"/></svg><span class="cont num" id="contFav">0</span></button>
+    <button class="btn btn-zap" type="button" data-zap="topo"><svg class="ico"><use href="#i-zap"/></svg><span>WhatsApp</span></button>
+    <button class="menu-btn" id="menuBtn" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="nav"><svg class="ico" style="width:24px;height:24px"><use href="#i-menu"/></svg></button>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer class="rodape">
+  <div class="miolo">
+    <div>
+      <a class="marca" href="#inicio" aria-label="Inovabens">
+        <svg viewBox="0 0 100 100" aria-hidden="true"><g clip-path="url(#clipMarca)"><rect width="100" height="100" fill="url(#azulG)"/><path d="M0 77 C 38 74, 72 64, 100 45 L100 100 L0 100 Z" fill="#03075F"/><path d="M0 77 C 38 74, 72 64, 100 45" fill="none" stroke="url(#ouroG)" stroke-width="3.2"/></g><path fill="#fff" d="M29.5 11h41v2.6c-4.4.4-6.8 1.6-7.6 3.6v65.6c.8 2 3.2 3.2 7.6 3.6V89h-41v-2.6c4.4-.4 6.8-1.6 7.6-3.6V17.2c-.8-2-3.2-3.2-7.6-3.6z"/></svg>
+        <span class="marca-txt"><b>INOVA<span>BENS</span></b><small>GESTÃO PATRIMONIAL</small></span>
+      </a>
+      <p style="margin-top:14px;max-width:34ch">Compra, venda, locação e regularização de imóveis com documentação conferida.</p>
+      <div class="redes" aria-label="Redes sociais">
+        <a href="#inicio">Instagram</a><a href="#inicio">Facebook</a><a href="#inicio">TikTok</a><a href="#inicio">Kwai</a><a href="#inicio">YouTube</a>
+      </div>
+    </div>
+    <div>
+      <h4>Imóveis</h4>
+      <a href="#busca" data-fin="venda">À venda</a>
+      <a href="#busca" data-fin="aluguel">Para alugar</a>
+      <a href="#busca" data-tipo="Apartamento">Apartamentos</a>
+      <a href="#busca" data-tipo="Casa">Casas</a>
+    </div>
+    <div>
+      <h4>Inovabens</h4>
+      <a href="#inicio" data-ancora="sobre">Quem somos</a>
+      <a href="#inicio" data-ancora="anunciar">Anuncie seu imóvel</a>
+      <a href="#inicio" data-instalar>Instale o app</a>
+      <a href="#inicio">Política de privacidade</a>
+      <a href="#inicio">Preferências de cookies</a>
+    </div>
+    <div>
+      <h4>Também anunciamos em</h4>
+      <a href="#inicio">ZAP Imóveis</a><a href="#inicio">ImovelWeb</a><a href="#inicio">OLX</a><a href="#inicio">Facebook Marketplace</a><a href="#inicio">Creci Brasil</a>
+    </div>
+  </div>
+  <div class="rodape-base"><div class="miolo"><span>Inovabens Gestão Patrimonial · CRECI 50457-J</span><span>Protótipo · dados de exemplo</span></div></div>
+</footer>
+
+<button class="bast-btn" id="bastBtn" type="button" aria-expanded="false" aria-controls="bast"><span class="ponto" aria-hidden="true"></span>Bastidores: SEO e anúncios</button>
+<aside class="bast" id="bast" hidden aria-label="Bastidores da página">
+  <div class="bast-cab"><div><span class="rotulo">O que o site faz por trás</span><h2 id="bastTitulo">Bastidores</h2></div><button class="btn btn-linha" id="bastFecha" type="button" aria-label="Fechar bastidores"><svg class="ico"><use href="#i-fecha"/></svg></button></div>
+  <div class="bast-corpo" id="bastCorpo"></div>
+</aside>
+
+<script>
+(() => {
+  "use strict";
+  /* ================= dados de exemplo (no site real: vêm do sistema) ================= */
+  // IMV-000002 é o cadastro real do sistema (dados e fotos do R2); os demais são exemplos.
+  const CEDRAL_FOTOS = Array.from({ length: 16 }, (_, k) => "c" + String(k + 1).padStart(2, "0"));
+  const IMOVEIS = [
+    { id: "imv000002", codigo: "IMV-000002", real: true, fin: "venda", tipo: "Sítio", titulo: "Sítio para venda em Cedral", bairro: "Zona Rural", cidade: "Cedral", uf: "SP",
+      preco: 1500000, cond: 0, iptu: null, area: 180, areaRotulo: "Área construída", terreno: 30000, quartos: 4, suites: 0, banh: 2, vagas: 0,
+      endereco: "Estrada de Cedral, s/n · CEP 15025-600", lat: -20.90463, lng: -49.26805,
+      fotos: CEDRAL_FOTOS, selos: ["Aceita permuta"], extras: ["permuta", "pet"], destaque: true, mx: 690, my: 395, video: false,
+      desc: [
+        "Sítio à venda em Cedral, com localização estratégica na estrada sentido Potirendaba. Garanta a valorização de uma área com forte potencial de desenvolvimento.",
+        "Excelente oportunidade de investimento rural em uma região que passa por expansão e valorização. O sítio possui aproximadamente 30.000 m² e está localizado em Cedral, na estrada que segue em direção a Potirendaba, com acesso logo após a primeira saída após a curva no sentido do retorno, por uma estrada de terra curta que atravessa uma pequena ponte sobre o córrego.",
+        "A propriedade possui formato triangular, com boa configuração de aproveitamento, e está situada próxima à nova estrutura do Joel Eventos, um moderno buffet que deverá receber eventos semanais de grande porte, trazendo fluxo constante de visitantes para a região. Essa proximidade abre oportunidades estratégicas para uso complementar da área, como hospedagem rural, chalés, pousada ou estrutura de apoio a eventos.",
+        "O sítio conta com uma casa rural funcional, adequada ao contexto de propriedade rural, além de diversas estruturas já existentes que agregam valor ao uso imediato da área:",
+        ["Dois tanques de peixe (um em atividade)", "Diversas árvores frutíferas", "Área para cultivo com sistema de irrigação", "Curral", "Galinheiro", "Cercados para criação de animais de pequeno porte"],
+        "Trata-se de uma propriedade com características naturais agradáveis e potencial para múltiplos projetos, como:",
+        ["Produção agrícola e criação rural", "Turismo rural ou lazer de final de semana", "Hospedagem e apoio para eventos da região", "Implantação de condomínio de chácaras", "Projeto de fracionamento rural com lago represado (possibilidade de estudo para divisão em áreas menores)"],
+        "Existe inclusive disposição do proprietário em realizar melhorias estruturais, como fechamento lateral da propriedade e estudo para implantação de represamento de água para formação de lago, caso o projeto de fracionamento ou condomínio de chácaras seja desenvolvido.",
+        "A localização estratégica, próxima à cidade e a novos empreendimentos em implantação, cria um cenário muito favorável para investidores que buscam antecipar a valorização da região.",
+        "Negociação flexível: estuda-se permuta por imóveis e veículos, sem limite de proporção na composição da negociação.",
+      ],
+      carac: ["Casa rural com 4 quartos", "Dois tanques de peixe", "Árvores frutíferas", "Cultivo com irrigação", "Curral", "Galinheiro", "Cercados para pequenos animais", "Aceita permuta e veículos"] },
+    { id: "imv000101", codigo: "IMV-000101", fin: "venda", tipo: "Casa", titulo: "Casa contemporânea com piscina em condomínio fechado", bairro: "Jardim Tarraf", cidade: "São José do Rio Preto", uf: "SP",
+      preco: 2950000, cond: 1200, iptu: 890, area: 420, terreno: 900, quartos: 4, suites: 4, banh: 6, vagas: 4, video: true,
+      fotos: ["f1", "f2", "f3", "f4", "f5", "f6", "f7"], selos: ["Destaque"], extras: ["piscina", "pet", "condominio"], destaque: true, mx: 520, my: 330,
+      desc: ["Projeto contemporâneo em condomínio fechado, com caixilhos do piso ao teto que integram sala, varanda e área da piscina. A iluminação embutida valoriza a casa à noite.",
+             "No térreo, living em dois ambientes, cozinha gourmet e suíte de hóspedes. No pavimento superior, três suítes com varanda, incluindo a principal com closet."],
+      carac: ["Piscina de raia aquecida", "Cozinha gourmet", "Varanda integrada", "Closet na suíte principal", "Automação de iluminação", "Portaria 24 horas", "Aceita pet"] },
+    { id: "imv000087", codigo: "IMV-000087", fin: "venda", tipo: "Apartamento", titulo: "Apartamento alto padrão com varanda gourmet", bairro: "Redentora", cidade: "São José do Rio Preto", uf: "SP",
+      preco: 1150000, cond: 1350, iptu: 380, area: 128, quartos: 3, suites: 1, banh: 3, vagas: 2, video: true,
+      fotos: ["f5", "f2", "f3", "f4"], selos: ["Novo"], extras: ["pet", "piscina"], destaque: true, mx: 450, my: 262,
+      desc: ["Andar alto com vista aberta, varanda gourmet envidraçada e planta bem distribuída. Prédio com lazer completo perto de shoppings e escolas."],
+      carac: ["Varanda gourmet", "Vista panorâmica", "Piscina no condomínio", "Academia", "Salão de festas", "Aceita pet"] },
+    { id: "imv000092", codigo: "IMV-000092", fin: "venda", tipo: "Cobertura", titulo: "Cobertura duplex com piscina privativa", bairro: "Higienópolis", cidade: "São José do Rio Preto", uf: "SP",
+      preco: 1890000, cond: 1900, iptu: 620, area: 210, quartos: 3, suites: 3, banh: 4, vagas: 3, video: true,
+      fotos: ["f4", "f7", "f2", "f3"], selos: [], extras: ["piscina"], destaque: false, mx: 330, my: 250,
+      desc: ["Cobertura com terraço, piscina privativa e espaço gourmet. Três suítes, sala ampla e acabamento de alto padrão."],
+      carac: ["Piscina privativa", "Terraço gourmet", "Três suítes", "Depósito privativo"] },
+    { id: "imv000064", codigo: "IMV-000064", fin: "aluguel", tipo: "Apartamento", titulo: "Apartamento mobiliado com varanda", bairro: "Boa Vista", cidade: "São José do Rio Preto", uf: "SP",
+      preco: 3200, cond: 780, iptu: 160, area: 92, quartos: 2, suites: 1, banh: 2, vagas: 1, video: true,
+      fotos: ["f2", "f3", "f5"], selos: ["Mobiliado"], extras: ["pet"], destaque: true, mx: 300, my: 150,
+      desc: ["Pronto para morar, com móveis planejados, ar-condicionado nos quartos e varanda. Perto do comércio e das avenidas principais."],
+      carac: ["Mobiliado", "Ar-condicionado", "Varanda", "Portaria 24 horas", "Aceita pet"] },
+    { id: "imv000071", codigo: "IMV-000071", fin: "aluguel", tipo: "Studio", titulo: "Studio mobiliado com lazer completo", bairro: "Centro", cidade: "São José do Rio Preto", uf: "SP",
+      preco: 1900, cond: 520, iptu: 80, area: 38, quartos: 1, suites: 0, banh: 1, vagas: 1, video: true,
+      fotos: ["f3", "f2"], selos: [], extras: [], destaque: false, mx: 395, my: 200,
+      desc: ["Studio compacto e bem resolvido, com cozinha americana e varanda. Prédio novo com coworking, lavanderia e piscina."],
+      carac: ["Cozinha americana", "Coworking", "Lavanderia", "Piscina no condomínio"] },
+    { id: "imv000055", codigo: "IMV-000055", fin: "venda", tipo: "Casa", titulo: "Casa térrea com quintal e edícula", bairro: "Vila Imperial", cidade: "São José do Rio Preto", uf: "SP",
+      preco: 720000, cond: 0, iptu: 240, area: 180, terreno: 300, quartos: 3, suites: 1, banh: 2, vagas: 2, video: true,
+      fotos: ["f6", "f2", "f3"], selos: [], extras: ["pet", "permuta"], destaque: false, mx: 240, my: 300,
+      desc: ["Casa térrea em rua tranquila, com quintal, churrasqueira e edícula com banheiro. Ótima para família com pets."],
+      carac: ["Quintal", "Churrasqueira", "Edícula", "Aceita pet"] },
+    { id: "imv000049", codigo: "IMV-000049", fin: "aluguel", tipo: "Sala comercial", titulo: "Sala comercial em edifício corporativo", bairro: "Centro", cidade: "São José do Rio Preto", uf: "SP",
+      preco: 2600, cond: 690, iptu: 190, area: 64, quartos: 0, suites: 0, banh: 1, vagas: 1, video: true,
+      fotos: ["f7", "f5"], selos: [], extras: [], destaque: false, mx: 410, my: 175,
+      desc: ["Sala com piso elevado, ar-condicionado central e recepção no térreo. Perto das avenidas de acesso."],
+      carac: ["Piso elevado", "Ar-condicionado central", "Recepção", "Gerador"] },
+  ];
+  const EXTRAS = { "condominio": "Condomínio fechado", "piscina": "Com piscina", "pet": "Aceita pet", "permuta": "Aceita permuta" };
+  const TIPOS = ["Apartamento", "Casa", "Cobertura", "Sítio", "Studio", "Sala comercial"];
+  const BAIRROS = [...new Set(IMOVEIS.flatMap(i => [i.bairro === "Zona Rural" ? i.cidade : i.bairro]))];
+
+  /* ================= utilidades ================= */
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const app = $("#app");
+  const reduz = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const brl = n => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const slug = s => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  const ico = (n, cls = "ico") => `<svg class="${cls}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+  const precoTxt = i => i.fin === "aluguel" ? `${brl(i.preco)}<small> /mês</small>` : brl(i.preco);
+  const porId = id => IMOVEIS.find(i => i.id === id);
+  const urlReal = i => `https://www.inovabens.com.br/imoveis/${i.fin}/${slug(i.tipo)}/${slug(i.cidade)}/${slug(i.bairro)}/${slug(i.titulo)}-${i.id}`;
+  const rural = i => i.bairro === "Zona Rural";
+  const ondeTxt = i => rural(i) ? `em ${i.cidade}` : `no ${i.bairro}, ${i.cidade}`;
+  const m2 = n => n.toLocaleString("pt-BR");
+  // fotos reais do Sítio Cedral (versões WebP de 1200 px geradas pelo sistema no R2)
+  const estiloFotos = document.createElement("style");
+  estiloFotos.textContent = CEDRAL_FOTOS.map((c, k) => `.${c}{background-image:url("fotos/cedral-${String(k + 1).padStart(2, "0")}-1200.webp");background-size:cover;background-position:center}`).join("")
+    + CEDRAL_FOTOS.map((c, k) => `.miniaturas .${c}{background-image:url("fotos/cedral-${String(k + 1).padStart(2, "0")}-400.webp")}`).join("");
+  document.head.append(estiloFotos);
+
+  const armazem = {
+    ler(k, padrao) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : padrao; } catch { return padrao; } },
+    gravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sem armazenamento: segue sem lembrar */ } },
+  };
+  let favoritos = new Set(armazem.ler("inovabens-favoritos", []));
+  const atualizarFav = () => { $("#contFav").textContent = favoritos.size; };
+
+  let toastTimer;
+  function aviso(texto) {
+    $(".toast")?.remove();
+    const t = document.createElement("div");
+    t.className = "toast"; t.setAttribute("role", "status");
+    t.innerHTML = `${ico("ok")}<span>${texto}</span>`;
+    document.body.append(t);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), Math.max(4600, texto.length * 40));
+  }
+
+  /* ================= medição (no site real: GA4, Meta Pixel + Conversions API, TikTok Pixel + Events API, Kwai) ================= */
+  const eventos = [];
+  let seqEvento = 1;
+  const MAPA_EVENTOS = {
+    page_view:      { ga: "page_view", meta: "PageView", tt: "Pageview", kwai: "Visualização de página" },
+    view_item:      { ga: "view_item", meta: "ViewContent", tt: "ViewContent", kwai: "Visualização de conteúdo" },
+    search:         { ga: "search", meta: "Search", tt: "Search", kwai: "Busca" },
+    favorito:       { ga: "add_to_wishlist", meta: "AddToWishlist", tt: "AddToWishlist", kwai: "Favorito" },
+    whatsapp:       { ga: "contato_whatsapp", meta: "Contact", tt: "Contact", kwai: "Contato" },
+    lead:           { ga: "generate_lead", meta: "Lead", tt: "SubmitForm", kwai: "Formulário enviado" },
+    visita:         { ga: "agendar_visita", meta: "Schedule", tt: "Schedule", kwai: "Agendamento" },
+    compartilhar:   { ga: "share", meta: "Share", tt: "Share", kwai: "Compartilhamento" },
+  };
+  function medir(tipo, detalhe) {
+    const m = MAPA_EVENTOS[tipo]; if (!m) return;
+    const agora = new Date();
+    eventos.unshift({ hora: agora.toLocaleTimeString("pt-BR"), tipo, m, detalhe, id: `ev-${String(seqEvento++).padStart(4, "0")}` });
+    if (eventos.length > 40) eventos.pop();
+    if (!$("#bast").hidden) desenharEventos();
+  }
+
+  /* ================= componentes ================= */
+  function specs(i) {
+    const p = [i.tipo === "Sítio" && i.terreno ? `<span>${ico("area")}<span class="num">${m2(i.terreno / 10000)}</span> ha</span>` : `<span>${ico("area")}<span class="num">${m2(i.area)}</span> m²</span>`];
+    if (i.quartos) p.push(`<span>${ico("cama")}${i.quartos} ${i.quartos > 1 ? "quartos" : "quarto"}</span>`);
+    if (i.vagas) p.push(`<span>${ico("carro")}${i.vagas} ${i.vagas > 1 ? "vagas" : "vaga"}</span>`);
+    return p.join("");
+  }
+  function cartao(i) {
+    const fav = favoritos.has(i.id);
+    const selos = [i.fin === "aluguel" ? "Aluguel" : "Venda", ...i.selos];
+    return `<article class="cartao">
+      <div class="foto-caixa">
+        <div class="foto ${i.fotos[0]}" data-foto-de="${i.id}" role="img" aria-label="Foto de ${esc(i.titulo)}"></div>
+        <div class="selos">${selos.map((s, k) => `<span class="selo ${k > 0 ? "ouro" : ""}">${esc(s)}</span>`).join("")}</div>
+        <button class="coracao" type="button" data-fav="${i.id}" aria-pressed="${fav}" aria-label="${fav ? "Remover dos favoritos" : "Salvar nos favoritos"}">${ico("coracao")}</button>
+      </div>
+      <div class="cartao-corpo">
+        <div class="preco num">${precoTxt(i)}</div>
+        <h3>${esc(i.titulo)}</h3>
+        <div class="local">${ico("pino")}${rural(i) ? "Zona rural" : esc(i.bairro)}, ${esc(i.cidade)}</div>
+        <div class="specs">${specs(i)}</div>
+        ${i.real ? `<span class="codigo">${i.codigo} · cadastro real do sistema</span>` : ""}
+      </div>
+      <a class="cobre" href="#imovel-${i.id}" data-abre="${i.id}" aria-label="Ver ${esc(i.titulo)}, ${esc(i.bairro)}"></a>
+    </article>`;
+  }
+
+  /* ================= estado da busca ================= */
+  const filtro = { fin: "venda", texto: "", tipos: new Set(), quartos: 0, vagas: 0, max: 0, extras: new Set(), soFav: false, ordem: "relevancia", vista: "lista" };
+  function resultados() {
+    const t = slug(filtro.texto);
+    let r = IMOVEIS.filter(i =>
+      (filtro.soFav ? favoritos.has(i.id) : i.fin === filtro.fin) &&
+      (!t || slug(`${i.bairro} ${i.cidade} ${i.titulo} ${i.codigo}`).includes(t)) &&
+      (!filtro.tipos.size || filtro.tipos.has(i.tipo)) &&
+      i.quartos >= filtro.quartos && i.vagas >= filtro.vagas &&
+      (!filtro.max || i.preco <= filtro.max) &&
+      [...filtro.extras].every(e => i.extras.includes(e)));
+    if (filtro.ordem === "menor") r.sort((a, b) => a.preco - b.preco);
+    if (filtro.ordem === "maior") r.sort((a, b) => b.preco - a.preco);
+    if (filtro.ordem === "area") r.sort((a, b) => b.area - a.area);
+    return r;
+  }
+
+  /* ================= página inicial ================= */
+  function vistaInicio() {
+    const dest = IMOVEIS.filter(i => i.destaque);
+    const contBairro = b => IMOVEIS.filter(i => i.bairro === b || i.cidade === b).length;
+    const tiles = [["Cedral", "c05", true], ["Redentora", "f5"], ["Jardim Tarraf", "f1"], ["Boa Vista", "f2"], ["Centro", "f3"]];
+    return `<div class="app-vista">
+    <section class="hero" aria-labelledby="heroTitulo">
+      <div class="hero-foto" aria-hidden="true"></div>
+      <div class="miolo">
+        <span class="rotulo" style="color:var(--ouro-claro)">São José do Rio Preto e região · CRECI 50457-J</span>
+        <h1 id="heroTitulo">Imóveis escolhidos, com a documentação <em>em dia.</em></h1>
+        <p class="sub">Compre, venda ou alugue com quem confere matrícula, IPTU e regularização antes de anunciar.</p>
+      </div>
+      <svg class="curva" viewBox="0 0 1440 110" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0 110 L0 96 C 520 92, 1000 66, 1440 8 L1440 110 Z" fill="var(--bg)"/>
+        <path class="linha" d="M0 96 C 520 92, 1000 66, 1440 8" fill="none" stroke="url(#ouroG)" stroke-width="3"/>
+      </svg>
+    </section>
+
+    <div class="miolo busca">
+      <form class="busca-caixa" id="formBusca" role="search" aria-label="Buscar imóveis">
+        <div class="abas" role="group" aria-label="Finalidade">
+          <button type="button" data-aba="venda" aria-pressed="${filtro.fin === "venda"}">Comprar</button>
+          <button type="button" data-aba="aluguel" aria-pressed="${filtro.fin === "aluguel"}">Alugar</button>
+        </div>
+        <div class="campos">
+          <div class="campo"><label for="bOnde">Onde você quer morar?</label><input class="entrada" id="bOnde" list="listaBairros" placeholder="Bairro, cidade ou código do imóvel" autocomplete="off"><datalist id="listaBairros">${BAIRROS.map(b => `<option value="${esc(b)}">`).join("")}</datalist></div>
+          <div class="campo"><label for="bTipo">Tipo</label><select class="entrada" id="bTipo"><option value="">Todos</option>${TIPOS.map(t => `<option>${t}</option>`).join("")}</select></div>
+          <div class="campo"><label for="bQuartos">Quartos</label><select class="entrada" id="bQuartos"><option value="0">Qualquer</option><option value="1">1 ou mais</option><option value="2">2 ou mais</option><option value="3">3 ou mais</option><option value="4">4 ou mais</option></select></div>
+          <button class="btn btn-ouro" type="submit">Buscar imóveis ${ico("seta")}</button>
+        </div>
+        <div class="atalhos" aria-label="Atalhos">${Object.entries(EXTRAS).map(([k, v]) => `<button class="chip" type="button" data-atalho="${k}" aria-pressed="false">${v}</button>`).join("")}</div>
+      </form>
+      <div class="portais"><span>Nossos imóveis também estão no</span><b>ZAP Imóveis</b><b>ImovelWeb</b><b>OLX</b><b>Facebook Marketplace</b><b>Creci Brasil</b></div>
+    </div>
+
+    <section class="secao miolo" aria-labelledby="tDest">
+      <div class="secao-cab"><div><span class="rotulo">Selecionados pela equipe</span><h2 id="tDest">Imóveis em destaque</h2></div><a class="link-seta" href="#busca">Ver todos os imóveis ${ico("seta")}</a></div>
+      <div class="grade rolagem">${dest.map(cartao).join("")}</div>
+    </section>
+
+    <section class="secao miolo" aria-labelledby="tBairros">
+      <div class="secao-cab"><div><span class="rotulo">Explore por região</span><h2 id="tBairros">Onde estão nossos imóveis</h2></div></div>
+      <div class="bairros">${tiles.map(([b, f, g]) => `<a class="bairro ${g ? "grande" : ""}" href="#busca" data-bairro="${esc(b)}"><div class="foto ${f}" aria-hidden="true"></div><span><b>${esc(b)}</b><small>${contBairro(b)} ${contBairro(b) > 1 ? "imóveis" : "imóvel"}</small></span></a>`).join("")}</div>
+    </section>
+
+    <section class="secao miolo" id="sobre" aria-labelledby="tDif">
+      <div class="diferenciais">
+        <div><span class="rotulo">Por que a Inovabens</span><h2 id="tDif" style="margin-top:8px">Gestão patrimonial do anúncio à escritura.</h2><p style="margin-top:14px;max-width:44ch">Cada imóvel passa pela nossa equipe antes de ir ao ar. Você negocia sabendo o que está comprando.</p></div>
+        <div class="lista-dif">
+          <div class="item-dif"><span class="ico-caixa">${ico("escudo")}</span><div><b>Documentação conferida</b><p>Matrícula, IPTU e pendências verificadas. Quando precisa, cuidamos da regularização.</p></div></div>
+          <div class="item-dif"><span class="ico-caixa">${ico("camera")}</span><div><b>Fotos e vídeos profissionais</b><p>Imagens tratadas que mostram o imóvel como ele é, em qualquer tela.</p></div></div>
+          <div class="item-dif"><span class="ico-caixa">${ico("chat")}</span><div><b>Atendimento direto pelo WhatsApp</b><p>Você fala com o corretor responsável pelo imóvel, sem intermediários.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="secao miolo" id="anunciar" aria-labelledby="tAnun">
+      <div class="anuncie">
+        <div><span class="rotulo">Para proprietários</span><h2 id="tAnun" style="margin-top:8px;font-size:clamp(1.4rem,2.6vw,1.9rem)">Quer vender ou alugar seu imóvel?</h2><p class="mudo" style="margin-top:10px;max-width:42ch">Avaliamos, conferimos a documentação e anunciamos no site e nos principais portais: ZAP, ImovelWeb, OLX e Facebook Marketplace.</p></div>
+        <form id="formAnuncie" novalidate>
+          <div class="campo"><label for="aNome">Seu nome</label><input class="entrada" id="aNome" required autocomplete="name" value="Mariana Costa"></div>
+          <div class="campo"><label for="aFone">WhatsApp</label><input class="entrada" id="aFone" required inputmode="tel" autocomplete="tel" value="(13) 99999-0000"></div>
+          <div class="campo"><label for="aTipo">Tipo do imóvel</label><select class="entrada" id="aTipo">${TIPOS.map(t => `<option>${t}</option>`).join("")}</select></div>
+          <div class="campo"><label for="aBairro">Bairro</label><input class="entrada" id="aBairro" value="Gonzaga"></div>
+          <label class="consent"><input type="checkbox" id="aConsent" checked required> Autorizo a Inovabens a entrar em contato sobre este pedido, conforme a política de privacidade.</label>
+          <button class="btn btn-azul" type="submit">Quero anunciar</button>
+        </form>
+      </div>
+    </section>
+    </div>`;
+  }
+
+  /* ================= busca ================= */
+  function vistaBusca() {
+    const r = resultados();
+    const titulo = filtro.soFav ? "Seus imóveis favoritos" : filtro.fin === "aluguel" ? "Imóveis para alugar" : "Imóveis à venda";
+    const faixaMax = filtro.fin === "aluguel" ? 6000 : 5000000, passo = filtro.fin === "aluguel" ? 250 : 50000;
+    const chipsN = (campo, ops) => ops.map(n => `<button class="chip" type="button" data-num="${campo}" data-v="${n}" aria-pressed="${filtro[campo] === n}">${n ? n + "+" : "Todos"}</button>`).join("");
+    return `<div class="app-vista miolo busca-pag">
+      <nav class="trilha" aria-label="Você está em"><a href="#inicio">Início</a><span>›</span><span>${titulo}</span></nav>
+      <div class="secao-cab" style="margin:0"><h1>${titulo}${filtro.texto ? ` em ${esc(filtro.texto)}` : ""}</h1></div>
+      <div class="busca-grade">
+        <aside class="filtros" id="filtros" aria-label="Filtros">
+          <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-family:var(--f-titulo)">Filtros</b><button class="btn btn-linha btn-filtros" type="button" data-fecha-filtros style="padding:6px 10px">Ver ${r.length}</button></div>
+          <fieldset><legend>Finalidade</legend><div class="abas" role="group" aria-label="Finalidade" style="justify-self:stretch;display:flex"><button type="button" style="flex:1" data-aba="venda" aria-pressed="${!filtro.soFav && filtro.fin === "venda"}">Comprar</button><button type="button" style="flex:1" data-aba="aluguel" aria-pressed="${!filtro.soFav && filtro.fin === "aluguel"}">Alugar</button></div></fieldset>
+          <fieldset><legend>Onde</legend><input class="entrada" id="fTexto" list="listaBairros2" placeholder="Bairro, cidade ou código" value="${esc(filtro.texto)}"><datalist id="listaBairros2">${BAIRROS.map(b => `<option value="${esc(b)}">`).join("")}</datalist></fieldset>
+          <fieldset><legend>Tipo de imóvel</legend>${TIPOS.map(t => `<label class="check"><input type="checkbox" data-tipo-f="${t}" ${filtro.tipos.has(t) ? "checked" : ""}> ${t}</label>`).join("")}</fieldset>
+          <fieldset><legend>Quartos</legend><div class="chips">${chipsN("quartos", [0, 1, 2, 3, 4])}</div></fieldset>
+          <fieldset><legend>Vagas</legend><div class="chips">${chipsN("vagas", [0, 1, 2, 3])}</div></fieldset>
+          <fieldset><legend>Preço até <span class="num" id="fMaxTxt" style="color:var(--ouro-txt)">${filtro.max ? brl(filtro.max) : "sem limite"}</span></legend><input class="faixa" type="range" id="fMax" min="0" max="${faixaMax}" step="${passo}" value="${filtro.max || faixaMax}" aria-label="Preço máximo"></fieldset>
+          <fieldset><legend>Diferenciais</legend>${Object.entries(EXTRAS).map(([k, v]) => `<label class="check"><input type="checkbox" data-extra="${k}" ${filtro.extras.has(k) ? "checked" : ""}> ${v}</label>`).join("")}</fieldset>
+          <button class="btn btn-linha" type="button" data-limpa>Limpar filtros</button>
+        </aside>
+        <section aria-live="polite" style="min-width:0">
+          <div class="barra-res">
+            <span><b class="num">${r.length}</b> ${r.length === 1 ? "imóvel encontrado" : "imóveis encontrados"}</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-linha btn-filtros" type="button" data-abre-filtros style="padding:8px 12px">${ico("filtro")} Filtros</button>
+              <select class="ordenar" id="fOrdem" aria-label="Ordenar"><option value="relevancia">Mais relevantes</option><option value="menor">Menor preço</option><option value="maior">Maior preço</option><option value="area">Maior área</option></select>
+              <div class="alterna" role="group" aria-label="Exibição"><button type="button" data-vista="lista" aria-pressed="${filtro.vista === "lista"}">${ico("grade")} Lista</button><button type="button" data-vista="mapa" aria-pressed="${filtro.vista === "mapa"}">${ico("mapa")} Mapa</button></div>
+            </div>
+          </div>
+          ${r.length === 0 ? `<div class="vazio">${ico("pino")}<b>Nenhum imóvel com esses filtros.</b><span>Tire um filtro ou fale com a gente: avisamos quando entrar um imóvel assim.</span><button class="btn btn-zap" type="button" data-zap="busca-vazia">${ico("zap")} Avise-me pelo WhatsApp</button></div>`
+            : filtro.vista === "mapa" ? mapa(r) : `<div class="grade">${r.map(cartao).join("")}</div>`}
+        </section>
+      </div>
+    </div>`;
+  }
+
+  function mapa(r) {
+    return `<div class="mapa">
+      <svg viewBox="0 0 800 470" role="img" aria-label="Mapa ilustrativo com os imóveis encontrados">
+        <rect class="terra" width="800" height="470"/>
+        <path class="mar" d="M130 40 C 220 120, 300 160, 370 230 C 420 280, 470 300, 560 330 C 600 345, 630 380, 660 470 L640 470 C 610 390, 585 360, 552 348 C 462 318, 410 296, 356 244 C 288 178, 208 136, 118 52 Z" opacity=".7"/>
+        <path class="rua" d="M60 110 H560 M60 190 H580 M80 270 H560 M140 60 V360 M260 50 V360 M400 50 V360 M500 70 V360"/>
+        <path class="rua" d="M540 330 C 600 350, 650 370, 700 400" style="stroke-width:5;stroke-dasharray:2 7"/>
+        <text class="nome-bairro" x="260" y="135">Boa Vista</text><text class="nome-bairro" x="380" y="160">Centro</text><text class="nome-bairro" x="300" y="225">Higienópolis</text>
+        <text class="nome-bairro" x="430" y="235">Redentora</text><text class="nome-bairro" x="200" y="320">Vila Imperial</text><text class="nome-bairro" x="470" y="365">Jardim Tarraf</text>
+        <text class="nome-bairro" x="650" y="440">Cedral · zona rural</text>
+        <text x="60" y="440" style="fill:var(--mudo);font:600 13px var(--f-texto);letter-spacing:.08em">SÃO JOSÉ DO RIO PRETO</text>
+        ${r.map(i => { const txt = i.fin === "aluguel" ? `${(i.preco / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil` : i.preco >= 1e6 ? `${(i.preco / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} mi` : `${Math.round(i.preco / 1000)} mil`;
+          const w = txt.length * 7.4 + 18;
+          return `<g class="pino" tabindex="0" role="button" data-pino="${i.id}" aria-label="${esc(i.titulo)}, ${brl(i.preco)}" transform="translate(${i.mx - w / 2} ${i.my - 30})"><rect width="${w}" height="26" rx="13"/><path d="M${w / 2 - 6} 25 L${w / 2} 33 L${w / 2 + 6} 25 Z" style="fill:inherit"/><text x="${w / 2}" y="17.5" text-anchor="middle">R$ ${txt}</text></g>`; }).join("")}
+      </svg>
+      <span class="mapa-nota">Mapa ilustrativo. No site real: mapa interativo</span>
+      <div class="mapa-cartao" id="mapaCartao">${cartao(r[0])}</div>
+    </div>`;
+  }
+
+  /* ================= imóvel ================= */
+  let diaEscolhido = null;
+  function vistaImovel(i) {
+    const sem = IMOVEIS.filter(x => x.id !== i.id && x.fin === i.fin).slice(0, 3);
+    const fotos = i.fotos;
+    const extrasGaleria = fotos.slice(1, 5);
+    while (extrasGaleria.length < 4) extrasGaleria.push(fotos[extrasGaleria.length % fotos.length]);
+    const nums = [...(i.terreno ? [["area", i.tipo === "Sítio" ? `${m2(i.terreno / 10000)} ha` : m2(i.terreno) + " m²", i.tipo === "Sítio" ? `Área total (≈ ${m2(i.terreno)} m²)` : "Terreno"]] : []),
+      ["area", m2(i.area) + " m²", i.areaRotulo || "Área útil"], ...(i.quartos ? [["cama", i.quartos, i.quartos > 1 ? "Quartos" : "Quarto"]] : []),
+      ...(i.suites ? [["suite", i.suites, i.suites > 1 ? "Suítes" : "Suíte"]] : []), ["banho", i.banh, i.banh > 1 ? "Banheiros" : "Banheiro"], ...(i.vagas ? [["carro", i.vagas, i.vagas > 1 ? "Vagas" : "Vaga"]] : [])];
+    const hoje = new Date();
+    const dias = Array.from({ length: 5 }, (_, k) => { const d = new Date(hoje); d.setDate(d.getDate() + k + 1); return d; });
+    const msg = `Olá! Tenho interesse no imóvel ${i.codigo} (${i.titulo}, ${rural(i) ? i.cidade : i.bairro}). Pode me passar mais informações?`;
+    const descricao = i.desc.map(p => Array.isArray(p) ? `<ul class="carac" style="grid-template-columns:1fr">${p.map(x => `<li>${ico("ok")}${esc(x)}</li>`).join("")}</ul>` : `<p>${esc(p)}</p>`).join("");
+    const mapsUrl = i.lat ? `https://www.google.com/maps/search/?api=1&query=${i.lat},${i.lng}` : null;
+    return `<div class="app-vista miolo imovel-pag">
+      <nav class="trilha" aria-label="Você está em"><a href="#inicio">Início</a><span>›</span><a href="#busca" data-fin="${i.fin}">${i.fin === "aluguel" ? "Alugar" : "Comprar"}</a><span>›</span><a href="#busca" data-bairro="${esc(i.cidade)}">${esc(i.cidade)}</a>${rural(i) ? "" : `<span>›</span><a href="#busca" data-bairro="${esc(i.bairro)}">${esc(i.bairro)}</a>`}<span>›</span><span>${i.codigo}</span></nav>
+      ${i.real ? `<p class="doc-ok" style="margin-bottom:12px;padding:10px 14px">${ico("ok")}<span><b>Cadastro real:</b> dados e as ${i.fotos.length} fotos públicas deste imóvel vêm do sistema Inovabens (fotos do Cloudflare R2, em WebP).</span></p>` : ""}
+      <div class="galeria">
+        <button type="button" class="principal" data-luz="0" aria-label="Ampliar foto 1 de ${fotos.length}"><div class="foto ${fotos[0]}" style="view-transition-name:foto-ativa" role="img" aria-label="Foto principal de ${esc(i.titulo)}"></div></button>
+        ${extrasGaleria.map((f, k) => `<button type="button" data-luz="${(k + 1) % fotos.length}" aria-label="Ampliar foto ${k + 2}"><div class="foto ${f}"></div></button>`).join("")}
+        <button type="button" class="ver-todas" data-luz="0" style="cursor:pointer">${ico("fotos")} Ver as ${fotos.length} fotos</button>
+      </div>
+
+      <div class="cab-imovel">
+        <div style="display:grid;gap:6px;min-width:0">
+          <span class="rotulo">${i.tipo} ${i.fin === "aluguel" ? "para alugar" : "à venda"} · ${i.codigo}</span>
+          <h1>${esc(i.titulo)}</h1>
+          <div class="local">${ico("pino")}${rural(i) ? "Zona rural" : esc(i.bairro)}, ${esc(i.cidade)} - ${i.uf}</div>
+        </div>
+        <div class="acoes">
+          <button class="btn btn-linha" type="button" data-fav="${i.id}" aria-pressed="${favoritos.has(i.id)}">${ico("coracao")} ${favoritos.has(i.id) ? "Salvo" : "Salvar"}</button>
+          <button class="btn btn-linha" type="button" data-compartilha="${i.id}">${ico("compart")} Compartilhar</button>
+        </div>
+      </div>
+
+      <div class="imovel-grade">
+        <div style="min-width:0">
+          <div class="bloco" style="border-top:0;padding-top:0"><div class="numeros">${nums.map(([ic, v, l]) => `<div class="numero">${ico(ic)}<b class="num">${v}</b><small>${l}</small></div>`).join("")}</div></div>
+          <div class="bloco"><div class="doc-ok">${ico("escudo")}<div><b>Documentação conferida pela Inovabens</b><p class="mudo" style="font-size:.9rem">Matrícula atualizada, IPTU sem débitos e situação junto à prefeitura verificadas antes do anúncio.</p></div></div></div>
+          <div class="bloco"><h2>Sobre o imóvel</h2><div class="descricao">${descricao}</div></div>
+          <div class="bloco"><h2>Características</h2><ul class="carac">${i.carac.map(c => `<li>${ico("ok")}${esc(c)}</li>`).join("")}</ul></div>
+          ${i.video ? `<div class="bloco"><h2>Vídeo do imóvel</h2>
+            <a class="video" href="#imovel-${i.id}" data-video><div class="foto ${fotos[Math.min(3, fotos.length - 1)]}"></div><div class="play"><span>${ico("play")}</span><span>Tour em vídeo · 1min 20s</span></div></a>
+            <p class="mudo" style="font-size:.85rem">No site real, o vídeo vem do YouTube, Reels ou TikTok cadastrado no sistema.</p>
+          </div>` : ""}
+          <div class="bloco"><h2>Localização</h2>
+            <div class="mapa mapa-local"><svg viewBox="0 0 800 300" role="img" aria-label="Localização do imóvel ${ondeTxt(i)}"><rect class="terra" width="800" height="300"/><path class="rua" d="M0 80 H800 M0 160 H800 M150 0 V240 M330 0 V240 M520 0 V240 M680 0 V240"/><path class="mar" d="M0 250 C 220 236, 520 240, 800 262 V276 C 520 254, 220 250, 0 264 Z" opacity=".7"/><circle cx="420" cy="130" r="70" fill="var(--acento)" opacity=".13"/><circle cx="420" cy="130" r="70" fill="none" stroke="var(--acento)" stroke-width="2" stroke-dasharray="6 6"/>${mapsUrl ? `<g transform="translate(408 96)" style="color:var(--ouro)"><path d="M12 34s-12-11-12-21a12 12 0 0 1 24 0c0 10-12 21-12 21z" fill="currentColor"/><circle cx="12" cy="13" r="4.5" fill="#fff"/></g>` : ""}<text class="nome-bairro" x="420" y="${mapsUrl ? 160 : 135}" text-anchor="middle">${esc(rural(i) ? i.cidade : i.bairro)}</text></svg></div>
+            ${mapsUrl ? `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span>${esc(i.endereco)} · ${esc(i.cidade)} - ${i.uf}</span><a class="btn btn-linha" href="${mapsUrl}" target="_blank" rel="noopener">${ico("mapa")} Abrir no Google Maps</a></div>
+              <p class="mudo" style="font-size:.85rem">O proprietário autorizou a divulgação do endereço. No site real, o mapa interativo mostra o ponto exato (${String(i.lat).replace(".", ",")}, ${String(i.lng).replace(".", ",")}).</p>`
+            : `<p class="mudo" style="font-size:.85rem">Mostramos a região aproximada. O endereço exato é informado no atendimento, quando o proprietário não autoriza a divulgação.</p>`}
+          </div>
+          ${i.fin === "venda" ? `<div class="bloco"><h2>Simule o financiamento</h2>
+            <div class="sim">
+              <div class="campos-sim">
+                <div class="campo"><label for="sEntrada">Entrada: <span class="num" id="sEntradaTxt"></span></label><input class="faixa" type="range" id="sEntrada" min="20" max="80" step="5" value="30"></div>
+                <div class="campo"><label for="sPrazo">Prazo</label><select class="entrada" id="sPrazo"><option value="240">20 anos</option><option value="300">25 anos</option><option value="360" selected>30 anos</option><option value="420">35 anos</option></select></div>
+                <div class="campo"><label for="sTaxa">Juros ao ano (%)</label><input class="entrada num" id="sTaxa" type="number" min="5" max="20" step="0.1" value="11.5"></div>
+              </div>
+              <div class="sim-res" aria-live="polite"><span class="mudo" style="font-size:.85rem">Parcela estimada (Price)</span><span class="grande num" id="sParcela"></span>
+                <div class="linha-val"><span class="mudo">SAC: 1ª parcela</span><b class="num" id="sSac1"></b></div>
+                <div class="linha-val"><span class="mudo">Valor financiado</span><b class="num" id="sFin"></b></div>
+                <div class="linha-val"><span class="mudo">Renda familiar sugerida</span><b class="num" id="sRenda"></b></div>
+                <span class="mudo" style="font-size:.75rem">Estimativa sem seguros e taxas. A aprovação depende da análise do banco.</span></div>
+            </div></div>`
+          : `<div class="bloco"><h2>Custo mensal</h2><div class="custos num"><div class="linha-val"><span>Aluguel</span><span>${brl(i.preco)}</span></div><div class="linha-val"><span>Condomínio</span><span>${brl(i.cond)}</span></div><div class="linha-val"><span>IPTU (mensal)</span><span>${brl(i.iptu)}</span></div><div class="linha-val total"><span>Total</span><span>${brl(i.preco + i.cond + i.iptu)}</span></div></div></div>`}
+          <div class="bloco"><h2>Compartilhe</h2>
+            <div class="previa">
+              <div style="display:grid;gap:10px;align-content:start"><p class="mudo">É assim que o imóvel aparece ao ser enviado no WhatsApp, Facebook ou Instagram: com foto, título e preço.</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-zap" type="button" data-compartilha-zap="${i.id}">${ico("zap")} Enviar no WhatsApp</button><button class="btn btn-linha" type="button" data-copia="${i.id}">Copiar link</button></div></div>
+              <div class="bolha"><div class="og"><div class="foto ${fotos[0]}"></div><div class="txt"><b>${esc(i.titulo)} | ${brl(i.preco)}${i.fin === "aluguel" ? "/mês" : ""}</b><small>${i.tipo === "Sítio" ? m2(i.terreno / 10000) + " ha" : i.area + " m²"} · ${i.quartos ? i.quartos + " quartos · " : ""}${esc(rural(i) ? "Zona rural" : i.bairro)}, ${esc(i.cidade)}</small><small>inovabens.com.br</small></div></div><div class="msg">Olha esse imóvel!</div></div>
+            </div>
+          </div>
+          <div class="bloco"><h2>Imóveis parecidos</h2><div class="grade rolagem">${sem.map(cartao).join("")}</div></div>
+        </div>
+
+        <aside class="contato" aria-label="Fale com a Inovabens">
+          <div><span class="mudo" style="font-size:.82rem">${i.fin === "aluguel" ? "Aluguel" : "Valor de venda"}</span><div class="preco num">${precoTxt(i)}</div>
+            <div class="mudo num" style="font-size:.84rem">${[i.cond ? `Condomínio ${brl(i.cond)}` : "", i.iptu ? `IPTU ${brl(i.iptu)}${i.fin === "venda" ? "/ano" : "/mês"}` : "", i.extras.includes("permuta") ? "Aceita permuta" : ""].filter(Boolean).join(" · ")}</div></div>
+          <div class="corretor"><span class="avatar">IB</span><div><b>Equipe Inovabens</b><div class="mudo" style="font-size:.82rem">Corretor responsável · CRECI 50457-J</div></div></div>
+          <button class="btn btn-zap" type="button" data-zap="${i.id}" style="width:100%">${ico("zap")} Conversar no WhatsApp</button>
+          <div class="ou">ou agende uma visita</div>
+          <div class="dias" role="group" aria-label="Escolha o dia da visita">${dias.map((d, k) => `<button class="dia" type="button" data-dia="${k}" aria-pressed="${diaEscolhido === k}">${d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "")}<b class="num">${d.getDate()}</b>${d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</button>`).join("")}</div>
+          <form id="formContato" novalidate>
+            <div class="campo"><label for="cNome">Nome</label><input class="entrada" id="cNome" required autocomplete="name" value="Rafael Souza"></div>
+            <div class="campo"><label for="cFone">WhatsApp</label><input class="entrada" id="cFone" required inputmode="tel" autocomplete="tel" value="(11) 98888-1234"></div>
+            <div class="campo"><label for="cMsg">Mensagem</label><textarea class="entrada" id="cMsg">${esc(msg)}</textarea></div>
+            <label class="consent"><input type="checkbox" id="cConsent" checked required> Autorizo o contato da Inovabens sobre este imóvel.</label>
+            <button class="btn btn-azul" type="submit">Enviar mensagem</button>
+          </form>
+        </aside>
+      </div>
+    </div>
+    <div class="barra-movel"><div class="preco num">${precoTxt(i)}</div><button class="btn btn-linha" type="button" data-ir-contato style="padding:11px 12px">Agendar</button><button class="btn btn-zap" type="button" data-zap="${i.id}">${ico("zap")} WhatsApp</button></div>`;
+  }
+
+  function simular(i) {
+    const ent = +$("#sEntrada").value / 100, n = +$("#sPrazo").value, a = (+$("#sTaxa").value || 0) / 100;
+    const P = i.preco * (1 - ent), im = Math.pow(1 + a, 1 / 12) - 1;
+    const price = im > 0 ? P * im / (1 - Math.pow(1 + im, -n)) : P / n;
+    $("#sEntradaTxt").textContent = `${Math.round(ent * 100)}% (${brl(i.preco * ent)})`;
+    $("#sParcela").textContent = brl(price);
+    $("#sSac1").textContent = brl(P / n + P * im);
+    $("#sFin").textContent = brl(P);
+    $("#sRenda").textContent = brl(price / 0.3);
+  }
+
+  /* ================= galeria em tela cheia ================= */
+  function abrirLuz(i, k) {
+    let atual = k;
+    const el = document.createElement("div");
+    el.className = "luz"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-label", `Fotos de ${i.titulo}`);
+    const desenhar = () => {
+      el.innerHTML = `<div class="luz-topo"><span class="num">${atual + 1} / ${i.fotos.length}</span><button class="btn-ico" type="button" data-fecha aria-label="Fechar">${ico("fecha")}</button></div>
+        <div class="luz-palco"><div class="foto ${i.fotos[atual]}" role="img" aria-label="Foto ${atual + 1} de ${esc(i.titulo)}"></div></div>
+        <div class="miniaturas">${i.fotos.map((f, j) => `<button type="button" data-ir="${j}" aria-label="Foto ${j + 1}" aria-current="${j === atual}"><div class="foto ${f}"></div></button>`).join("")}</div>
+        <button class="luz-nav ant" type="button" data-passo="-1" aria-label="Foto anterior">${ico("volta")}</button>
+        <button class="luz-nav prox" type="button" data-passo="1" aria-label="Próxima foto">${ico("seta")}</button>`;
+    };
+    const ir = j => { atual = (j + i.fotos.length) % i.fotos.length; desenhar(); };
+    const fechar = () => { el.remove(); document.removeEventListener("keydown", tecla); anterior?.focus(); };
+    const tecla = e => { if (e.key === "Escape") fechar(); if (e.key === "ArrowRight") ir(atual + 1); if (e.key === "ArrowLeft") ir(atual - 1); };
+    const anterior = document.activeElement;
+    el.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.fecha !== undefined) fechar();
+      else if (b.dataset.passo) ir(atual + +b.dataset.passo);
+      else if (b.dataset.ir) ir(+b.dataset.ir);
+    });
+    let x0 = null;
+    el.addEventListener("pointerdown", e => { x0 = e.clientX; });
+    el.addEventListener("pointerup", e => { if (x0 !== null && Math.abs(e.clientX - x0) > 50) ir(atual + (e.clientX < x0 ? 1 : -1)); x0 = null; });
+    document.addEventListener("keydown", tecla);
+    desenhar(); document.body.append(el); $("[data-fecha]", el).focus();
+  }
+
+  /* ================= bastidores ================= */
+  function seoAtual() {
+    const r = rotaAtual();
+    if (r.nome === "imovel") {
+      const i = r.imovel;
+      const tam = i.tipo === "Sítio" ? `${m2(i.terreno / 10000)} ha` : `${i.area} m²`;
+      const titulo = `${i.tipo} ${i.fin === "aluguel" ? "para alugar" : "à venda"} ${ondeTxt(i)} | ${tam} | Inovabens`;
+      const desc = i.tipo === "Sítio"
+        ? `Sítio de ${tam} ${ondeTxt(i)}, com casa de ${i.quartos} quartos, tanques de peixe, pomar e irrigação. ${brl(i.preco)}. Aceita permuta. Fale pelo WhatsApp.`
+        : `${i.tipo} com ${i.area} m²${i.quartos ? `, ${i.quartos} quartos` : ""}${i.vagas ? ` e ${i.vagas} vagas` : ""} ${ondeTxt(i)}. ${brl(i.preco)}${i.fin === "aluguel" ? "/mês" : ""}. Documentação conferida. Fale pelo WhatsApp.`;
+      const ld = { "@context": "https://schema.org", "@type": "RealEstateListing", name: i.titulo, url: urlReal(i), datePosted: "2026-11-05",
+        image: [1200, 1920].map(l => `https://fotos.inovabens.com.br/imoveis/.../${i.id}-${l}.webp`),
+        offers: { "@type": "Offer", price: i.preco, priceCurrency: "BRL", businessFunction: i.fin === "aluguel" ? "http://purl.org/goodrelations/v1#LeaseOut" : "http://purl.org/goodrelations/v1#Sell" },
+        about: { "@type": i.tipo === "Casa" || i.tipo === "Sítio" ? "SingleFamilyResidence" : "Apartment", floorSize: { "@type": "QuantitativeValue", value: i.area, unitCode: "MTK" }, numberOfRooms: i.quartos, numberOfBathroomsTotal: i.banh,
+          ...(i.terreno ? { lotSize: { "@type": "QuantitativeValue", value: i.terreno, unitCode: "MTK" } } : {}),
+          address: { "@type": "PostalAddress", addressLocality: i.cidade, addressRegion: i.uf, addressCountry: "BR", ...(i.endereco ? { streetAddress: "Estrada de Cedral, s/n", postalCode: "15025-600" } : {}) },
+          ...(i.lat ? { geo: { "@type": "GeoCoordinates", latitude: i.lat, longitude: i.lng } } : {}) },
+        provider: { "@type": "RealEstateAgent", name: "Inovabens Gestão Patrimonial" } };
+      return { titulo, desc, url: urlReal(i), ld, extra: `<div><h3>Breadcrumb (trilha) para o Google</h3><p class="mudo" style="font-size:.85rem">Início › ${i.fin === "aluguel" ? "Alugar" : "Comprar"} › ${esc(i.cidade)} › ${esc(i.bairro)} › ${i.codigo}. Também vai como BreadcrumbList.</p></div>` };
+    }
+    if (r.nome === "busca") {
+      const fin = filtro.fin === "aluguel" ? "para alugar" : "à venda";
+      const onde = filtro.texto || "São José do Rio Preto e região";
+      return { titulo: `Imóveis ${fin} em ${onde} | Inovabens`, desc: `${resultados().length} imóveis ${fin} em ${onde}. Filtre por bairro, quartos, vagas e preço. Documentação conferida pela Inovabens.`,
+        url: `https://www.inovabens.com.br/imoveis/${filtro.fin}/${slug(onde)}`,
+        ld: { "@context": "https://schema.org", "@type": "ItemList", itemListElement: resultados().slice(0, 3).map((i, k) => ({ "@type": "ListItem", position: k + 1, url: urlReal(i) })) },
+        extra: `<div><h3>Páginas por bairro</h3><p class="mudo" style="font-size:.85rem">Cada bairro e tipo vira uma página própria no Google, como "Apartamentos à venda no Gonzaga", com texto sobre a região e os imóveis disponíveis.</p></div>` };
+    }
+    return { titulo: "Inovabens | Imóveis à venda e para alugar com documentação conferida", desc: "Compra, venda, locação e regularização de imóveis. Fotos profissionais, documentação conferida e atendimento pelo WhatsApp. CRECI 50457-J.",
+      url: "https://www.inovabens.com.br/",
+      ld: { "@context": "https://schema.org", "@type": "RealEstateAgent", name: "Inovabens Gestão Patrimonial", url: "https://www.inovabens.com.br/", logo: "https://www.inovabens.com.br/logo.png", identifier: "CRECI 50457-J", areaServed: "São José do Rio Preto e região",
+        sameAs: ["https://www.instagram.com/...", "https://www.facebook.com/...", "https://www.tiktok.com/@...", "https://www.kwai.com/@..."] },
+      extra: `<div><h3>Google Meu Negócio</h3><p class="mudo" style="font-size:.85rem">O site e o perfil da empresa no Google se apontam um para o outro: nome, endereço, telefone e avaliações iguais nos dois.</p></div>` };
+  }
+  function desenharEventos() {
+    const ul = $("#listaEventos"); if (!ul) return;
+    ul.innerHTML = eventos.length ? eventos.map(e => `<li><time>${e.hora}</time><span><b>${e.m.meta}</b> <small>${e.detalhe ? "· " + esc(e.detalhe) : ""}</small></span>
+      <span class="tag-plat"><span>GA4 ${e.m.ga}</span><span>Meta ${e.m.meta}</span><span>TikTok ${e.m.tt}</span><span>Kwai</span></span></li>`).join("")
+      : `<li style="grid-template-columns:1fr"><span class="mudo">Navegue, favorite ou fale pelo WhatsApp para ver os eventos aparecerem.</span></li>`;
+  }
+  function desenharBastidores() {
+    const s = seoAtual();
+    const ok = (n, lim) => `<b class="${n <= lim ? "ok" : ""}">${n}/${lim}</b>`;
+    $("#bastCorpo").innerHTML = `
+      <div><h3>Como aparece no Google</h3><div class="serp"><span class="url">${esc(s.url)}</span><span class="t">${esc(s.titulo)}</span><span class="d">${esc(s.desc)}</span></div>
+        <div class="medida" style="margin-top:6px"><span>Título ${ok(s.titulo.length, 65)} caracteres</span><span>Descrição ${ok(s.desc.length, 160)} caracteres</span></div></div>
+      <div><h3>Endereço da página</h3><p style="font-size:.85rem;word-break:break-all">${esc(s.url)}</p><p class="mudo" style="font-size:.8rem;margin-top:4px">Legível, com tipo, cidade e bairro. Entra no sitemap.xml automaticamente quando o imóvel é publicado.</p></div>
+      ${s.extra}
+      <div><h3>Dados estruturados (schema.org)</h3><pre class="codigo-bloco">${esc(JSON.stringify(s.ld, null, 2))}</pre></div>
+      <div><h3>Eventos de anúncio desta visita</h3><p class="mudo" style="font-size:.8rem;margin-bottom:8px">Enviados pelo navegador e pelo servidor com o mesmo id, só depois do consentimento de cookies (LGPD).</p><ul class="eventos" id="listaEventos"></ul></div>
+      <div><h3>Velocidade (metas do Google)</h3><div class="medida"><span>Carregamento principal até <b>2,5 s</b></span><span>Resposta ao toque até <b>200 ms</b></span><span>Sem saltos na página: <b>0,1</b></span></div>
+        <p class="mudo" style="font-size:.8rem;margin-top:6px">Páginas prontas no servidor, fotos WebP em 400/1200/1920 px vindas do R2 e quase nenhum JavaScript.</p></div>`;
+    desenharEventos();
+  }
+
+  /* ================= roteamento ================= */
+  function rotaAtual() {
+    const h = location.hash.slice(1);
+    if (h.startsWith("imovel-")) { const im = porId(h.slice(7)); if (im) return { nome: "imovel", imovel: im }; }
+    if (h === "busca") return { nome: "busca" };
+    return { nome: "inicio" };
+  }
+  let rotaAnterior = null;
+  function desenhar(rolar = true) {
+    const r = rotaAtual();
+    document.body.classList.toggle("com-barra", r.nome === "imovel");
+    if (r.nome === "imovel") { app.innerHTML = vistaImovel(r.imovel); simularSePrecisa(r.imovel); document.title = `${r.imovel.titulo} | Inovabens`; }
+    else if (r.nome === "busca") { app.innerHTML = vistaBusca(); const o = $("#fOrdem"); if (o) o.value = filtro.ordem; document.title = "Imóveis | Inovabens"; }
+    else { app.innerHTML = vistaInicio(); document.title = "Inovabens Imóveis"; }
+    $$(".nav a").forEach(a => a.removeAttribute("aria-current"));
+    if (r.nome === "busca" && !filtro.soFav) $(`.nav a[data-nav="${filtro.fin === "aluguel" ? "alugar" : "comprar"}"]`)?.setAttribute("aria-current", "page");
+    topoNoScroll();
+    if (rolar) window.scrollTo({ top: 0, behavior: "instant" });
+    const chave = r.nome + (r.imovel?.id || "");
+    if (chave !== rotaAnterior) {
+      medir("page_view", r.nome === "imovel" ? r.imovel.codigo : r.nome === "busca" ? "busca" : "início");
+      if (r.nome === "imovel") medir("view_item", `${r.imovel.codigo} · ${brl(r.imovel.preco)}`);
+      rotaAnterior = chave;
+    }
+    if (!$("#bast").hidden) desenharBastidores();
+  }
+  function simularSePrecisa(i) {
+    if (i.fin !== "venda") return;
+    ["sEntrada", "sPrazo", "sTaxa"].forEach(id => $("#" + id).addEventListener("input", () => simular(i)));
+    simular(i);
+  }
+  function trocar(fn) {
+    if (document.startViewTransition && !reduz) {
+      const t = document.startViewTransition(fn);
+      t.finished.finally(() => $$("[style*='foto-ativa']").forEach(el => { if (!el.closest(".galeria")) el.style.viewTransitionName = ""; }));
+    } else fn();
+  }
+  window.addEventListener("hashchange", () => trocar(() => desenhar()));
+
+  /* cabeçalho transparente sobre a foto do início */
+  function topoNoScroll() { $("#topo").classList.toggle("sobre-foto", rotaAtual().nome === "inicio" && window.scrollY < 60 && !$("#nav").classList.contains("aberto")); }
+  window.addEventListener("scroll", topoNoScroll, { passive: true });
+
+  /* ================= interações ================= */
+  function irBusca(ajuste) {
+    ajuste?.();
+    if (location.hash === "#busca") trocar(() => desenhar()); else location.hash = "busca";
+    medir("search", [filtro.fin === "aluguel" ? "alugar" : "comprar", filtro.texto, [...filtro.tipos].join(", ")].filter(Boolean).join(" · "));
+  }
+  function abrirZap(origem) {
+    const i = porId(origem);
+    medir("whatsapp", i ? i.codigo : origem);
+    aviso(i ? `No site publicado, abre o WhatsApp do corretor com a mensagem pronta sobre o ${i.codigo}. O contato entra no CRM como lead do site.`
+            : "No site publicado, abre o WhatsApp da Inovabens. O contato entra no CRM com a origem da visita (Google, Instagram, TikTok...).");
+  }
+
+  document.addEventListener("click", e => {
+    const alvo = e.target.closest("a, button, [data-pino]");
+    if (!alvo) return;
+    const d = alvo.dataset;
+
+    if (d.fav) {
+      e.preventDefault();
+      favoritos.has(d.fav) ? favoritos.delete(d.fav) : (favoritos.add(d.fav), medir("favorito", porId(d.fav).codigo));
+      armazem.gravar("inovabens-favoritos", [...favoritos]); atualizarFav();
+      $$(`[data-fav="${d.fav}"]`).forEach(b => { const on = favoritos.has(d.fav); b.setAttribute("aria-pressed", on); if (b.classList.contains("btn")) b.innerHTML = `${ico("coracao")} ${on ? "Salvo" : "Salvar"}`; else b.setAttribute("aria-label", on ? "Remover dos favoritos" : "Salvar nos favoritos"); });
+      if (filtro.soFav && rotaAtual().nome === "busca") trocar(() => desenhar(false));
+      return;
+    }
+    if (d.abre) {
+      // a foto do cartão "voa" até a galeria do imóvel
+      const foto = $(`[data-foto-de="${d.abre}"]`, alvo.closest(".cartao"));
+      if (foto && !reduz) foto.style.viewTransitionName = "foto-ativa";
+      return; // o link segue para #imovel-...
+    }
+    if (d.zap !== undefined) { abrirZap(d.zap); return; }
+    if (d.fin) { e.preventDefault(); fecharMenu(); irBusca(() => { filtro.fin = d.fin; filtro.soFav = false; filtro.texto = ""; filtro.tipos.clear(); }); return; }
+    if (d.tipo) { e.preventDefault(); irBusca(() => { filtro.soFav = false; filtro.tipos = new Set([d.tipo]); }); return; }
+    if (d.bairro) { e.preventDefault(); irBusca(() => { filtro.soFav = false; filtro.texto = d.bairro; }); return; }
+    if (d.ancora) {
+      e.preventDefault(); fecharMenu();
+      const ir = () => document.getElementById(d.ancora)?.scrollIntoView({ behavior: reduz ? "auto" : "smooth" });
+      if (rotaAtual().nome !== "inicio") { location.hash = "inicio"; setTimeout(ir, 380); } else ir();
+      return;
+    }
+    if (d.aba) {
+      filtro.fin = d.aba; filtro.soFav = false; filtro.max = 0;
+      if (rotaAtual().nome === "busca") { trocar(() => desenhar(false)); medir("search", d.aba === "aluguel" ? "alugar" : "comprar"); }
+      else $$("[data-aba]").forEach(b => b.setAttribute("aria-pressed", b.dataset.aba === d.aba));
+      return;
+    }
+    if (d.atalho) { alvo.setAttribute("aria-pressed", alvo.getAttribute("aria-pressed") !== "true"); return; }
+    if (d.num) { filtro[d.num] = +d.v; trocar(() => desenhar(false)); return; }
+    if (d.vista) { filtro.vista = d.vista; trocar(() => desenhar(false)); return; }
+    if (d.limpa !== undefined) { Object.assign(filtro, { texto: "", quartos: 0, vagas: 0, max: 0, soFav: false }); filtro.tipos.clear(); filtro.extras.clear(); trocar(() => desenhar(false)); return; }
+    if (d.abreFiltros !== undefined) { $("#filtros").classList.add("aberto"); fundo(true); return; }
+    if (d.fechaFiltros !== undefined) { $("#filtros").classList.remove("aberto"); fundo(false); return; }
+    if (d.pino) {
+      $$(".pino").forEach(p => p.classList.toggle("ativo", p === alvo));
+      $("#mapaCartao").innerHTML = cartao(porId(d.pino));
+      return;
+    }
+    if (d.luz !== undefined) { abrirLuz(rotaAtual().imovel, +d.luz); return; }
+    if (d.video !== undefined) { e.preventDefault(); aviso("No site real, o vídeo abre aqui mesmo, a partir do link do YouTube, Reels ou TikTok cadastrado."); return; }
+    if (d.dia) {
+      diaEscolhido = +d.dia;
+      $$("[data-dia]").forEach(b => b.setAttribute("aria-pressed", b === alvo));
+      const quando = alvo.textContent.replace(/\s+/g, " ").trim();
+      const i = rotaAtual().imovel;
+      $("#cMsg").value = `Olá! Gostaria de visitar o imóvel ${i.codigo} (${i.titulo}) no dia ${quando}. Qual o melhor horário?`;
+      return;
+    }
+    if (d.irContato !== undefined) { $(".contato").scrollIntoView({ behavior: reduz ? "auto" : "smooth" }); return; }
+    if (d.compartilha || d.compartilhaZap) {
+      const i = porId(d.compartilha || d.compartilhaZap);
+      medir("compartilhar", i.codigo);
+      if (d.compartilha && navigator.share) { navigator.share({ title: i.titulo, url: urlReal(i) }).catch(() => {}); return; }
+      aviso(d.compartilhaZap ? "No site publicado, abre o WhatsApp com o link do imóvel. A prévia com foto aparece como no exemplo." : "Use o botão Copiar link ou envie pelo WhatsApp.");
+      return;
+    }
+    if (d.copia) {
+      const i = porId(d.copia), url = urlReal(i);
+      medir("compartilhar", i.codigo + " · link");
+      navigator.clipboard?.writeText(url).then(() => aviso("Link do imóvel copiado."), () => aviso(`Copie o link: ${url}`)) ?? aviso(`Copie o link: ${url}`);
+      return;
+    }
+  });
+
+  document.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("[data-pino]")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); } });
+
+  document.addEventListener("change", e => {
+    const t = e.target;
+    if (t.dataset.tipoF) { t.checked ? filtro.tipos.add(t.dataset.tipoF) : filtro.tipos.delete(t.dataset.tipoF); trocar(() => desenhar(false)); }
+    else if (t.dataset.extra) { t.checked ? filtro.extras.add(t.dataset.extra) : filtro.extras.delete(t.dataset.extra); trocar(() => desenhar(false)); }
+    else if (t.id === "fOrdem") { filtro.ordem = t.value; trocar(() => desenhar(false)); }
+    else if (t.id === "fTexto") { filtro.texto = t.value.trim(); trocar(() => desenhar(false)); medir("search", filtro.texto); }
+    else if (t.id === "fMax") { const lim = +t.max; filtro.max = +t.value >= lim ? 0 : +t.value; trocar(() => desenhar(false)); }
+  });
+  document.addEventListener("input", e => {
+    if (e.target.id === "fMax") { const t = e.target, lim = +t.max; $("#fMaxTxt").textContent = +t.value >= lim ? "sem limite" : brl(+t.value); }
+  });
+
+  document.addEventListener("submit", e => {
+    e.preventDefault();
+    const f = e.target;
+    if (f.id === "formBusca") {
+      irBusca(() => {
+        filtro.soFav = false;
+        filtro.texto = $("#bOnde").value.trim();
+        filtro.tipos = new Set($("#bTipo").value ? [$("#bTipo").value] : []);
+        filtro.quartos = +$("#bQuartos").value;
+        filtro.extras = new Set($$("[data-atalho][aria-pressed='true']").map(b => b.dataset.atalho));
+      });
+      return;
+    }
+    const obrig = $$("[required]", f).filter(c => c.type === "checkbox" ? !c.checked : !c.value.trim());
+    if (obrig.length) { obrig[0].focus(); aviso(obrig[0].type === "checkbox" ? "Marque a autorização de contato para enviar." : "Preencha nome e WhatsApp para enviar."); return; }
+    if (f.id === "formContato") {
+      const i = rotaAtual().imovel;
+      medir(diaEscolhido !== null ? "visita" : "lead", i.codigo);
+      if (diaEscolhido !== null) medir("lead", i.codigo + " · visita");
+      aviso(`Mensagem recebida. No site real, vira um lead no CRM (origem: site, imóvel ${i.codigo}) e o corretor é avisado na hora.`);
+    } else if (f.id === "formAnuncie") {
+      medir("lead", "captação · " + $("#aTipo").value);
+      aviso("Pedido recebido. No site real, entra no CRM como captação e a equipe retorna pelo WhatsApp.");
+    }
+  });
+
+  /* menu do celular */
+  const fecharMenu = () => { $("#nav").classList.remove("aberto"); $("#menuBtn").setAttribute("aria-expanded", "false"); topoNoScroll(); };
+  $("#menuBtn").addEventListener("click", () => { const ab = $("#nav").classList.toggle("aberto"); $("#menuBtn").setAttribute("aria-expanded", ab); topoNoScroll(); });
+  $("#btnFav").addEventListener("click", () => irBusca(() => { filtro.soFav = true; }));
+
+  /* fundo escurecido (filtros no celular) */
+  function fundo(on) {
+    $(".fundo-escuro")?.remove();
+    if (!on) return;
+    const f = document.createElement("div"); f.className = "fundo-escuro";
+    f.addEventListener("click", () => { $("#filtros")?.classList.remove("aberto"); fundo(false); });
+    document.body.append(f);
+  }
+
+  /* bastidores */
+  const bast = $("#bast"), bastBtn = $("#bastBtn");
+  bastBtn.addEventListener("click", () => { bast.hidden = !bast.hidden; bastBtn.setAttribute("aria-expanded", !bast.hidden); if (!bast.hidden) { desenharBastidores(); $("#bastFecha").focus(); } });
+  $("#bastFecha").addEventListener("click", () => { bast.hidden = true; bastBtn.setAttribute("aria-expanded", "false"); bastBtn.focus(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !bast.hidden && !$(".luz")) { bast.hidden = true; bastBtn.setAttribute("aria-expanded", "false"); } });
+
+  /* app instalável (PWA): no site publicado o navegador oferece "Instalar"; aqui mostramos o convite e as instruções */
+  let pedidoInstalar = null;
+  window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); pedidoInstalar = e; });
+  async function instalar() {
+    medir("lead", "instalar app");
+    if (pedidoInstalar) { pedidoInstalar.prompt(); await pedidoInstalar.userChoice.catch(() => {}); pedidoInstalar = null; fecharConvite(); return; }
+    aviso(`<span class="passos-app"><b>Como instalar o app da Inovabens</b><span>Android (Chrome): menu ⋮ › Instalar app ou Adicionar à tela inicial.</span><span>iPhone (Safari): Compartilhar › Adicionar à Tela de Início.</span><span>Neste protótipo o ícone instalado ainda é o do Claude; no site publicado, será o da Inovabens.</span></span>`);
+  }
+  function fecharConvite() { $(".instalar")?.remove(); document.body.classList.remove("com-instalar"); armazem.gravar("inovabens-convite-app", "fechado"); }
+  function mostrarConvite() {
+    const instalado = matchMedia("(display-mode: standalone)").matches;
+    if (instalado || armazem.ler("inovabens-convite-app", null) === "fechado" || innerWidth > 860 || rotaAtual().nome === "imovel") return;
+    const c = document.createElement("div");
+    c.className = "instalar"; c.setAttribute("role", "region"); c.setAttribute("aria-label", "Instalar o app");
+    c.innerHTML = `<img src="icones/icone-192.png" alt="" width="48" height="48"><div><b>App da Inovabens</b><small>Seus favoritos e os imóveis novos a um toque.</small></div><button class="btn btn-ouro" type="button" data-instalar>Instalar</button><button class="fechar" type="button" aria-label="Agora não">${ico("fecha")}</button>`;
+    $(".fechar", c).addEventListener("click", fecharConvite);
+    document.body.append(c); document.body.classList.add("com-instalar");
+  }
+  document.addEventListener("click", e => { if (e.target.closest("[data-instalar]")) { e.preventDefault(); instalar(); } });
+  window.addEventListener("hashchange", () => { if (rotaAtual().nome === "imovel") { $(".instalar")?.remove(); document.body.classList.remove("com-instalar"); } });
+
+  atualizarFav();
+  desenhar(false);
+  setTimeout(mostrarConvite, 1500);
+})();
+</script>

@@ -105,8 +105,39 @@ public sealed class ImovelForm : IValidatableObject
     public bool DivulgarSite { get; set; }
     public Guid? CorretorResponsavelId { get; set; }
 
+    [StringLength(20, ErrorMessage = "Referência muito longa (máx. 20).")] public string? Referencia { get; set; }
+    public decimal? AreaTerrenoM2 { get; set; }
+    public decimal? TerrenoFrenteM { get; set; }
+    public decimal? TerrenoFundoM { get; set; }
+    public decimal? TerrenoEsquerdaM { get; set; }
+    public decimal? TerrenoDireitaM { get; set; }
+    [StringLength(60)] public string? Zona { get; set; }
+    [StringLength(100)] public string? Regiao { get; set; }
+    [StringLength(200)] public string? PontoReferencia { get; set; }
+    [StringLength(40)] public string? Pavimento { get; set; }
+    [Range(1800, 2100, ErrorMessage = "Ano inválido.")] public int? AnoConstrucao { get; set; }
+    [Range(0, 999, ErrorMessage = "Use um número entre 0 e 999.")] public int? Salas { get; set; }
+    public bool AceitaPermuta { get; set; }
+    public bool EmCondominio { get; set; }
+    public decimal? ValorCondominio { get; set; }
+    public decimal? ValorIptu { get; set; }
+    [StringLength(300)] public string? VideoUrl { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {
+        if (Texto.Limpo(VideoUrl) is { } v && RegrasImovel.IdYoutube(v) is null)
+            yield return new ValidationResult("Cole o link de um vídeo do YouTube.", [nameof(VideoUrl)]);
+        foreach (var (nome, valor) in new (string, decimal?)[]
+                 {
+                     (nameof(TerrenoFrenteM), TerrenoFrenteM), (nameof(TerrenoFundoM), TerrenoFundoM),
+                     (nameof(TerrenoEsquerdaM), TerrenoEsquerdaM), (nameof(TerrenoDireitaM), TerrenoDireitaM),
+                 })
+        {
+            if (valor is null) continue;
+            if (valor < 0) yield return new ValidationResult("O valor não pode ser negativo.", [nome]);
+            else if (valor > 99_999_999.99m) yield return new ValidationResult("Valor muito alto.", [nome]);
+            else if (decimal.Round(valor.Value, 2) != valor) yield return new ValidationResult("Use no máximo 2 casas decimais.", [nome]);
+        }
         // caracteres que o Windows não aceita em nome de pasta (o Drive para computador sincroniza a pasta)
         if (NomeDrive?.IndexOfAny(RegrasImovel.CaracteresProibidosPasta) >= 0)
             yield return new ValidationResult("O nome da pasta não pode ter / \\ : * ? \" < > |", [nameof(NomeDrive)]);
@@ -118,8 +149,9 @@ public sealed class ImovelForm : IValidatableObject
         foreach (var (nome, valor, max) in new (string, decimal?, decimal)[]
                  {
                      (nameof(AreaTotalM2), AreaTotalM2, 9_999_999_999.99m), (nameof(AreaConstruidaM2), AreaConstruidaM2, 9_999_999_999.99m),
-                     (nameof(AreaUtilM2), AreaUtilM2, 9_999_999_999.99m),
+                     (nameof(AreaUtilM2), AreaUtilM2, 9_999_999_999.99m), (nameof(AreaTerrenoM2), AreaTerrenoM2, 9_999_999_999.99m),
                      (nameof(PrecoVenda), PrecoVenda, 9_999_999_999_999.99m), (nameof(PrecoLocacao), PrecoLocacao, 9_999_999_999_999.99m),
+                     (nameof(ValorCondominio), ValorCondominio, 9_999_999_999_999.99m), (nameof(ValorIptu), ValorIptu, 9_999_999_999_999.99m),
                  })
         {
             if (valor is null) continue;
@@ -140,6 +172,11 @@ public sealed class ImovelForm : IValidatableObject
         Quartos = i.Quartos, Suites = i.Suites, Banheiros = i.Banheiros, Vagas = i.Vagas,
         PrecoVenda = i.PrecoVenda, PrecoLocacao = i.PrecoLocacao, DivulgarSite = i.DivulgarSite,
         CorretorResponsavelId = i.CorretorResponsavelId,
+        Referencia = i.Referencia, AreaTerrenoM2 = i.AreaTerrenoM2,
+        TerrenoFrenteM = i.TerrenoFrenteM, TerrenoFundoM = i.TerrenoFundoM, TerrenoEsquerdaM = i.TerrenoEsquerdaM, TerrenoDireitaM = i.TerrenoDireitaM,
+        Zona = i.Zona, Regiao = i.Regiao, PontoReferencia = i.PontoReferencia, Pavimento = i.Pavimento,
+        AnoConstrucao = i.AnoConstrucao, Salas = i.Salas, AceitaPermuta = i.AceitaPermuta, EmCondominio = i.EmCondominio,
+        ValorCondominio = i.ValorCondominio, ValorIptu = i.ValorIptu, VideoUrl = i.VideoUrl,
     };
 
     /// <summary>Copia para a entidade normalizando: texto vazio vira null, UF em maiúsculas.</summary>
@@ -157,6 +194,12 @@ public sealed class ImovelForm : IValidatableObject
         i.AreaTotalM2 = AreaTotalM2; i.AreaConstruidaM2 = AreaConstruidaM2; i.AreaUtilM2 = AreaUtilM2;
         i.Quartos = Quartos; i.Suites = Suites; i.Banheiros = Banheiros; i.Vagas = Vagas;
         i.PrecoVenda = PrecoVenda; i.PrecoLocacao = PrecoLocacao; i.DivulgarSite = DivulgarSite;
+        i.Referencia = Texto.Limpo(Referencia)?.ToUpperInvariant(); i.AreaTerrenoM2 = AreaTerrenoM2;
+        i.TerrenoFrenteM = TerrenoFrenteM; i.TerrenoFundoM = TerrenoFundoM; i.TerrenoEsquerdaM = TerrenoEsquerdaM; i.TerrenoDireitaM = TerrenoDireitaM;
+        i.Zona = Texto.Limpo(Zona); i.Regiao = Texto.Limpo(Regiao); i.PontoReferencia = Texto.Limpo(PontoReferencia);
+        i.Pavimento = Texto.Limpo(Pavimento); i.AnoConstrucao = AnoConstrucao; i.Salas = Salas;
+        i.AceitaPermuta = AceitaPermuta; i.EmCondominio = EmCondominio; i.ValorCondominio = ValorCondominio; i.ValorIptu = ValorIptu;
+        i.VideoUrl = Texto.Limpo(VideoUrl);
     }
 }
 
@@ -170,6 +213,8 @@ public sealed class CaracteristicaEntrada
     public string? Valor { get; set; }
 
     public bool Publico { get; set; } = true;
+
+    [StringLength(40)] public string? Grupo { get; set; }
 }
 
 public sealed class ProprietarioEntrada

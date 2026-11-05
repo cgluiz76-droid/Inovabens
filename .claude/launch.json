@@ -6,6 +6,12 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "dotnet/src/Inovabens.Web", "--launch-profile", "http"],
       "port": 5051
+    },
+    {
+      "name": "prototipo-site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5072", "--directory", "prototipo-site"],
+      "port": 5072
     }
   ]
 }

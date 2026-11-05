@@ -66,6 +66,12 @@ os dados-base. Isso é idempotente e protegido por lock, então pode haver vári
 só é criado se ainda não houver nenhum usuário (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`; em produção a senha
 padrão é recusada). `dotnet Inovabens.Web.dll migrar` faz só essa parte e sai, para usar como passo de release.
 
+**Importar do site atual (Imobibrasil):** `dotnet Inovabens.Web.dll importar-imobibrasil [--usuario=email]
+[--site=https://www.inovabens.com.br] [--sem-fotos]` lê as fichas públicas do site e cria ou atualiza os imóveis
+pelo id do anúncio (rodar de novo não duplica; só envia as fotos que faltam). As fotos vão para "04 - Fotos e
+Vídeos" já públicas, sem passar pelo Magnific. Proprietários, matrícula e documentos não estão no site e ficam para
+cadastrar no sistema. Sem `--usuario`, usa o primeiro Administrador ativo.
+
 - **Banco criado pela antiga versão Node:** os 3 scripts iniciais são os mesmos que ela aplicava; são reconhecidos
   pelo diário do Drizzle e não rodam de novo. Os demais são aplicados normalmente.
 - **Nova alteração de esquema:** crie `Dados/Migracoes/0006_descricao.sql` (o próximo número). Nunca edite um script

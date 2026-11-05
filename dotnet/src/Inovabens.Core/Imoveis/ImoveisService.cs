@@ -61,7 +61,7 @@ public sealed class ImoveisService(
     private async Task<ImovelDetalhe> Detalhe(InovabensDb db, UsuarioAtual u, Guid id)
     {
         var im = await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
-        var carac = await db.ImovelCaracteristicas.AsNoTracking().Where(c => c.ImovelId == id).OrderBy(c => c.Chave).ToListAsync();
+        var carac = await db.ImovelCaracteristicas.AsNoTracking().Where(c => c.ImovelId == id).OrderBy(c => c.Grupo).ThenBy(c => c.Chave).ToListAsync();
         var midias = await db.ImovelMidias.AsNoTracking().Where(m => m.ImovelId == id).OrderBy(m => m.Ordem).ToListAsync();
         var props = await db.ImovelProprietarios.AsNoTracking().Where(p => p.ImovelId == id)
             .Select(p => new ProprietarioDetalhe(p.PessoaId, p.Pessoa!.NomeRazao, p.Percentual, p.Principal, p.InicioEm, p.FimEm))
@@ -98,6 +98,7 @@ public sealed class ImoveisService(
         var im = new Imovel { Codigo = RegrasImovel.FormatarCodigo(n) };
         form.AplicarEm(im);
         await ExigirNomeDriveLivre(db, im.NomeDrive, exceto: null);
+        await ExigirReferenciaLivre(db, im.Referencia, exceto: null);
         im.CorretorResponsavelId = Acesso.ResponsavelAoCriar(u, form.CorretorResponsavelId);
         db.Imoveis.Add(im);
         audit.Registrar(db, u.Id, "imoveis", im.Id, "CRIAR", depois: im);
@@ -136,6 +137,15 @@ public sealed class ImoveisService(
             throw new RegraNegocioException(nameof(ImovelForm.NomeDrive), "Já existe outro imóvel com este nome de pasta no Drive.");
     }
 
+    /// <summary>A referência identifica o anúncio nos portais: não pode repetir.</summary>
+    private static async Task ExigirReferenciaLivre(InovabensDb db, string? referencia, Guid? exceto)
+    {
+        if (referencia is null) return;
+        var minuscula = referencia.ToLower();
+        if (await db.Imoveis.AnyAsync(i => i.ExcluidoEm == null && i.Id != exceto && i.Referencia != null && i.Referencia.ToLower() == minuscula))
+            throw new RegraNegocioException(nameof(ImovelForm.Referencia), "Já existe outro imóvel com esta referência.");
+    }
+
     public async Task AtualizarAsync(UsuarioAtual u, Guid id, ImovelForm form)
     {
         u.Exigir(P.ImoveisEditar);
@@ -146,6 +156,7 @@ public sealed class ImoveisService(
         var antes = im.Copia();
         form.AplicarEm(im);
         await ExigirNomeDriveLivre(db, im.NomeDrive, exceto: id);
+        await ExigirReferenciaLivre(db, im.Referencia, exceto: id);
         if (Acesso.NovoResponsavel(u, form.CorretorResponsavelId) is { } r) im.CorretorResponsavelId = r;
         // nome mudou: renomeia a pasta no Drive antes de gravar, para os dois não ficarem diferentes
         if (im.NomeDrive is { } nome && nome != antes.NomeDrive && im.DrivePastaId is { } pasta && armazenamento.Habilitado)
@@ -183,7 +194,7 @@ public sealed class ImoveisService(
         if (itens.Count > 200) throw new RegraNegocioException("caracteristicas", "Máximo de 200 características.");
         foreach (var it in itens) Validacao.Validar(it);
         // chaves repetidas (sem diferenciar maiúsculas) ficam com a última ocorrência
-        var unicos = itens.GroupBy(i => i.Chave.Trim().ToLowerInvariant()).Select(g => g.Last()).ToList();
+        var unicos = itens.GroupBy(i => (Texto.Limpo(i.Grupo)?.ToLowerInvariant(), i.Chave.Trim().ToLowerInvariant())).Select(g => g.Last()).ToList();
 
         await using var db = await fabrica.CreateDbContextAsync();
         await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
@@ -191,7 +202,7 @@ public sealed class ImoveisService(
         await db.ImovelCaracteristicas.Where(c => c.ImovelId == id).ExecuteDeleteAsync();
         db.ImovelCaracteristicas.AddRange(unicos.Select(i => new ImovelCaracteristica
         {
-            ImovelId = id, Chave = i.Chave.Trim(), Valor = Texto.Limpo(i.Valor), Publico = i.Publico,
+            ImovelId = id, Chave = i.Chave.Trim(), Valor = Texto.Limpo(i.Valor), Publico = i.Publico, Grupo = Texto.Limpo(i.Grupo),
         }));
         audit.Registrar(db, u.Id, "imoveis", id, "ATUALIZAR", depois: new { caracteristicas = itens });
         await db.SaveChangesAsync();
@@ -249,7 +260,7 @@ public sealed class ImoveisService(
     /// </summary>
     /// <param name="publica">Só vale para fotos e vídeos em "04": foto pública ganha cópia no R2 (site e portais).</param>
     public async Task EnviarMidiaAsync(UsuarioAtual u, Guid id, Stream conteudo, string nomeOriginal, string contentType,
-        int subpasta, bool publica = false, string? legenda = null, CancellationToken ct = default)
+        int subpasta, bool publica = false, string? legenda = null, CancellationToken ct = default, bool melhorar = true)
     {
         u.Exigir(P.ImoveisEditar);
         await using var db = await fabrica.CreateDbContextAsync();
@@ -279,7 +290,8 @@ public sealed class ImoveisService(
             Capa = tipo == TipoMidia.FOTO && !temFoto, // a primeira foto vira capa
             Publica = publica && tipo is TipoMidia.FOTO or TipoMidia.VIDEO, // documentos nunca vão para o site
             // com o Magnific configurado, a foto é melhorada em segundo plano (MelhoriaFotosService)
-            MelhoriaStatus = MelhoriaAutomatica(tipo, RegrasImovel.TipoInformado(contentType)) ? StatusMelhoria.PENDENTE : null,
+            // melhorar: false na importação em lote (cada foto melhorada gasta créditos do Magnific)
+            MelhoriaStatus = melhorar && MelhoriaAutomatica(tipo, RegrasImovel.TipoInformado(contentType)) ? StatusMelhoria.PENDENTE : null,
             MelhoriaAtualizadaEm = DateTime.UtcNow,
         });
         await db.SaveChangesAsync(ct);

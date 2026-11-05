@@ -1,0 +1,417 @@
+@* Página do imóvel como no site público, aberta pelo botão "Ver no site" da ficha (rota /imoveis/{id}/site).
+   Mostra só o que o site mostraria: fotos públicas, características públicas e o endereço apenas se for público. *@
+@using System.Globalization
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="/" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#03075f" />
+    <title>@Im.Titulo · Inovabens (pré-visualização)</title>
+    <link rel="icon" type="image/svg+xml" href="img/marca.svg" />
+    <link rel="stylesheet" href="site-previa.css" />
+</head>
+<body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-cama" viewBox="0 0 24 24"><path d="M3 18v-7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v7M3 14h18M3 18v2M21 18v2M7 9V6h10v3" /></symbol>
+        <symbol id="i-carro" viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1.5H6V19H3zM7.5 13.5h.01M16.5 13.5h.01" /></symbol>
+        <symbol id="i-area" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></symbol>
+        <symbol id="i-banho" viewBox="0 0 24 24"><path d="M4 12h16v3a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM6 12V6a2 2 0 0 1 4 0M7 20l-1 2M17 20l1 2" /></symbol>
+        <symbol id="i-suite" viewBox="0 0 24 24"><path d="M4 20V10l8-6 8 6v10M9 20v-6h6v6" /></symbol>
+        <symbol id="i-pino" viewBox="0 0 24 24"><path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z" /><circle cx="12" cy="10" r="2.2" /></symbol>
+        <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z" /><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.6-1.8-.9-.9.9a4 4 0 0 1-2.2-2.2l.9-.9-.9-1.8z" /></symbol>
+        <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></symbol>
+        <symbol id="i-ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></symbol>
+        <symbol id="i-fotos" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="12" rx="2" /><path d="M7 21h12a2 2 0 0 0 2-2V9" /><path d="M3 14l4-4 4 4 2-2 4 4" /></symbol>
+        <symbol id="i-sala" viewBox="0 0 24 24"><path d="M4 18v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5M3 18h18M7 11V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" /></symbol>
+    </svg>
+
+    <div class="previa-faixa">
+        <div class="miolo">
+            <span>
+                <b>Pré-visualização</b> · é assim que o @Im.Codigo aparece no site público.
+                @if (!Im.DivulgarSite)
+                {
+                    <span class="alerta"> Este imóvel não está marcado para divulgar no site.</span>
+                }
+                @if (Fotos.Count == 0)
+                {
+                    <span class="alerta"> Nenhuma foto marcada como pública.</span>
+                }
+            </span>
+            <span>
+                @if (LinkImobibrasil is not null)
+                {
+                    <a href="@LinkImobibrasil" target="_blank" rel="noopener">Ver no site atual (Imobibrasil) ↗</a>
+                    <span> · </span>
+                }
+                <a href="imoveis/@Im.Id">← Voltar à ficha do sistema</a>
+            </span>
+        </div>
+    </div>
+
+    <header class="topo">
+        <div class="miolo">
+            <span class="marca" aria-label="Inovabens">
+                <img src="img/marca.svg" alt="" />
+                <span class="marca-txt"><b>INOVA<span>BENS</span></b><small>GESTÃO PATRIMONIAL</small></span>
+            </span>
+            <nav class="nav" aria-label="Principal"><span>Comprar</span><span>Alugar</span><span>Anunciar</span><span>Sobre</span></nav>
+            <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener"><svg class="ico"><use href="#i-zap" /></svg> <span>WhatsApp</span></a>
+        </div>
+    </header>
+
+    <main class="miolo imovel-pag">
+        <nav class="trilha" aria-label="Você está em">
+            <span>Início</span><span>›</span><span>@(Locacao ? "Alugar" : "Comprar")</span>
+            @if (Im.Cidade is not null) { <span>›</span><span>@Im.Cidade</span> }
+            @if (Im.Bairro is not null) { <span>›</span><span>@Im.Bairro</span> }
+            <span>›</span><span>@Codigo</span>
+        </nav>
+
+        @if (Fotos.Count == 0)
+        {
+            <div class="sem-fotos mudo">Sem fotos públicas. Marque as fotos como públicas na ficha do imóvel.</div>
+        }
+        else
+        {
+            <div class="galeria @(Fotos.Count < 5 ? "poucas" : "")">
+                @foreach (var (f, k) in Fotos.Take(Fotos.Count < 5 ? 1 : 5).Select((f, k) => (f, k)))
+                {
+                    <button type="button" class="@(k == 0 ? "principal" : "")" data-luz="@k" aria-label="Ampliar foto @(k + 1) de @Fotos.Count">
+                        <img src="@f.Src" alt="@(f.Legenda ?? Im.Titulo)" loading="@(k == 0 ? "eager" : "lazy")" />
+                    </button>
+                }
+                <button type="button" class="ver-todas" data-luz="0"><svg class="ico"><use href="#i-fotos" /></svg> Ver as @Fotos.Count fotos</button>
+            </div>
+        }
+
+        <div class="cab-imovel">
+            <span class="rotulo">@TipoRotulo @(Locacao ? "para alugar" : "à venda") · @Codigo</span>
+            <h1>@Im.Titulo</h1>
+            @if (Onde.Length > 0)
+            {
+                <div class="local"><svg class="ico"><use href="#i-pino" /></svg>@Onde</div>
+            }
+        </div>
+
+        <div class="imovel-grade">
+            <div style="min-width:0">
+                @if (Numeros.Count > 0)
+                {
+                    <div class="bloco">
+                        <div class="numeros">
+                            @foreach (var (ico, valor, rotulo) in Numeros)
+                            {
+                                <div class="numero"><svg class="ico"><use href="#i-@ico" /></svg><b class="num">@valor</b><small>@rotulo</small></div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (Paragrafos.Count > 0)
+                {
+                    <div class="bloco">
+                        <h2>Sobre o imóvel</h2>
+                        <div class="descricao">
+                            @foreach (var p in Paragrafos)
+                            {
+                                if (p.Itens is { } itens)
+                                {
+                                    <ul class="carac">
+                                        @foreach (var it in itens)
+                                        {
+                                            <li><svg class="ico"><use href="#i-ok" /></svg>@it</li>
+                                        }
+                                    </ul>
+                                }
+                                else
+                                {
+                                    <p>@p.Texto</p>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (Grupos.Count > 0)
+                {
+                    <div class="bloco">
+                        <h2>Características</h2>
+                        @foreach (var g in Grupos)
+                        {
+                            <div class="grupo">
+                                @if (Grupos.Count > 1 || g.Key is not null)
+                                {
+                                    <h3>@(g.Key ?? "Outras")</h3>
+                                }
+                                <ul class="carac">
+                                    @foreach (var c in g)
+                                    {
+                                        <li><svg class="ico"><use href="#i-ok" /></svg>@(c.Valor is null ? c.Chave : $"{c.Chave}: {c.Valor}")</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (Dados.Count > 0)
+                {
+                    <div class="bloco">
+                        <h2>Ficha técnica</h2>
+                        <dl class="ficha-dados">
+                            @foreach (var (rotulo, valor) in Dados)
+                            {
+                                <div><dt>@rotulo</dt><dd>@valor</dd></div>
+                            }
+                        </dl>
+                    </div>
+                }
+
+                @if (YoutubeId is not null || Videos.Count > 0)
+                {
+                    <div class="bloco">
+                        <h2>Vídeo do imóvel</h2>
+                        @if (YoutubeId is not null)
+                        {
+                            <div class="video-quadro">
+                                <iframe src="https://www.youtube-nocookie.com/embed/@YoutubeId" title="Vídeo do imóvel" loading="lazy"
+                                        allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen></iframe>
+                            </div>
+                        }
+                        @foreach (var v in Videos)
+                        {
+                            <div class="video-quadro"><video src="@v" controls preload="metadata" style="width:100%;height:100%"></video></div>
+                        }
+                    </div>
+                }
+
+                @if (ConsultaMapa is not null)
+                {
+                    <div class="bloco">
+                        <h2>Localização</h2>
+                        <div class="mapa-quadro">
+                            <iframe src="https://www.google.com/maps?q=@Uri.EscapeDataString(ConsultaMapa)&z=@(Im.EnderecoPublico ? 16 : 13)&output=embed"
+                                    title="Mapa da localização" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                        </div>
+                        @if (Im.EnderecoPublico)
+                        {
+                            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                                <span>@EnderecoCompleto</span>
+                                @if (LinkMapa is not null)
+                                {
+                                    <a class="btn btn-linha" href="@LinkMapa" target="_blank" rel="noopener"><svg class="ico"><use href="#i-mapa" /></svg> Abrir no Google Maps</a>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="mudo" style="font-size:.85rem">Mostramos a região aproximada. O endereço exato é informado no atendimento.</p>
+                        }
+                    </div>
+                }
+            </div>
+
+            <aside class="contato" aria-label="Fale com a Inovabens">
+                <div>
+                    <span class="mudo" style="font-size:.82rem">@(Locacao ? "Aluguel" : "Valor de venda")</span>
+                    <div class="preco num">@PrecoTexto</div>
+                    @if (Custos.Count > 0)
+                    {
+                        <div class="mudo num" style="font-size:.84rem">@string.Join(" · ", Custos)</div>
+                    }
+                </div>
+                @if (Selos.Count > 0)
+                {
+                    <div class="selos">
+                        @foreach (var s in Selos)
+                        {
+                            <span class="selo">@s</span>
+                        }
+                    </div>
+                }
+                <div class="corretor">
+                    <span class="avatar">@Iniciais</span>
+                    <div><b>@(CorretorNome ?? "Equipe Inovabens")</b><div class="mudo" style="font-size:.82rem">Inovabens · CRECI 50457-J</div></div>
+                </div>
+                <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-zap" /></svg> Conversar no WhatsApp</a>
+                <p class="mudo" style="font-size:.8rem">No site publicado aqui entram também o agendamento de visita e o formulário de contato, que vira lead no CRM.</p>
+            </aside>
+        </div>
+    </main>
+
+    <footer class="rodape">
+        <div class="miolo">
+            <span><b>Inova Bens Gestão Patrimonial</b> · CRECI 50457-J</span>
+            <span>Av. Pres. Juscelino K. de Oliveira, 391 · Jardim Panorama · São José do Rio Preto - SP · @TelefoneTexto</span>
+        </div>
+    </footer>
+
+    @if (Fotos.Count > 0)
+    {
+        <dialog class="luz" id="luz" aria-label="Fotos do imóvel">
+            <div class="luz-topo"><span class="num" id="luzConta"></span><button type="button" class="btn-ico" id="luzFechar" aria-label="Fechar">✕</button></div>
+            <div class="luz-palco">
+                <button type="button" class="luz-nav ant" id="luzAnt" aria-label="Foto anterior">‹</button>
+                <img id="luzFoto" alt="" />
+                <button type="button" class="luz-nav prox" id="luzProx" aria-label="Próxima foto">›</button>
+            </div>
+            <div class="luz-legenda" id="luzLegenda"></div>
+        </dialog>
+        <script id="fotos-dados" type="application/json">@((MarkupString)FotosJson)</script>
+        <script>
+            (() => {
+                const fotos = JSON.parse(document.getElementById("fotos-dados").textContent);
+                const luz = document.getElementById("luz"), img = document.getElementById("luzFoto");
+                let atual = 0;
+                const mostrar = k => {
+                    atual = (k + fotos.length) % fotos.length;
+                    img.src = fotos[atual].src;
+                    img.alt = fotos[atual].legenda || "";
+                    document.getElementById("luzLegenda").textContent = fotos[atual].legenda || "";
+                    document.getElementById("luzConta").textContent = `${atual + 1} / ${fotos.length}`;
+                    new Image().src = fotos[(atual + 1) % fotos.length].src;
+                };
+                document.querySelectorAll("[data-luz]").forEach(b => b.addEventListener("click", () => { mostrar(+b.dataset.luz); luz.showModal(); }));
+                document.getElementById("luzAnt").onclick = () => mostrar(atual - 1);
+                document.getElementById("luzProx").onclick = () => mostrar(atual + 1);
+                document.getElementById("luzFechar").onclick = () => luz.close();
+                luz.addEventListener("keydown", e => { if (e.key === "ArrowLeft") mostrar(atual - 1); if (e.key === "ArrowRight") mostrar(atual + 1); });
+                let x0 = null;
+                luz.addEventListener("touchstart", e => x0 = e.touches[0].clientX, { passive: true });
+                luz.addEventListener("touchend", e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) mostrar(atual + (dx < 0 ? 1 : -1)); x0 = null; });
+            })();
+        </script>
+    }
+</body>
+</html>
+
+@code {
+    /// <summary>WhatsApp e telefone do site atual da Inovabens.</summary>
+    public const string Whatsapp = "5517981850171";
+    public const string TelefoneTexto = "(17) 98185-0171";
+
+    [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
+    [Parameter] public string? LinkImobibrasil { get; set; }
+
+    private sealed record FotoSite(string Src, string? Legenda);
+    private sealed record Paragrafo(string? Texto, IReadOnlyList<string>? Itens);
+
+    private static readonly CultureInfo Br = Texto.PtBr;
+
+    private Imovel Im => Detalhe.Dados;
+    private bool Locacao => Im.Finalidade == FinalidadeImovel.LOCACAO;
+    private string Codigo => Im.Referencia ?? Im.Codigo;
+    private string? CorretorNome => Detalhe.CorretorNome;
+    private string TipoRotulo => Im.Subtipo ?? Texto.Rotulo(Im.Tipo);
+    private bool Rural => Im.Tipo is "fazenda/sítio" or "Chácara" || (Im.Zona?.Contains("rural", StringComparison.OrdinalIgnoreCase) ?? false);
+
+    private List<FotoSite> Fotos = [];
+    private List<string> Videos = [];
+    private List<Paragrafo> Paragrafos = [];
+    private List<IGrouping<string?, ImovelCaracteristica>> Grupos = [];
+    private List<(string Ico, string Valor, string Rotulo)> Numeros = [];
+    private List<(string Rotulo, string Valor)> Dados = [];
+    private List<string> Custos = [];
+    private List<string> Selos = [];
+    private string FotosJson = "[]";
+
+    private string Onde => $"{(Im.Bairro is { } b ? b + ", " : "")}{Im.Cidade}{(Im.Uf is { } uf ? " - " + uf : "")}";
+
+    private string? EnderecoCompleto => RegrasImovel.EnderecoParaMapa(Im.Logradouro, Im.Numero, Im.Bairro, Im.Cidade, Im.Uf, null)?.Replace(", Brasil", "");
+
+    /// <summary>Endereço público: ponto exato; senão, só bairro e cidade.</summary>
+    private string? ConsultaMapa => Im.EnderecoPublico
+        ? (Im.Latitude is { } la && Im.Longitude is { } lo ? RegrasImovel.FormatarCoordenadas(la, lo).Replace(" ", "") : EnderecoCompleto)
+        : RegrasImovel.EnderecoParaMapa(null, null, Im.Bairro, Im.Cidade, Im.Uf, null);
+
+    private string? LinkMapa => RegrasImovel.LinkGoogleMaps(Im.Latitude, Im.Longitude, EnderecoCompleto);
+
+    private string? YoutubeId => RegrasImovel.IdYoutube(Im.VideoUrl);
+
+    private decimal? Preco => Locacao ? Im.PrecoLocacao : Im.PrecoVenda ?? Im.PrecoLocacao;
+    private string PrecoTexto => Preco is { } p ? p.ToString("C0", Br) + (Locacao ? "/mês" : "") : "Consulte";
+
+    private string Iniciais => CorretorNome is { } n
+        ? string.Concat(n.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(p => char.ToUpperInvariant(p[0])))
+        : "IB";
+
+    private string LinkWhatsapp => $"https://wa.me/{Whatsapp}?text=" + Uri.EscapeDataString(
+        $"Olá! Tenho interesse no imóvel {Codigo} ({Im.Titulo}). Pode me passar mais informações?");
+
+    protected override void OnParametersSet()
+    {
+        var midias = Detalhe.Midias.Where(m => m.Midia.Publica && m.Url is not null)
+            .OrderByDescending(m => m.Midia.Capa).ThenBy(m => m.Midia.Ordem).ToList();
+        Fotos = [.. midias.Where(m => m.Midia.Tipo == TipoMidia.FOTO).Select(m => new FotoSite(m.UrlPublica ?? m.Url!, m.Midia.Legenda))];
+        Videos = [.. midias.Where(m => m.Midia.Tipo == TipoMidia.VIDEO).Select(m => m.Url!)];
+        FotosJson = System.Text.Json.JsonSerializer.Serialize(Fotos.Select(f => new { src = f.Src, legenda = f.Legenda }))
+            .Replace("<", "\\u003c"); // dentro de <script>: nunca fecha a tag
+
+        Paragrafos = [];
+        List<string>? lista = null;
+        foreach (var linha in (Im.DescricaoPublica ?? "").Split('\n').Select(l => l.Trim()))
+        {
+            // itens de lista: "- item" (importação) ou "• item" (texto colado do anúncio)
+            if (linha.StartsWith("- ", StringComparison.Ordinal) || linha.StartsWith('•')) { (lista ??= []).Add(linha.TrimStart('-', '•', ' ').Trim()); continue; }
+            if (lista is not null) { Paragrafos.Add(new(null, lista)); lista = null; }
+            if (linha.Length > 0) Paragrafos.Add(new(linha, null));
+        }
+        if (lista is not null) Paragrafos.Add(new(null, lista));
+
+        Grupos = [.. Detalhe.Caracteristicas.Where(c => c.Publico)
+            .GroupBy(c => c.Grupo)
+            .OrderBy(g => g.Key is null ? 99 : (RegrasImovel.GruposCaracteristicas.ToList().IndexOf(g.Key) is var i and >= 0 ? i : 50))];
+
+        Numeros = [];
+        var terreno = Im.AreaTerrenoM2 ?? (Rural ? Im.AreaTotalM2 : null);
+        if (terreno is { } t) Numeros.Add(("area", Area(t), Rural || t >= 10_000 ? "Área do terreno" : "Terreno"));
+        if ((Im.AreaConstruidaM2 ?? Im.AreaUtilM2 ?? (terreno is null ? Im.AreaTotalM2 : null)) is { } a)
+            Numeros.Add(("area", Area(a), Im.AreaConstruidaM2 is not null ? "Área construída" : Im.AreaUtilM2 is not null ? "Área útil" : "Área total"));
+        if (Im.Quartos is > 0 and var q) Numeros.Add(("cama", q.ToString(), q > 1 ? "Quartos" : "Quarto"));
+        if (Im.Suites is > 0 and var s) Numeros.Add(("suite", s.ToString(), s > 1 ? "Suítes" : "Suíte"));
+        if (Im.Banheiros is > 0 and var b) Numeros.Add(("banho", b.ToString(), b > 1 ? "Banheiros" : "Banheiro"));
+        if (Im.Salas is > 0 and var sl) Numeros.Add(("sala", sl.ToString(), sl > 1 ? "Salas" : "Sala"));
+        if (Im.Vagas is > 0 and var v) Numeros.Add(("carro", v.ToString(), v > 1 ? "Vagas" : "Vaga"));
+
+        Dados = [];
+        void D(string rotulo, string? valor) { if (!string.IsNullOrWhiteSpace(valor)) Dados.Add((rotulo, valor)); }
+        D("Referência", Codigo);
+        D("Tipo", TipoRotulo);
+        D("Área total", M2(Im.AreaTotalM2));
+        D("Área construída", M2(Im.AreaConstruidaM2));
+        D("Área útil", M2(Im.AreaUtilM2));
+        D("Área do terreno", M2(Im.AreaTerrenoM2));
+        D("Frente", Metros(Im.TerrenoFrenteM));
+        D("Fundo", Metros(Im.TerrenoFundoM));
+        D("Lado esquerdo", Metros(Im.TerrenoEsquerdaM));
+        D("Lado direito", Metros(Im.TerrenoDireitaM));
+        D("Pavimento", Im.Pavimento);
+        D("Ano de construção", Im.AnoConstrucao?.ToString());
+        D("Região", Im.Regiao);
+        if (Im.EnderecoPublico) D("Ponto de referência", Im.PontoReferencia);
+        if (!Locacao && Im.PrecoVenda is { } pv && (Im.AreaConstruidaM2 ?? Im.AreaTerrenoM2 ?? Im.AreaTotalM2) is { } base_ and > 0)
+            D("Valor por m²", (pv / base_).ToString("C0", Br));
+
+        Custos = [];
+        if (Im.ValorCondominio is { } cond) Custos.Add($"Condomínio {cond.ToString("C0", Br)}");
+        if (Im.ValorIptu is { } iptu) Custos.Add($"IPTU {iptu.ToString("C0", Br)}");
+
+        Selos = [];
+        if (Im.AceitaPermuta) Selos.Add("Aceita permuta");
+        if (Im.EmCondominio) Selos.Add("Em condomínio");
+        if (Rural) Selos.Add("Zona rural");
+    }
+
+    private static string? M2(decimal? v) => v is { } x ? Area(x) : null;
+
+    /// <summary>Áreas grandes também em hectares ("30.417 m² · 3,04 ha").</summary>
+    private static string Area(decimal m2) =>
+        m2 >= 10_000 ? $"{m2.ToString("N0", Br)} m² · {(m2 / 10_000).ToString("0.##", Br)} ha" : $"{m2.ToString(m2 % 1 == 0 ? "N0" : "N2", Br)} m²";
+
+    private static string? Metros(decimal? v) => v is { } x ? $"{x.ToString(x % 1 == 0 ? "N0" : "N2", Br)} m" : null;
+}

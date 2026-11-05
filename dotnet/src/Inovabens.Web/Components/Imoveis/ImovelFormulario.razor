@@ -26,6 +26,11 @@
             <ValidationMessage For="() => Form.Tipo" />
         </label>
         <label class="campo">
+            <span>Referência</span>
+            <InputText class="input" @bind-Value="Form.Referencia" placeholder="Ex.: CA0060" />
+            <ValidationMessage For="() => Form.Referencia" />
+        </label>
+        <label class="campo">
             <span>Corretor responsável</span>
             <select class="input" @bind="CorretorSelecionado" disabled="@Usuario.EscopoProprio">
                 <option value="">(eu / automático)</option>
@@ -71,6 +76,9 @@
         <label class="campo"><span>Complemento</span><InputText class="input" @bind-Value="Form.Complemento" /><ValidationMessage For="() => Form.Complemento" /></label>
         <label class="campo"><span>Bairro</span><InputText class="input" @bind-Value="Form.Bairro" /><ValidationMessage For="() => Form.Bairro" /></label>
         <label class="campo"><span>Cidade</span><InputText class="input" @bind-Value="Form.Cidade" /><ValidationMessage For="() => Form.Cidade" /></label>
+        <label class="campo"><span>Zona</span><InputText class="input" @bind-Value="Form.Zona" placeholder="Ex.: Centro, Rural, ZR 07" /><ValidationMessage For="() => Form.Zona" /></label>
+        <label class="campo"><span>Região</span><InputText class="input" @bind-Value="Form.Regiao" placeholder="Ex.: Alto Rio Preto" /><ValidationMessage For="() => Form.Regiao" /></label>
+        <label class="campo col-2"><span>Ponto de referência</span><InputText class="input" @bind-Value="Form.PontoReferencia" /><ValidationMessage For="() => Form.PontoReferencia" /></label>
         <label class="campo">
             <span>UF</span>
             <InputSelect class="input" @bind-Value="Form.Uf">
@@ -111,12 +119,27 @@
         <label class="campo"><span>Área total (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaTotalM2" /><ValidationMessage For="() => Form.AreaTotalM2" /></label>
         <label class="campo"><span>Área construída (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaConstruidaM2" /><ValidationMessage For="() => Form.AreaConstruidaM2" /></label>
         <label class="campo"><span>Área útil (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaUtilM2" /><ValidationMessage For="() => Form.AreaUtilM2" /></label>
+        <label class="campo"><span>Área do terreno (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaTerrenoM2" /><ValidationMessage For="() => Form.AreaTerrenoM2" /></label>
+        <label class="campo"><span>Terreno: frente (m)</span><InputNumber class="input" step="0.01" @bind-Value="Form.TerrenoFrenteM" /><ValidationMessage For="() => Form.TerrenoFrenteM" /></label>
+        <label class="campo"><span>Terreno: fundo (m)</span><InputNumber class="input" step="0.01" @bind-Value="Form.TerrenoFundoM" /><ValidationMessage For="() => Form.TerrenoFundoM" /></label>
+        <label class="campo"><span>Terreno: lado esquerdo (m)</span><InputNumber class="input" step="0.01" @bind-Value="Form.TerrenoEsquerdaM" /><ValidationMessage For="() => Form.TerrenoEsquerdaM" /></label>
+        <label class="campo"><span>Terreno: lado direito (m)</span><InputNumber class="input" step="0.01" @bind-Value="Form.TerrenoDireitaM" /><ValidationMessage For="() => Form.TerrenoDireitaM" /></label>
         <label class="campo"><span>Quartos</span><InputNumber class="input" @bind-Value="Form.Quartos" /><ValidationMessage For="() => Form.Quartos" /></label>
         <label class="campo"><span>Suítes</span><InputNumber class="input" @bind-Value="Form.Suites" /><ValidationMessage For="() => Form.Suites" /></label>
         <label class="campo"><span>Banheiros</span><InputNumber class="input" @bind-Value="Form.Banheiros" /><ValidationMessage For="() => Form.Banheiros" /></label>
+        <label class="campo"><span>Salas</span><InputNumber class="input" @bind-Value="Form.Salas" /><ValidationMessage For="() => Form.Salas" /></label>
         <label class="campo"><span>Vagas</span><InputNumber class="input" @bind-Value="Form.Vagas" /><ValidationMessage For="() => Form.Vagas" /></label>
+        <label class="campo"><span>Pavimento</span><InputText class="input" @bind-Value="Form.Pavimento" placeholder="Ex.: térreo, 2 pavimentos" /><ValidationMessage For="() => Form.Pavimento" /></label>
+        <label class="campo"><span>Ano de construção</span><InputNumber class="input" @bind-Value="Form.AnoConstrucao" /><ValidationMessage For="() => Form.AnoConstrucao" /></label>
         <label class="campo"><span>Preço de venda (R$)</span><InputNumber class="input" step="0.01" @bind-Value="Form.PrecoVenda" /><ValidationMessage For="() => Form.PrecoVenda" /></label>
         <label class="campo"><span>Preço de locação (R$)</span><InputNumber class="input" step="0.01" @bind-Value="Form.PrecoLocacao" /><ValidationMessage For="() => Form.PrecoLocacao" /></label>
+        <label class="campo"><span>Condomínio (R$/mês)</span><InputNumber class="input" step="0.01" @bind-Value="Form.ValorCondominio" /><ValidationMessage For="() => Form.ValorCondominio" /></label>
+        <label class="campo"><span>IPTU (R$)</span><InputNumber class="input" step="0.01" @bind-Value="Form.ValorIptu" /><ValidationMessage For="() => Form.ValorIptu" /></label>
+        <label class="campo col-2">
+            <span>Vídeo no YouTube</span>
+            <InputText class="input" @bind-Value="Form.VideoUrl" placeholder="https://www.youtube.com/watch?v=…" />
+            <ValidationMessage For="() => Form.VideoUrl" />
+        </label>
     </div>
 
     <label class="campo">
@@ -131,6 +154,8 @@
     <div class="checks">
         <label><InputCheckbox @bind-Value="Form.DivulgarSite" /> Divulgar no site</label>
         <label><InputCheckbox @bind-Value="Form.EnderecoPublico" /> Endereço público</label>
+        <label><InputCheckbox @bind-Value="Form.AceitaPermuta" /> Aceita permuta</label>
+        <label><InputCheckbox @bind-Value="Form.EmCondominio" /> Em condomínio</label>
     </div>
 
     <button type="submit" class="btn-primary" disabled="@Ocupado">@(Ocupado ? "Salvando…" : RotuloBotao)</button>

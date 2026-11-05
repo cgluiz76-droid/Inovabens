@@ -34,6 +34,7 @@ public static class Registro
         services.AddScoped<AuthService>();
         services.AddScoped<OpcoesService>();
         services.AddScoped<ImoveisService>();
+        services.AddScoped<ImportacaoImobibrasilService>();
         services.AddSingleton<GeocodificacaoService>();
         services.AddSingleton<CepService>();
         services.AddSingleton(sp => new MagnificCliente(new HttpClient { Timeout = TimeSpan.FromMinutes(2) }, op));

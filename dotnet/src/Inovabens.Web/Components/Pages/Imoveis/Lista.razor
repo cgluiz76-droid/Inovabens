@@ -41,7 +41,7 @@ else
     <div class="tabela-container">
         <table class="tabela">
             <thead>
-                <tr><th>Código</th><th>Imóvel</th><th>Local</th><th>Situação</th><th>Preço</th><th>Corretor</th></tr>
+                <tr><th>Código</th><th>Imóvel</th><th>Local</th><th>Situação</th><th>Preço</th><th>Corretor</th><th>Site</th></tr>
             </thead>
             <tbody>
                 @foreach (var i in resultado.Itens)
@@ -56,6 +56,8 @@ else
                         <td><span class="badge">@Texto.Rotulo(i.Situacao)</span></td>
                         <td>@Texto.Moeda(i.PrecoVenda ?? i.PrecoLocacao)</td>
                         <td>@(i.CorretorNome ?? "—")</td>
+                        <td><a class="btn-ghost mini" href="imoveis/@i.Id/site" target="_blank" rel="noopener"
+                               title="Ver como aparece no site público">🌐 Site</a></td>
                     </tr>
                 }
             </tbody>

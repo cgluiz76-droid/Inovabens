@@ -21,6 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- páginas públicas do site Imobibrasil salvas em 2026-11-05, para os testes do leitor -->
+    <None Include="Dados\*.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Inovabens.Core\Inovabens.Core.csproj" />
     <ProjectReference Include="..\..\src\Inovabens.Web\Inovabens.Web.csproj" />
   </ItemGroup>

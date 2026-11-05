@@ -173,6 +173,24 @@ public class FluxosTests(Aplicacao app)
     }
 
     [Fact]
+    public async Task Botao_ver_no_site_abre_a_previa_publica_do_imovel()
+    {
+        var s = Navegacao.Sufixo();
+        var p = await app.NovaPaginaAsync();
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+        await p.CriarImovelAsync($"Casa Site {s}");
+
+        var previa = await p.Context.RunAndWaitForPageAsync(() => p.GetByRole(AriaRole.Link, new() { Name = "Ver no site" }).ClickAsync());
+        await Expect(previa.GetByRole(AriaRole.Heading, new() { Name = $"Casa Site {s}", Level = 1 })).ToBeVisibleAsync();
+        await Expect(previa.GetByText("Pré-visualização")).ToBeVisibleAsync();
+        // sem fotos públicas e sem "divulgar no site": a faixa avisa
+        await Expect(previa.GetByText("Nenhuma foto marcada como pública.")).ToBeVisibleAsync();
+        await Expect(previa.GetByRole(AriaRole.Link, new() { Name = "Conversar no WhatsApp" })).ToHaveAttributeAsync("href", new System.Text.RegularExpressions.Regex(@"^https://wa\.me/5517981850171\?text="));
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA") is { } arquivo)
+            await previa.ScreenshotAsync(new() { Path = arquivo, FullPage = true });
+    }
+
+    [Fact]
     public async Task Dois_fatores_ativado_pela_conta_passa_a_ser_exigido_no_login()
     {
         var s = Navegacao.Sufixo();

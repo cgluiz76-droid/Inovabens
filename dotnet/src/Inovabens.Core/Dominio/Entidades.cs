@@ -41,6 +41,27 @@ public class Imovel
     public int? Vagas { get; set; }
     public decimal? PrecoVenda { get; set; }
     public decimal? PrecoLocacao { get; set; }
+    /// <summary>Código de referência dos anúncios (ex.: CA0060), o mesmo usado no Imobibrasil e nos portais.</summary>
+    public string? Referencia { get; set; }
+    /// <summary>Id do anúncio no Imobibrasil (www.inovabens.com.br/imovel/{id}); reimportar atualiza em vez de duplicar.</summary>
+    public long? ImobibrasilId { get; set; }
+    public decimal? AreaTerrenoM2 { get; set; }
+    public decimal? TerrenoFrenteM { get; set; }
+    public decimal? TerrenoFundoM { get; set; }
+    public decimal? TerrenoEsquerdaM { get; set; }
+    public decimal? TerrenoDireitaM { get; set; }
+    public string? Zona { get; set; }
+    public string? Regiao { get; set; }
+    public string? PontoReferencia { get; set; }
+    public string? Pavimento { get; set; }
+    public int? AnoConstrucao { get; set; }
+    public int? Salas { get; set; }
+    public bool AceitaPermuta { get; set; }
+    public bool EmCondominio { get; set; }
+    public decimal? ValorCondominio { get; set; }
+    public decimal? ValorIptu { get; set; }
+    /// <summary>Vídeo do anúncio no YouTube.</summary>
+    public string? VideoUrl { get; set; }
     public bool DivulgarSite { get; set; }
     public Guid? CorretorResponsavelId { get; set; }
     /// <summary>Nome da pasta principal do imóvel no Google Drive ("Nome para Drive do Empreendimento").</summary>
@@ -71,6 +92,8 @@ public class ImovelCaracteristica
     public string Chave { get; set; } = "";
     public string? Valor { get; set; }
     public bool Publico { get; set; } = true;
+    /// <summary>Características, Cômodos ou Proximidades (como no Imobibrasil); null = sem grupo.</summary>
+    public string? Grupo { get; set; }
 }
 
 [Table("imovel_midias")]

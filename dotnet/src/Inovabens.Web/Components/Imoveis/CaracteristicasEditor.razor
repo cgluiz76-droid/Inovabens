@@ -9,6 +9,13 @@
     @foreach (var it in itens)
     {
         <div class="linha-itens">
+            <select class="input" disabled="@(!Editar)" @bind="it.Grupo" title="Grupo">
+                <option value="">(sem grupo)</option>
+                @foreach (var g in RegrasImovel.GruposCaracteristicas)
+                {
+                    <option value="@g">@g</option>
+                }
+            </select>
             <input class="input w-texto" placeholder="Ex.: Piscina" maxlength="80" disabled="@(!Editar)" @bind="it.Chave" />
             <input class="input w-texto" placeholder="Valor (opcional)" maxlength="200" disabled="@(!Editar)" @bind="it.Valor" />
             <label class="check"><input type="checkbox" disabled="@(!Editar)" @bind="it.Publico" /> Público</label>
@@ -44,7 +51,7 @@
     {
         if (ReferenceEquals(carregado, Detalhe)) return;
         carregado = Detalhe;
-        itens = Detalhe.Caracteristicas.Select(c => new CaracteristicaEntrada { Chave = c.Chave, Valor = c.Valor, Publico = c.Publico }).ToList();
+        itens = Detalhe.Caracteristicas.Select(c => new CaracteristicaEntrada { Chave = c.Chave, Valor = c.Valor, Publico = c.Publico, Grupo = c.Grupo }).ToList();
     }
 
     private async Task Salvar()

@@ -33,6 +33,8 @@ else
             }
         </div>
         <div class="acoes-topo">
+            <a class="btn-ghost" href="imoveis/@Id/site" target="_blank" rel="noopener"
+               title="Abre o imóvel como ele aparece no site público da Inovabens">🌐 Ver no site</a>
             @if (Usuario.Pode(Permissoes.ImoveisExportar))
             {
                 <a class="btn-ghost" href="imoveis/@Id/ficha.pdf" download>Ficha PDF</a>

@@ -42,8 +42,21 @@ public static class RegrasImovel
     /// <summary>Próximo código sequencial no formato IMV-000123.</summary>
     public static string FormatarCodigo(int numero) => $"IMV-{numero:D6}";
 
-    /// <summary>Limite de fotos por imóvel (vídeos, plantas e documentos não contam).</summary>
-    public const int MaximoFotos = 20;
+    /// <summary>Limite de fotos por imóvel (vídeos, plantas e documentos não contam). Anúncios do Imobibrasil chegam a 56.</summary>
+    public const int MaximoFotos = 60;
+
+    /// <summary>Grupos de características, os mesmos do Imobibrasil.</summary>
+    public static readonly IReadOnlyList<string> GruposCaracteristicas = ["Características", "Cômodos", "Proximidades"];
+
+    /// <summary>Id do vídeo (11 caracteres) num link do YouTube (watch, youtu.be, embed, shorts); null se não for do YouTube.</summary>
+    public static string? IdYoutube(string? link)
+    {
+        if (Texto.Limpo(link) is not { } l) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(l,
+            @"^(?:https?://)?(?:www\.|m\.)?(?:youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|live/)|youtu\.be/)([\w-]{11})(?:[?&#/].*)?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value : null;
+    }
 
     public static IReadOnlyList<(string Sigla, string Nome)> Ufs => Formatos.Ufs;
 
