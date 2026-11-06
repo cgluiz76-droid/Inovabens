@@ -26,6 +26,9 @@ public static class SubpastasDrive
         (Protocolos, "06 - Protocolos"),
     ];
 
+    /// <summary>Comprovantes de receitas e despesas (por ano). Só o financeiro grava aqui; não é opção no envio de mídias.</summary>
+    public const string Financeiro = "07 - Financeiro";
+
     public static bool Valida(int numero) => numero is >= Matricula and <= Protocolos;
 
     public static string Nome(int numero) =>
@@ -84,6 +87,23 @@ public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, I
         var raiz = await GarantirAsync(imovelId, ct);
         return await Chamar(async () =>
             await armazenamento.BuscarPastaAsync(nome, raiz, ct) ?? await armazenamento.CriarPastaAsync(nome, raiz, ct));
+    }
+
+    /// <summary>
+    /// Pasta dos comprovantes financeiros do ano: "&lt;pasta do imóvel&gt;/07 - Financeiro/&lt;ano&gt;" (criada quando
+    /// falta). Fica depois das seis subpastas de documentos e não aparece no envio de mídias.
+    /// </summary>
+    public async Task<string> PastaFinanceiroAsync(Guid imovelId, int ano, CancellationToken ct = default)
+    {
+        var raiz = await GarantirAsync(imovelId, ct);
+        return await Chamar(async () =>
+        {
+            var financeiro = await armazenamento.BuscarPastaAsync(SubpastasDrive.Financeiro, raiz, ct)
+                ?? await armazenamento.CriarPastaAsync(SubpastasDrive.Financeiro, raiz, ct);
+            var nomeAno = ano.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return await armazenamento.BuscarPastaAsync(nomeAno, financeiro, ct)
+                ?? await armazenamento.CriarPastaAsync(nomeAno, financeiro, ct);
+        });
     }
 
     public Task RenomearAsync(string pastaId, string nome, CancellationToken ct = default) =>

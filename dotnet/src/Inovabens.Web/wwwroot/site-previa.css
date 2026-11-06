@@ -186,6 +186,12 @@ button { font: inherit; color: inherit; }
 
 /* simulador de financiamento */
 #simulador { scroll-margin-top: 90px; }
+.sim-cab { display: grid; grid-template-columns: auto 1fr auto; gap: 16px 20px; align-items: center; margin: 8px 0 20px; }
+.sim-cab img { width: 140px; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; }
+.sim-cab h1 { font-size: 1.35rem; margin: 2px 0; }
+.sim-cab .preco { font-size: 1.3rem; }
+.sim-cab-acoes { display: grid; gap: 8px; }
+@media (max-width: 720px) { .sim-cab { grid-template-columns: 1fr; } .sim-cab img { width: 100%; max-height: 220px; } }
 .aviso-simulacao { margin: 0; padding: 12px 14px; border-radius: 12px; border-left: 4px solid var(--ouro); background: color-mix(in srgb, var(--ouro) 12%, var(--sup)); }
 .simulador { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 16px; }
 .simulador > label { display: grid; gap: 5px; font-size: .85rem; font-weight: 600; }

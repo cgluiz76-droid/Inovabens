@@ -1,5 +1,6 @@
 @inherits ComponenteBase
 @inject ReceitasService Servico
+@inject ComprovantesService Comprovantes
 @inject IJSRuntime JS
 
 <section class="card">
@@ -18,7 +19,7 @@
     {
         <div class="tabela-container">
             <table class="tabela">
-                <thead><tr><th>Tipo</th><th>Data</th><th>Bruto</th><th>Custos</th><th>Tributos</th><th>Líquido</th><th></th></tr></thead>
+                <thead><tr><th>Tipo</th><th>Data</th><th>Bruto</th><th>Custos</th><th>Tributos</th><th>Líquido</th><th>Comprovantes</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var r in receitas)
                     {
@@ -29,6 +30,10 @@
                             <td>@Texto.Moeda(r.CustosVenda)</td>
                             <td>@Texto.Moeda(r.Tributos)</td>
                             <td><b>@Texto.Moeda(r.ValorLiquido)</b></td>
+                            <td>
+                                <ComprovantesAnexos Origem="OrigemComprovante.DaReceita(r.Id)" Quantidade="@contagem.GetValueOrDefault(r.Id)"
+                                                    Titulo="@($"{Texto.Rotulo(r.Tipo)} de {Texto.Data(r.Data)}")" AoAlterar="CarregarContagem" />
+                            </td>
                             <td class="acoes-linha">
                                 @if (Editar)
                                 {
@@ -56,7 +61,14 @@
             <label class="campo-inline"><span>Bruto</span><InputNumber class="input w-valor" step="0.01" @bind-Value="form.ValorBruto" /></label>
             <label class="campo-inline"><span>Custos da venda</span><InputNumber class="input w-valor" step="0.01" @bind-Value="form.CustosVenda" /></label>
             <label class="campo-inline"><span>Tributos</span><InputNumber class="input w-valor" step="0.01" @bind-Value="form.Tributos" /></label>
-            <button type="submit" class="btn-primary" disabled="@Ocupado">Lançar</button>
+            @if (Usuario.Pode(Permissoes.FinanceiroEditar) && Comprovantes.Habilitado)
+            {
+                <label class="btn-ghost" title="Notas, recibos ou contratos; ficam no Drive em 07 - Financeiro">
+                    📎 @(anexos.Count > 0 ? $"{anexos.Count} comprovante(s)" : "Anexar comprovantes")
+                    <InputFile @key="chaveAnexos" OnChange="EscolherAnexos" class="oculto" disabled="@Ocupado" multiple />
+                </label>
+            }
+            <button type="submit" class="btn-primary" disabled="@Ocupado">@(progresso ?? "Lançar")</button>
             <ValidationSummary class="resumo-validacao" />
         </EditForm>
         <p class="pequeno mudo">Lançar uma receita de venda muda a situação do imóvel para Vendido.</p>
@@ -69,19 +81,52 @@
     [Parameter] public Func<Task>? AoAlterar { get; set; }
 
     private IReadOnlyList<Receita>? receitas;
+    private IReadOnlyDictionary<Guid, int> contagem = new Dictionary<Guid, int>();
     private ReceitaForm form = NovoForm();
+    // comprovantes escolhidos no formulário: enviados logo depois de lançar a receita
+    private IReadOnlyList<IBrowserFile> anexos = [];
+    private Guid chaveAnexos = Guid.NewGuid();
+    private string? progresso;
 
     private static ReceitaForm NovoForm() => new() { Data = DatasBR.Hoje() };
 
     protected override Task OnInitializedAsync() => Carregar();
 
-    private Task Carregar() => Executar(async () => receitas = await Servico.ListarAsync(Usuario, ImovelId));
+    private Task Carregar() => Executar(async () =>
+    {
+        receitas = await Servico.ListarAsync(Usuario, ImovelId);
+        contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId);
+    });
+
+    private async Task CarregarContagem()
+    {
+        await Executar(async () => contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId));
+    }
+
+    private void EscolherAnexos(InputFileChangeEventArgs e)
+    {
+        Erro = null;
+        try { anexos = EnvioComprovantes.Selecionar(e); }
+        catch (RegraNegocioException ex) { anexos = []; Erro = ex.Message; }
+    }
 
     private async Task Lancar()
     {
-        if (!await Executar(() => Servico.CriarAsync(Usuario, ImovelId, form))) return;
+        Receita? nova = null;
+        if (!await Executar(async () => nova = await Servico.CriarAsync(Usuario, ImovelId, form))) return;
+        var erroAnexo = (string?)null;
+        if (anexos.Count > 0 && nova is not null)
+        {
+            if (!await Executar(() => EnvioComprovantes.EnviarAsync(Comprovantes, Usuario, OrigemComprovante.DaReceita(nova.Id), anexos,
+                    (i, total) => { progresso = $"Enviando {i} de {total}…"; StateHasChanged(); })))
+                erroAnexo = $"Receita lançada, mas um comprovante não foi enviado: {Erro} Anexe de novo pelo botão 📎 da receita.";
+            progresso = null;
+        }
         form = NovoForm();
+        anexos = [];
+        chaveAnexos = Guid.NewGuid(); // InputFile novo: limpa a seleção
         await Depois();
+        Erro ??= erroAnexo;
     }
 
     private async Task Excluir(Guid id)

@@ -1,5 +1,6 @@
 @inherits ComponenteBase
 @inject DespesasService Servico
+@inject ComprovantesService Comprovantes
 @inject IJSRuntime JS
 
 <section class="card">
@@ -33,7 +34,7 @@
         {
             <div class="tabela-container">
                 <table class="tabela">
-                    <thead><tr><th>Despesa</th><th>Vencimento</th><th>Valor</th><th>Situação</th><th></th></tr></thead>
+                    <thead><tr><th>Despesa</th><th>Vencimento</th><th>Valor</th><th>Situação</th><th>Comprovantes</th><th></th></tr></thead>
                     <tbody>
                         @foreach (var i in checklist.Itens)
                         {
@@ -54,6 +55,10 @@
                                     {
                                         <p class="pequeno justificativa">“@i.Justificativa”</p>
                                     }
+                                </td>
+                                <td>
+                                    <ComprovantesAnexos Origem="OrigemComprovante.DoLancamento(i.LancamentoId)" Quantidade="@contagem.GetValueOrDefault(i.LancamentoId)"
+                                                        Titulo="@($"{i.Descricao} ({PrimeiroDia(mes):MM/yyyy})")" AoAlterar="CarregarContagem" />
                                 </td>
                                 <td class="acoes-linha">
                                     @if (Editar)
@@ -84,6 +89,10 @@
                             <td>@Texto.Rotulo(d.Dados.Recorrencia)@(d.Dados.DiaVencimento is { } dia ? $" · dia {dia}" : "")</td>
                             <td>@Texto.Moeda(d.Dados.ValorPrevisto)</td>
                             <td>@Texto.Data(d.Dados.InicioEm) a @Texto.Data(d.Dados.FimEm)</td>
+                            <td>
+                                <ComprovantesAnexos Origem="OrigemComprovante.DaDespesa(d.Dados.Id)" Quantidade="@contagem.GetValueOrDefault(d.Dados.Id)"
+                                                    Titulo="@d.Dados.Descricao" AoAlterar="CarregarContagem" />
+                            </td>
                             <td class="acoes-linha">
                                 @if (Editar)
                                 {
@@ -123,10 +132,18 @@
                         <ValidationMessage For="() => entrada.Valor" />
                     </label>
                 </div>
+                @if (Comprovantes.Habilitado)
+                {
+                    <label class="campo">
+                        <span>Comprovantes (opcional)</span>
+                        <InputFile OnChange="EscolherAnexos" class="input" disabled="@Ocupado" multiple />
+                        <span class="pequeno mudo">Boleto pago, recibo ou nota; ficam no Drive em “07 - Financeiro/&lt;ano&gt;” da pasta do imóvel.</span>
+                    </label>
+                }
             }
             <div class="acoes direita">
                 <button type="button" class="btn-ghost" @onclick="Fechar">Cancelar</button>
-                <button type="submit" class="@(entrada.Status == StatusLancamento.NAO_PAGO ? "btn-perigo" : "btn-primary")" disabled="@Ocupado">Confirmar</button>
+                <button type="submit" class="@(entrada.Status == StatusLancamento.NAO_PAGO ? "btn-perigo" : "btn-primary")" disabled="@Ocupado">@(progresso ?? "Confirmar")</button>
             </div>
         </EditForm>
     </Modal>
@@ -185,9 +202,17 @@
                     <ValidationMessage For="() => despesaForm.FimEm" />
                 </label>
             </div>
+            @if (Comprovantes.Habilitado)
+            {
+                <label class="campo">
+                    <span>📎 Anexar arquivos (opcional)</span>
+                    <InputFile OnChange="EscolherAnexos" class="input" disabled="@Ocupado" multiple />
+                    <span class="pequeno mudo">Contrato, boleto, nota: PDF, imagem ou outro documento. Ficam no Drive em “07 - Financeiro/&lt;ano&gt;” da pasta do imóvel.</span>
+                </label>
+            }
             <div class="acoes direita">
                 <button type="button" class="btn-ghost" @onclick="Fechar">Cancelar</button>
-                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">@(progresso ?? "Salvar")</button>
             </div>
         </EditForm>
     </Modal>
@@ -204,6 +229,10 @@
     private Checklist? checklist;
     private IReadOnlyList<DespesaDetalhe> despesas = [];
     private IReadOnlyList<DespesaCategoria> categorias = [];
+    private IReadOnlyDictionary<Guid, int> contagem = new Dictionary<Guid, int>();
+    // comprovantes escolhidos ao marcar como pago: enviados depois de salvar a situação
+    private IReadOnlyList<IBrowserFile> anexos = [];
+    private string? progresso;
 
     // modal de status
     private ChecklistItem? marcando;
@@ -228,20 +257,45 @@
     {
         checklist = await Servico.ChecklistAsync(Usuario, ImovelId, PrimeiroDia(mes));
         despesas = await Servico.ListarAsync(Usuario, ImovelId);
+        contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId);
     });
+
+    private async Task CarregarContagem()
+    {
+        await Executar(async () => contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId));
+    }
+
+    private void EscolherAnexos(InputFileChangeEventArgs e)
+    {
+        Erro = null;
+        try { anexos = EnvioComprovantes.Selecionar(e); }
+        catch (RegraNegocioException ex) { anexos = []; Erro = ex.Message; }
+    }
 
     private void AbrirStatus(ChecklistItem i, StatusLancamento s)
     {
         Erro = null;
         marcando = i;
+        anexos = [];
         entrada = new StatusLancamentoEntrada { Status = s, DataPagamento = DatasBR.Hoje(), Valor = i.Valor };
     }
 
     private async Task ConfirmarStatus()
     {
-        if (!await Executar(() => Servico.AtualizarStatusAsync(Usuario, marcando!.LancamentoId, entrada))) return;
+        var lancamento = marcando!.LancamentoId;
+        if (!await Executar(() => Servico.AtualizarStatusAsync(Usuario, lancamento, entrada))) return;
+        string? erroAnexo = null;
+        if (anexos.Count > 0 && entrada.Status == StatusLancamento.PAGO)
+        {
+            // o modal continua aberto durante o envio (o InputFile precisa existir para ler os arquivos)
+            if (!await Executar(() => EnvioComprovantes.EnviarAsync(Comprovantes, Usuario, OrigemComprovante.DoLancamento(lancamento), anexos,
+                    (n, total) => { progresso = $"Enviando {n} de {total}…"; StateHasChanged(); })))
+                erroAnexo = $"Pagamento marcado, mas um comprovante não foi enviado: {Erro} Anexe de novo pelo botão 📎 da despesa.";
+            progresso = null;
+        }
         Fechar();
         await Depois();
+        Erro ??= erroAnexo;
     }
 
     private async Task MarcarNaoSeAplica(ChecklistItem i)
@@ -255,6 +309,7 @@
         Erro = null;
         if (categorias.Count == 0) categorias = await Servico.CategoriasAsync();
         editandoId = null;
+        anexos = [];
         despesaForm = new DespesaForm { InicioEm = DatasBR.Hoje(), CategoriaId = categorias.FirstOrDefault()?.Id };
     }
 
@@ -263,16 +318,32 @@
         Erro = null;
         if (categorias.Count == 0) categorias = await Servico.CategoriasAsync();
         editandoId = d.Id;
+        anexos = [];
         despesaForm = DespesaForm.De(d);
     }
 
     private async Task SalvarDespesa()
     {
         var f = despesaForm!;
-        var ok = await Executar(() => editandoId is { } id ? Servico.AtualizarAsync(Usuario, id, f) : Servico.CriarAsync(Usuario, ImovelId, f));
+        var id = editandoId ?? Guid.Empty;
+        var ok = await Executar(async () =>
+        {
+            if (editandoId is { } existente) await Servico.AtualizarAsync(Usuario, existente, f);
+            else id = await Servico.CriarAsync(Usuario, ImovelId, f);
+        });
         if (!ok) return;
+        string? erroAnexo = null;
+        if (anexos.Count > 0)
+        {
+            // o modal continua aberto durante o envio (o InputFile precisa existir para ler os arquivos)
+            if (!await Executar(() => EnvioComprovantes.EnviarAsync(Comprovantes, Usuario, OrigemComprovante.DaDespesa(id), anexos,
+                    (n, total) => { progresso = $"Enviando {n} de {total}…"; StateHasChanged(); })))
+                erroAnexo = $"Despesa salva, mas um arquivo não foi enviado: {Erro} Anexe de novo pelo botão 📎 em “Despesas cadastradas”.";
+            progresso = null;
+        }
         Fechar();
         await Depois();
+        Erro ??= erroAnexo;
     }
 
     private async Task Excluir(Guid id)
@@ -284,6 +355,7 @@
     private void Fechar()
     {
         marcando = null;
+        anexos = [];
         despesaForm = null;
         editandoId = null;
         Erro = null;

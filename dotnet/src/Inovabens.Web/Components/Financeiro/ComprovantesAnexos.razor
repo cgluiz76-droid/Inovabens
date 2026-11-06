@@ -1,0 +1,105 @@
+@inherits ComponenteBase
+@inject ComprovantesService Servico
+@inject IJSRuntime JS
+
+@* Botão de comprovantes de uma receita ou de um pagamento de despesa: abre a lista (abrir, anexar, remover).
+   Os arquivos ficam no Drive em "<pasta do imóvel>/07 - Financeiro/<ano>". Só aparece para quem edita o financeiro. *@
+
+@if (Usuario.Pode(Permissoes.FinanceiroEditar))
+{
+    <button type="button" class="btn-ghost mini btn-anexo" title="Comprovantes" @onclick="Abrir">
+        📎 @(Quantidade > 0 ? Quantidade.ToString() : "Anexar")
+    </button>
+}
+
+@if (aberto)
+{
+    <Modal Titulo="@($"Comprovantes — {Titulo}")" AoFechar="Fechar">
+        <MensagemErro Texto="@Erro" />
+        @if (itens is null)
+        {
+            <p class="carregando">Carregando…</p>
+        }
+        else if (itens.Count == 0)
+        {
+            <p class="pequeno mudo">Nenhum comprovante anexado.</p>
+        }
+        else
+        {
+            <ul class="lista-comprovantes">
+                @foreach (var c in itens)
+                {
+                    <li>
+                        <a href="financeiro/comprovantes/@c.Id" target="_blank" rel="noopener">@c.Nome</a>
+                        <span class="pequeno mudo">@Tamanho(c.Tamanho) · @Texto.DataHora(c.CriadoEm)</span>
+                        <button type="button" class="btn-ghost mini" title="Remover" disabled="@Ocupado" @onclick="() => Remover(c)">✕</button>
+                    </li>
+                }
+            </ul>
+        }
+        @if (!Servico.Habilitado)
+        {
+            <p class="pequeno texto-erro">Google Drive não configurado: configure em Administração → Configurações para anexar.</p>
+        }
+        else
+        {
+            <label class="btn-primary espaco-topo" style="display:inline-block">
+                @(progresso ?? "Anexar comprovantes…")
+                <InputFile OnChange="Enviar" class="oculto" disabled="@Ocupado" multiple />
+            </label>
+            <p class="pequeno mudo">PDF, imagem ou outro arquivo, até @(ComprovantesService.TamanhoMaximo / 1024 / 1024) MB cada. Ficam no Drive em “07 - Financeiro/&lt;ano&gt;” da pasta do imóvel.</p>
+        }
+    </Modal>
+}
+
+@code {
+    [Parameter, EditorRequired] public OrigemComprovante Origem { get; set; } = default!;
+    [Parameter] public int Quantidade { get; set; }
+    [Parameter] public string Titulo { get; set; } = "";
+    /// <summary>Chamado depois de anexar ou remover (a lista de fora atualiza a contagem).</summary>
+    [Parameter] public Func<Task>? AoAlterar { get; set; }
+
+    private bool aberto;
+    private IReadOnlyList<ComprovanteDetalhe>? itens;
+    private string? progresso;
+
+    private async Task Abrir()
+    {
+        aberto = true;
+        itens = null;
+        await Executar(async () => itens = await Servico.ListarAsync(Usuario, Origem));
+    }
+
+    private async Task Fechar()
+    {
+        aberto = false;
+        Erro = null;
+        if (alterou && AoAlterar is not null) await AoAlterar();
+        alterou = false;
+    }
+
+    private bool alterou;
+
+    private async Task Enviar(InputFileChangeEventArgs e)
+    {
+        var enviados = 0;
+        await Executar(() => EnvioComprovantes.EnviarAsync(Servico, Usuario, Origem, e,
+            (i, total) => { progresso = $"Enviando {i} de {total}…"; StateHasChanged(); }, () => enviados++));
+        progresso = null;
+        if (enviados == 0) return;
+        alterou = true;
+        var erro = Erro;
+        await Executar(async () => itens = await Servico.ListarAsync(Usuario, Origem));
+        Erro ??= erro;
+    }
+
+    private async Task Remover(ComprovanteDetalhe c)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Remover o comprovante \"{c.Nome}\"? Ele vai para a lixeira do Drive (recuperável por 30 dias).")) return;
+        if (!await Executar(() => Servico.RemoverAsync(Usuario, c.Id))) return;
+        alterou = true;
+        await Executar(async () => itens = await Servico.ListarAsync(Usuario, Origem));
+    }
+
+    private static string Tamanho(long b) => b >= 1024 * 1024 ? $"{b / 1024d / 1024:0.#} MB" : $"{Math.Max(1, b / 1024)} KB";
+}

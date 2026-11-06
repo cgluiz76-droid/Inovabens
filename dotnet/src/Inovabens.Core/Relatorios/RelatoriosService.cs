@@ -21,7 +21,7 @@ public sealed record Arquivo(byte[] Conteudo, string Nome, string Tipo);
 /// </summary>
 public sealed class RelatoriosService(
     IDbContextFactory<InovabensDb> fabrica, ImoveisService imoveis, AquisicaoService aquisicao, DespesasService despesas,
-    RetornoService retorno, IArmazenamento storage, AuditService audit)
+    RetornoService retorno, ExtratoService extrato, IArmazenamento storage, AuditService audit)
 {
     public const string TipoPdf = "application/pdf";
     public const string TipoXlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -290,6 +290,110 @@ public sealed class RelatoriosService(
         return new Arquivo(Salvar(wb), $"ficha-financeira-{d.Codigo}.xlsx", TipoXlsx);
     }
 
+    /* ========================= Extrato (livro caixa) ========================= */
+
+    private async Task<(ImovelDetalhe Im, Extrato Ex)> DadosExtrato(UsuarioAtual u, Guid id, FiltroExtrato f)
+    {
+        u.Exigir(P.FinanceiroExportar);
+        return (await imoveis.DetalheAsync(u, id), await extrato.GerarAsync(u, id, f));
+    }
+
+    private static string Periodo(FiltroExtrato f) => (f.De, f.Ate) switch
+    {
+        (null, null) => "Todo o período",
+        ({ } de, null) => $"A partir de {Texto.Data(de)}",
+        (null, { } ate) => $"Até {Texto.Data(ate)}",
+        ({ } de, { } ate) => $"{Texto.Data(de)} a {Texto.Data(ate)}",
+    };
+
+    private static string FiltrosTexto(FiltroExtrato f, string? categoria) => string.Join(" · ", new[]
+    {
+        Periodo(f),
+        f.Tipo switch { TipoExtrato.RECEITAS => "Só receitas", TipoExtrato.DESPESAS => "Só despesas", _ => null },
+        categoria is null ? null : $"Categoria: {categoria}",
+        Texto.Limpo(f.Busca) is { } b ? $"Busca: “{b}”" : null,
+    }.Where(x => x is not null));
+
+    private async Task<string?> NomeCategoria(Guid? id)
+    {
+        if (id is null) return null;
+        await using var db = await fabrica.CreateDbContextAsync();
+        return await db.DespesaCategorias.Where(c => c.Id == id).Select(c => c.Nome).SingleOrDefaultAsync();
+    }
+
+    private static string Pendencia(PendenciaExtrato p) =>
+        p.Status == StatusLancamento.NAO_PAGO ? "Não pago" : p.Vencida ? "Vencida" : "A vencer";
+
+    public async Task<Arquivo> ExtratoPdfAsync(UsuarioAtual u, Guid id, FiltroExtrato f)
+    {
+        var (im, ex) = await DadosExtrato(u, id, f);
+        var d = im.Dados;
+        var filtros = FiltrosTexto(f, await NomeCategoria(f.CategoriaId));
+        var pdf = NovoPdf("Extrato do Imóvel", $"{d.Codigo} · {d.Titulo}", $"Extrato {d.Codigo} · gerado em {Texto.DataHora(DateTime.UtcNow)}", col =>
+        {
+            col.Item().Text(filtros).FontSize(9).FontColor(Suave);
+            Secao(col, "Resumo");
+            Campos(col, 3,
+                ("Saldo anterior", Texto.Moeda(ex.SaldoAnterior)), ("Entradas (receitas)", Texto.Moeda(ex.Entradas)), ("Saídas (despesas pagas)", Texto.Moeda(ex.Saidas)),
+                ("Saldo no fim do período", Texto.Moeda(ex.SaldoFinal)), ("Despesas a pagar", Texto.Moeda(ex.TotalPendente)), ("Saldo projetado", Texto.Moeda(ex.SaldoProjetado)),
+                ("Saldo atual do imóvel (todo o histórico)", Texto.Moeda(ex.SaldoAtual)));
+            Secao(col, "Movimentação");
+            var linhas = new List<string[]>();
+            if (f.De is not null) linhas.Add([Texto.Data(f.De), "Saldo anterior", "", "", "", Texto.Moeda(ex.SaldoAnterior)]);
+            linhas.AddRange(ex.Movimentos.Select(m => new[]
+            {
+                Texto.Data(m.Data), m.Descricao + (m.Detalhe is null ? "" : $" ({m.Detalhe})"), m.Categoria,
+                m.Entrada > 0 ? Texto.Moeda(m.Entrada) : "", m.Saida > 0 ? "-" + Texto.Moeda(m.Saida) : "", Texto.Moeda(m.Saldo),
+            }));
+            Tabela(col, [("Data", 0.9f), ("Histórico", 3.4f), ("Categoria", 1.4f), ("Entrada", 1.3f), ("Saída", 1.3f), ("Saldo", 1.4f)],
+                linhas, "Nenhuma movimentação no período.", colunasDireita: 3);
+            Secao(col, "Despesas a pagar (fora do saldo)");
+            Tabela(col, [("Vencimento", 0.9f), ("Despesa", 3), ("Categoria", 1.4f), ("Situação", 1.1f), ("Valor", 1.3f)],
+                [.. ex.Pendentes.Select(p => new[] { Texto.Data(p.Vencimento ?? p.Competencia), p.Descricao + (p.Justificativa is null ? "" : $" — “{p.Justificativa}”"),
+                    p.Categoria, Pendencia(p), Texto.Moeda(p.Valor) })],
+                "Nenhuma despesa a pagar no período.", alinharUltimaDireita: true);
+        });
+        await Auditar(u, id, new { relatorio = "extrato", formato = "pdf", filtros });
+        return new Arquivo(pdf, $"extrato-{d.Codigo}.pdf", TipoPdf);
+    }
+
+    public async Task<Arquivo> ExtratoXlsxAsync(UsuarioAtual u, Guid id, FiltroExtrato f)
+    {
+        var (im, ex) = await DadosExtrato(u, id, f);
+        var d = im.Dados;
+        var filtros = FiltrosTexto(f, await NomeCategoria(f.CategoriaId));
+        using var wb = new XLWorkbook();
+
+        var linhas = new List<XLCellValue[]>();
+        if (f.De is not null) linhas.Add([Texto.Data(f.De), "Saldo anterior", "", "", Blank.Value, Blank.Value, ex.SaldoAnterior]);
+        linhas.AddRange(ex.Movimentos.Select(m => new XLCellValue[]
+            { Texto.Data(m.Data), m.Descricao, m.Categoria, m.Detalhe ?? "", m.Entrada > 0 ? m.Entrada : Blank.Value, m.Saida > 0 ? m.Saida : Blank.Value, m.Saldo }));
+        var mov = Aba(wb, "Extrato", [("Data", 12), ("Histórico", 40), ("Categoria", 22), ("Detalhe", 44), ("Entrada", 16), ("Saída", 16), ("Saldo", 16)], linhas);
+        foreach (var c in new[] { 5, 6, 7 }) mov.Column(c).Style.NumberFormat.Format = Moeda;
+        var r = mov.LastRowUsed()!.RowNumber() + 2;
+        foreach (var (k, v) in new[]
+        {
+            ("Entradas", ex.Entradas), ("Saídas", ex.Saidas), ("Saldo no fim do período", ex.SaldoFinal), ("Despesas a pagar", ex.TotalPendente),
+            ("Saldo projetado", ex.SaldoProjetado), ("Saldo atual do imóvel (todo o histórico)", ex.SaldoAtual),
+        })
+        {
+            mov.Cell(r, 2).Value = k;
+            mov.Cell(r, 7).Value = v;
+            mov.Cell(r, 2).Style.Font.Bold = true;
+            r++;
+        }
+        mov.Cell(r + 1, 1).Value = $"{d.Codigo} — {d.Titulo} · {filtros}";
+        mov.Cell(r + 1, 1).Style.Font.Italic = true;
+
+        var pend = Aba(wb, "A pagar", [("Vencimento", 12), ("Competência", 13), ("Despesa", 40), ("Categoria", 22), ("Situação", 12), ("Valor", 16), ("Justificativa", 50)],
+            ex.Pendentes.Select(p => new XLCellValue[] { Texto.Data(p.Vencimento ?? p.Competencia), p.Competencia.ToString("MM/yyyy"), p.Descricao, p.Categoria,
+                Pendencia(p), p.Valor, p.Justificativa ?? "" }));
+        pend.Column(6).Style.NumberFormat.Format = Moeda;
+
+        await Auditar(u, id, new { relatorio = "extrato", formato = "xlsx", filtros });
+        return new Arquivo(Salvar(wb), $"extrato-{d.Codigo}.xlsx", TipoXlsx);
+    }
+
     /* ------------------------------ Excel: apoio ------------------------------ */
 
     private static XLCellValue V(decimal? v) => v is { } x ? x : Blank.Value;
@@ -380,8 +484,10 @@ public sealed class RelatoriosService(
         col.Item().Text(string.IsNullOrWhiteSpace(texto) ? "—" : texto.Trim()).Justify();
 
     private static void Tabela(ColumnDescriptor col, (string Titulo, float Peso)[] colunas, IReadOnlyList<string[]> linhas,
-        string vazio = "Nenhum registro.", bool alinharUltimaDireita = false)
+        string vazio = "Nenhum registro.", bool alinharUltimaDireita = false, int colunasDireita = 0)
     {
+        if (alinharUltimaDireita) colunasDireita = Math.Max(colunasDireita, 1);
+        bool Direita(int i) => i >= colunas.Length - colunasDireita;
         if (linhas.Count == 0)
         {
             Paragrafo(col, vazio);
@@ -395,7 +501,7 @@ public sealed class RelatoriosService(
                 for (var i = 0; i < colunas.Length; i++)
                 {
                     var cel = h.Cell().Background(Marca).Padding(3);
-                    (alinharUltimaDireita && i == colunas.Length - 1 ? cel.AlignRight() : cel)
+                    (Direita(i) ? cel.AlignRight() : cel)
                         .Text(colunas[i].Titulo).FontSize(8).Bold().FontColor(Colors.White);
                 }
             });
@@ -403,7 +509,7 @@ public sealed class RelatoriosService(
                 for (var i = 0; i < colunas.Length; i++)
                 {
                     var cel = t.Cell().Background(l % 2 == 1 ? Zebra : Colors.White).Padding(3);
-                    (alinharUltimaDireita && i == colunas.Length - 1 ? cel.AlignRight() : cel)
+                    (Direita(i) ? cel.AlignRight() : cel)
                         .Text(i < linhas[l].Length ? linhas[l][i] : "").FontSize(8.5f);
                 }
         });

@@ -120,6 +120,26 @@ public class Receita
     public Receita Copia() => (Receita)MemberwiseClone();
 }
 
+/// <summary>
+/// Comprovante (nota, recibo, boleto pago) de uma receita ou do pagamento de uma despesa. O arquivo fica no Google Drive,
+/// em "&lt;pasta do imóvel&gt;/07 - Financeiro/&lt;ano&gt;". REGRA (CHECK no banco): pertence a uma receita OU a um lançamento.
+/// </summary>
+[Table("financeiro_comprovantes")]
+public class ComprovanteFinanceiro
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ImovelId { get; set; }
+    public Guid? ReceitaId { get; set; }
+    public Guid? LancamentoId { get; set; }
+    public Guid? DespesaId { get; set; }
+    public string ArquivoChave { get; set; } = "";
+    public string NomeOriginal { get; set; } = "";
+    public string TipoConteudo { get; set; } = "";
+    public long Tamanho { get; set; }
+    public Guid? CriadoPor { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>Variação mensal (%) de um índice econômico (IPCA, INCC, IGP-M, Selic). Competência = dia 1.</summary>
 [Table("indices_serie")]
 public class IndiceSerie

@@ -2,7 +2,7 @@
    Mostra só o que o site mostraria: fotos públicas, características públicas e o endereço apenas se for público. *@
 @using System.Globalization
 
-<SiteMoldura Titulo="@Im.Titulo" Ativo="@(Locacao ? "locacao" : "venda")" MensagemWhatsapp="@MensagemWhatsapp">
+<SiteMoldura Titulo="@(SoSimulador ? "Simular financiamento · " + Im.Titulo : Im.Titulo)" Ativo="@(Locacao ? "locacao" : "venda")" MensagemWhatsapp="@MensagemWhatsapp">
     <Faixa>
         é assim que o @Im.Codigo aparece no site público.
         @if (!Im.DivulgarSite)
@@ -23,6 +23,94 @@
         <a href="imoveis/@Im.Id">Ficha do sistema</a>
     </FaixaLinks>
     <ChildContent>
+        @if (SoSimulador)
+        {
+            <main class="miolo imovel-pag">
+                <nav class="trilha" aria-label="Você está em">
+                    <a href="site">Início</a><span>›</span><a href="@LinkLista">Comprar</a>
+                    <span>›</span><a href="site/imovel/@Im.Id">@Codigo</a><span>›</span><span>Simular financiamento</span>
+                </nav>
+                <div class="sim-cab">
+                    @if (Fotos.Count > 0)
+                    {
+                        <img src="@Fotos[0].Src" alt="" />
+                    }
+                    <div>
+                        <span class="rotulo">@TipoRotulo à venda · @Codigo</span>
+                        <h1>@Im.Titulo</h1>
+                        @if (Onde.Length > 0) { <div class="local"><svg class="ico"><use href="#i-pino" /></svg>@Onde</div> }
+                        <div class="preco num">@PrecoTexto</div>
+                    </div>
+                    <div class="sim-cab-acoes">
+                        <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener"><svg class="ico"><use href="#i-zap" /></svg> Conversar no WhatsApp</a>
+                        <a class="btn btn-linha" href="site/imovel/@Im.Id">Ver o imóvel</a>
+                    </div>
+                </div>
+            @if (Simulador is { } sim)
+            {
+                <div class="bloco" id="simulador">
+                    <h2>Simule o financiamento</h2>
+                    <p class="aviso-simulacao" role="note">
+                        <b>Isto é uma simulação.</b> O financiamento real pode ter variação nas parcelas e depende de
+                        análise de crédito e aprovação da instituição financeira.
+                    </p>
+                    <form class="simulador" id="simForm" onsubmit="return false">
+                        <fieldset class="sim-sistema">
+                            <legend>Sistema de amortização</legend>
+                            <label><input type="radio" name="sistema" value="sac" checked /> <span><b>SAC</b><small>parcelas que diminuem · financia até @Pct(FinanciamentoCaixa.CotaSac)</small></span></label>
+                            <label><input type="radio" name="sistema" value="price" /> <span><b>Price</b><small>parcelas fixas · financia até @Pct(FinanciamentoCaixa.CotaPrice)</small></span></label>
+                        </fieldset>
+                        <label>Valor do imóvel (R$)
+                            <input id="simValor" type="number" min="0" step="1000" inputmode="numeric" value="@Num(Preco ?? 0)" />
+                        </label>
+                        <label>Entrada (R$) <small class="mudo" id="simEntradaPct">@Pct(sim.Entrada / (Preco ?? 1)) do valor</small>
+                            <input id="simEntrada" type="number" min="0" step="1000" inputmode="numeric" value="@Num(sim.Entrada)" />
+                        </label>
+                        <label>Prazo <output id="simPrazoTxt" for="simPrazo">@PrazoTexto(sim.Prazo)</output>
+                            <input id="simPrazo" type="range" min="12" max="@FinanciamentoCaixa.PrazoMaximo" step="6" value="@sim.Prazo" />
+                        </label>
+                        <label>Idade do comprador mais velho <small class="mudo">(opcional)</small>
+                            <input id="simIdade" type="number" min="18" max="80" inputmode="numeric" placeholder="ex.: 35" />
+                        </label>
+                        <label>Juros nominais ao ano (+ TR)
+                            <input id="simTaxa" type="number" min="0" max="30" step="0.01" inputmode="decimal" value="@Num(sim.TaxaNominalAnual * 100, "0.00")" />
+                        </label>
+                    </form>
+                    <div class="sim-resultado" aria-live="polite">
+                        <div><small>Valor financiado</small><b class="num" id="rFinanciado">@Brl(sim.ValorFinanciado)</b></div>
+                        <div class="destaque"><small id="rPrimeiraRotulo">1ª parcela</small><b class="num" id="rPrimeira">@Brl(sim.PrimeiraParcela)</b></div>
+                        <div id="rUltimaCaixa"><small>Última parcela</small><b class="num" id="rUltima">@Brl(sim.UltimaParcela)</b></div>
+                        <div><small>Renda familiar mínima</small><b class="num" id="rRenda">@Brl(sim.RendaMinima)</b></div>
+                        <div><small>Total de juros</small><b class="num" id="rJuros">@Brl(sim.TotalJuros)</b></div>
+                        <div><small>Taxa efetiva</small><b class="num" id="rEfetiva">@Pct(sim.TaxaEfetivaAnual) a.a.</b></div>
+                    </div>
+                    <ul class="sim-notas" id="simNotas">
+                        @foreach (var n in NotasSimulador) { <li>@n</li> }
+                    </ul>
+                    <div class="sim-letras mudo">
+                        <p>
+                            Cálculo com os parâmetros do crédito imobiliário da Caixa Econômica Federal (SBPE, conferidos em @FinanciamentoCaixa.ConferidoEm):
+                            financia até @Pct(FinanciamentoCaixa.CotaSac) do valor no SAC e até @Pct(FinanciamentoCaixa.CotaPrice) na Price;
+                            prazo de até @FinanciamentoCaixa.PrazoMaximo meses; idade mais prazo até 80 anos e 6 meses;
+                            parcela de até @Pct(FinanciamentoCaixa.ComprometimentoRenda) da renda bruta familiar;
+                            juros mensais iguais à taxa nominal anual dividida por 12.
+                            Imóveis de até @Brl0(FinanciamentoCaixa.TetoSfh) entram no SFH (de @Pct(FinanciamentoCaixa.TaxaSfhMinima) a @Pct(FinanciamentoCaixa.TaxaSfhBalcao) ao ano + TR);
+                            acima disso, no SFI (de @Pct(FinanciamentoCaixa.TaxaSfiMinima) a @Pct(FinanciamentoCaixa.TaxaSfiBalcao) ao ano + TR).
+                        </p>
+                        <p>
+                            Não entram na conta: a TR (atualiza o saldo todo mês), os seguros obrigatórios MIP e DFI (variam com a idade e o valor do imóvel),
+                            a taxa de administração de @Brl(FinanciamentoCaixa.TarifaAdministracao) por mês, ITBI, registro em cartório e avaliação do imóvel.
+                        </p>
+                        <a href="@FinanciamentoCaixa.SimuladorOficial" target="_blank" rel="noopener">Fazer a simulação oficial no site da Caixa ↗</a>
+                    </div>
+                    <script id="sim-dados" type="application/json">@((MarkupString)ParametrosSimulador)</script>
+                </div>
+            }
+
+            </main>
+        }
+        else
+        {
         <main class="miolo imovel-pag">
             <nav class="trilha" aria-label="Você está em">
                 <a href="site">Início</a><span>›</span><a href="@LinkLista">@(Locacao ? "Alugar" : "Comprar")</a>
@@ -131,67 +219,6 @@
                         </div>
                     }
 
-                    @if (Simulador is { } sim)
-                    {
-                        <div class="bloco" id="simulador">
-                            <h2>Simule o financiamento</h2>
-                            <p class="aviso-simulacao" role="note">
-                                <b>Isto é uma simulação.</b> O financiamento real pode ter variação nas parcelas e depende de
-                                análise de crédito e aprovação da instituição financeira.
-                            </p>
-                            <form class="simulador" id="simForm" onsubmit="return false">
-                                <fieldset class="sim-sistema">
-                                    <legend>Sistema de amortização</legend>
-                                    <label><input type="radio" name="sistema" value="sac" checked /> <span><b>SAC</b><small>parcelas que diminuem · financia até @Pct(FinanciamentoCaixa.CotaSac)</small></span></label>
-                                    <label><input type="radio" name="sistema" value="price" /> <span><b>Price</b><small>parcelas fixas · financia até @Pct(FinanciamentoCaixa.CotaPrice)</small></span></label>
-                                </fieldset>
-                                <label>Valor do imóvel (R$)
-                                    <input id="simValor" type="number" min="0" step="1000" inputmode="numeric" value="@Num(Preco ?? 0)" />
-                                </label>
-                                <label>Entrada (R$) <small class="mudo" id="simEntradaPct">@Pct(sim.Entrada / (Preco ?? 1)) do valor</small>
-                                    <input id="simEntrada" type="number" min="0" step="1000" inputmode="numeric" value="@Num(sim.Entrada)" />
-                                </label>
-                                <label>Prazo <output id="simPrazoTxt" for="simPrazo">@PrazoTexto(sim.Prazo)</output>
-                                    <input id="simPrazo" type="range" min="12" max="@FinanciamentoCaixa.PrazoMaximo" step="6" value="@sim.Prazo" />
-                                </label>
-                                <label>Idade do comprador mais velho <small class="mudo">(opcional)</small>
-                                    <input id="simIdade" type="number" min="18" max="80" inputmode="numeric" placeholder="ex.: 35" />
-                                </label>
-                                <label>Juros nominais ao ano (+ TR)
-                                    <input id="simTaxa" type="number" min="0" max="30" step="0.01" inputmode="decimal" value="@Num(sim.TaxaNominalAnual * 100, "0.00")" />
-                                </label>
-                            </form>
-                            <div class="sim-resultado" aria-live="polite">
-                                <div><small>Valor financiado</small><b class="num" id="rFinanciado">@Brl(sim.ValorFinanciado)</b></div>
-                                <div class="destaque"><small id="rPrimeiraRotulo">1ª parcela</small><b class="num" id="rPrimeira">@Brl(sim.PrimeiraParcela)</b></div>
-                                <div id="rUltimaCaixa"><small>Última parcela</small><b class="num" id="rUltima">@Brl(sim.UltimaParcela)</b></div>
-                                <div><small>Renda familiar mínima</small><b class="num" id="rRenda">@Brl(sim.RendaMinima)</b></div>
-                                <div><small>Total de juros</small><b class="num" id="rJuros">@Brl(sim.TotalJuros)</b></div>
-                                <div><small>Taxa efetiva</small><b class="num" id="rEfetiva">@Pct(sim.TaxaEfetivaAnual) a.a.</b></div>
-                            </div>
-                            <ul class="sim-notas" id="simNotas">
-                                @foreach (var n in NotasSimulador) { <li>@n</li> }
-                            </ul>
-                            <div class="sim-letras mudo">
-                                <p>
-                                    Cálculo com os parâmetros do crédito imobiliário da Caixa Econômica Federal (SBPE, conferidos em @FinanciamentoCaixa.ConferidoEm):
-                                    financia até @Pct(FinanciamentoCaixa.CotaSac) do valor no SAC e até @Pct(FinanciamentoCaixa.CotaPrice) na Price;
-                                    prazo de até @FinanciamentoCaixa.PrazoMaximo meses; idade mais prazo até 80 anos e 6 meses;
-                                    parcela de até @Pct(FinanciamentoCaixa.ComprometimentoRenda) da renda bruta familiar;
-                                    juros mensais iguais à taxa nominal anual dividida por 12.
-                                    Imóveis de até @Brl0(FinanciamentoCaixa.TetoSfh) entram no SFH (de @Pct(FinanciamentoCaixa.TaxaSfhMinima) a @Pct(FinanciamentoCaixa.TaxaSfhBalcao) ao ano + TR);
-                                    acima disso, no SFI (de @Pct(FinanciamentoCaixa.TaxaSfiMinima) a @Pct(FinanciamentoCaixa.TaxaSfiBalcao) ao ano + TR).
-                                </p>
-                                <p>
-                                    Não entram na conta: a TR (atualiza o saldo todo mês), os seguros obrigatórios MIP e DFI (variam com a idade e o valor do imóvel),
-                                    a taxa de administração de @Brl(FinanciamentoCaixa.TarifaAdministracao) por mês, ITBI, registro em cartório e avaliação do imóvel.
-                                </p>
-                                <a href="@FinanciamentoCaixa.SimuladorOficial" target="_blank" rel="noopener">Fazer a simulação oficial no site da Caixa ↗</a>
-                            </div>
-                            <script id="sim-dados" type="application/json">@((MarkupString)ParametrosSimulador)</script>
-                        </div>
-                    }
-
                     @if (YoutubeId is not null || Videos.Count > 0)
                     {
                         <div class="bloco">
@@ -261,14 +288,13 @@
                     <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-zap" /></svg> Conversar no WhatsApp</a>
                     @if (Simulador is not null)
                     {
-                        @* com <base href="/">, "#simulador" iria para a raiz: o clique só rola a página até o simulador *@
-                        <a class="btn btn-linha" href="site/imovel/@Im.Id#simulador" style="width:100%"
-                           onclick="document.getElementById('simulador').scrollIntoView({behavior:'smooth'});return false;"><svg class="ico"><use href="#i-calc" /></svg> Simular financiamento</a>
+                        <a class="btn btn-linha" href="site/imovel/@Im.Id/simulador" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-calc" /></svg> Simular financiamento</a>
                     }
                     <p class="mudo" style="font-size:.8rem">No site publicado aqui entram também o agendamento de visita e o formulário de contato, que vira lead no CRM.</p>
                 </aside>
             </div>
         </main>
+        }
     </ChildContent>
     <Scripts>
         @if (Fotos.Count > 0)
@@ -307,7 +333,7 @@
                 })();
             </script>
         }
-        @if (Simulador is not null)
+        @if (SoSimulador && Simulador is not null)
         {
             <script src="site-simulador.js"></script>
         }
@@ -317,6 +343,8 @@
 @code {
     [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
     [Parameter] public string? LinkImobibrasil { get; set; }
+    /// <summary>Página só do simulador de financiamento (site/imovel/{id}/simulador), aberta em nova aba pelo botão da ficha.</summary>
+    [Parameter] public bool SoSimulador { get; set; }
 
     private sealed record FotoSite(string Src, string? Legenda);
     private sealed record Paragrafo(string? Texto, IReadOnlyList<string>? Itens);

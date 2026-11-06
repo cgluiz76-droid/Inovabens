@@ -60,7 +60,8 @@ internal static class Navegacao
         await p.GetByLabel("Título *").FillAsync(titulo);
         await p.GetByLabel("Nome para Drive do Empreendimento *").FillAsync($"{titulo} {Guid.NewGuid():N}");
         await p.Botao("Cadastrar imóvel").ClickAsync();
-        await Expect(p.GetByRole(AriaRole.Heading, new() { Name = titulo, Level = 1 })).ToBeVisibleAsync();
+        // o primeiro cadastro depois de subir a aplicação é lento (aquecimento do EF e do circuito)
+        await Expect(p.GetByRole(AriaRole.Heading, new() { Name = titulo, Level = 1 })).ToBeVisibleAsync(new() { Timeout = 30_000 });
         return Guid.Parse(p.Url.TrimEnd('/').Split('/')[^1]);
     }
 

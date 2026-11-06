@@ -143,14 +143,17 @@ public class FluxosTests(Aplicacao app)
         // despesa mensal começando neste mês: entra no checklist do mês
         await p.Botao("Financeiro").ClickAsync();
         await p.Botao("Cadastrar despesa").ClickAsync();
-        await p.GetByLabel("Categoria").SelectOptionAsync(new SelectOptionValue { Label = "IPTU" });
+        // o filtro do extrato também tem "Categoria": usa o campo do modal
+        await p.GetByRole(AriaRole.Dialog).GetByLabel("Categoria").SelectOptionAsync(new SelectOptionValue { Label = "IPTU" });
         await p.GetByLabel("Descrição").FillAsync($"IPTU {s}");
         await p.GetByLabel("Valor previsto (R$)").FillAsync("350.00");
         var hoje = DateTime.Today;
         await p.GetByLabel("Início").FillAsync(new DateTime(hoje.Year, hoje.Month, 1).ToString("yyyy-MM-dd"));
         await p.Botao("Salvar").ClickAsync();
 
-        var linha = p.GetByRole(AriaRole.Row).Filter(new() { HasText = $"IPTU {s}" }).First;
+        // a despesa aparece no checklist e também no extrato ("a pagar"): usa a linha do checklist
+        var checklist = p.Locator("section").Filter(new() { Has = p.GetByRole(AriaRole.Heading, new() { Name = "Despesas recorrentes (OPEX) — checklist mensal" }) });
+        var linha = checklist.GetByRole(AriaRole.Row).Filter(new() { HasText = $"IPTU {s}" });
         await Expect(linha).ToBeVisibleAsync();
 
         // REGRA: Não Pago exige justificativa (mín. 10 caracteres)
@@ -161,7 +164,20 @@ public class FluxosTests(Aplicacao app)
         await Expect(p.GetByText("Justificativa obrigatória")).ToBeVisibleAsync();
         await justificativa.FillAsync("Inquilino atrasou o repasse");
         await p.Botao("Confirmar").ClickAsync();
-        await Expect(p.GetByText("“Inquilino atrasou o repasse”")).ToBeVisibleAsync();
+        await Expect(linha.GetByText("“Inquilino atrasou o repasse”")).ToBeVisibleAsync();
+
+        // extrato (livro caixa): a despesa não paga fica "a pagar", fora do saldo; a receita entra no saldo
+        var extrato = p.Locator("section").Filter(new() { Has = p.GetByRole(AriaRole.Heading, new() { Name = "Extrato do imóvel (livro caixa)" }) });
+        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = $"IPTU {s}" })).ToContainTextAsync("Não pago");
+        await p.GetByLabel("Bruto").FillAsync("1000");
+        await p.Botao("Lançar").ClickAsync();
+        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = "Receita de venda" })).ToContainTextAsync("R$ 1.000,00");
+        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = "Total a pagar" })).ToContainTextAsync("saldo projetado R$ 650,00");
+        var (nomeExtrato, pdfExtrato) = await p.BaixarAsync(p.GetByRole(AriaRole.Link, new() { Name = "Extrato PDF" }));
+        Assert.EndsWith(".pdf", nomeExtrato);
+        Assert.Equal("%PDF"u8.ToArray(), pdfExtrato);
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_EXTRATO") is { } capturaExtrato)
+            await extrato.ScreenshotAsync(new() { Path = capturaExtrato });
 
         // exportações: ficha financeira (aba Financeiro) e ficha do imóvel
         var (nomePdf, pdf) = await p.BaixarAsync(p.GetByRole(AriaRole.Link, new() { Name = "Ficha financeira PDF" }));
@@ -204,8 +220,17 @@ public class FluxosTests(Aplicacao app)
         await p.Botao("Salvar").ClickAsync();
         await Expect(p.GetByText("Dados salvos.")).ToBeVisibleAsync();
 
-        // ficha no site: simulação SAC com 20% de entrada, 420 meses, 11,49% a.a. nominal (Caixa, balcão)
+        // a ficha no site não mostra o simulador; o botão "Simular financiamento" abre a página dele em nova aba
         await p.GotoAsync($"/site/imovel/{id}");
+        await Expect(p.GetByRole(AriaRole.Heading, new() { Name = "Simule o financiamento" })).ToHaveCountAsync(0);
+        var aba = await p.Context.RunAndWaitForPageAsync(() => p.GetByRole(AriaRole.Link, new() { Name = "Simular financiamento" }).ClickAsync());
+        await aba.WaitForLoadStateAsync();
+        await Expect(aba).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/site/imovel/{id}/simulador$"));
+        await Expect(aba.GetByRole(AriaRole.Heading, new() { Name = titulo, Level = 1 })).ToBeVisibleAsync();
+        await aba.CloseAsync();
+
+        // página do simulador: SAC com 20% de entrada, 420 meses, 11,49% a.a. nominal (Caixa, balcão)
+        await p.GotoAsync($"/site/imovel/{id}/simulador");
         await Expect(p.GetByRole(AriaRole.Heading, new() { Name = "Simule o financiamento" })).ToBeVisibleAsync();
         await Expect(p.GetByText("Isto é uma simulação.")).ToBeVisibleAsync();
         await Expect(p.GetByText("depende de análise de crédito e aprovação da instituição financeira", new() { Exact = false })).ToBeVisibleAsync();

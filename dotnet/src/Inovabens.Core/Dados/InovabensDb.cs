@@ -37,6 +37,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Despesa> Despesas => Set<Despesa>();
     public DbSet<DespesaLancamento> DespesaLancamentos => Set<DespesaLancamento>();
     public DbSet<Receita> Receitas => Set<Receita>();
+    public DbSet<ComprovanteFinanceiro> ComprovantesFinanceiros => Set<ComprovanteFinanceiro>();
     public DbSet<IndiceSerie> IndicesSerie => Set<IndiceSerie>();
     public DbSet<Alerta> Alertas => Set<Alerta>();
 

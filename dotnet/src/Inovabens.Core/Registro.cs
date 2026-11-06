@@ -42,6 +42,8 @@ public static class Registro
         services.AddScoped<AquisicaoService>();
         services.AddScoped<DespesasService>();
         services.AddScoped<ReceitasService>();
+        services.AddScoped<ComprovantesService>();
+        services.AddScoped<ExtratoService>();
         services.AddScoped<IndicesService>();
         services.AddScoped<RetornoService>();
         services.AddScoped<PessoasService>();

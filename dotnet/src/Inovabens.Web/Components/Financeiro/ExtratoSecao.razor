@@ -1,0 +1,261 @@
+@inherits ComponenteBase
+@inject ExtratoService Servico
+@inject DespesasService Despesas
+@inject ComprovantesService Comprovantes
+
+@* Extrato do imóvel como livro caixa: receitas menos despesas pagas, com saldo linha a linha (como um extrato bancário).
+   As despesas a pagar ficam numa lista à parte e entram só no saldo projetado. A aquisição fica na apuração de resultado. *@
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Extrato do imóvel (livro caixa)</h2>
+        @if (Usuario.Pode(Permissoes.FinanceiroExportar))
+        {
+            <div class="acoes-topo">
+                <a class="btn-ghost" href="@($"imoveis/{ImovelId}/extrato.pdf{Consulta}")" download>Extrato PDF</a>
+                <a class="btn-ghost" href="@($"imoveis/{ImovelId}/extrato.xlsx{Consulta}")" download>Extrato Excel</a>
+            </div>
+        }
+    </div>
+
+    <form class="linha-form extrato-filtros" @onsubmit="Carregar" @onsubmit:preventDefault>
+        <label class="campo-inline"><span>De</span><input type="date" class="input w-data" @bind="filtro.De" /></label>
+        <label class="campo-inline"><span>Até</span><input type="date" class="input w-data" @bind="filtro.Ate" /></label>
+        <label class="campo-inline">
+            <span>Mostrar</span>
+            <select class="input" @bind="filtro.Tipo">
+                <option value="@TipoExtrato.TODOS">Receitas e despesas</option>
+                <option value="@TipoExtrato.RECEITAS">Só receitas</option>
+                <option value="@TipoExtrato.DESPESAS">Só despesas</option>
+            </select>
+        </label>
+        <label class="campo-inline">
+            <span>Categoria</span>
+            <select class="input" @bind="CategoriaSelecionada">
+                <option value="">Todas</option>
+                @foreach (var c in categorias)
+                {
+                    <option value="@c.Id">@c.Nome</option>
+                }
+            </select>
+        </label>
+        <label class="campo-inline"><span>Buscar</span><input class="input" placeholder="histórico ou categoria" @bind="filtro.Busca" /></label>
+        <button type="submit" class="btn-primary" disabled="@Ocupado">Filtrar</button>
+        <button type="button" class="btn-ghost" disabled="@Ocupado" @onclick="Limpar">Limpar</button>
+        <span class="atalhos-periodo">
+            <button type="button" class="btn-ghost mini" @onclick="() => Periodo(30)">30 dias</button>
+            <button type="button" class="btn-ghost mini" @onclick="EsteAno">Este ano</button>
+            <button type="button" class="btn-ghost mini" @onclick="Tudo">Tudo</button>
+        </span>
+    </form>
+    <MensagemErro Texto="@Erro" />
+
+    @if (ex is null)
+    {
+        @if (Erro is null)
+        {
+            <p class="carregando">Carregando…</p>
+        }
+    }
+    else
+    {
+        <div class="kpis espaco-topo">
+            <div class="kpi">
+                <p class="rotulo-kpi">Saldo atual do imóvel</p>
+                <p class="valor-kpi @(ex.SaldoAtual < 0 ? "texto-erro" : "")">@Texto.Moeda(ex.SaldoAtual)</p>
+                <p class="pequeno mudo">receitas − despesas pagas, todo o histórico</p>
+            </div>
+            <div class="kpi">
+                <p class="rotulo-kpi">Entradas no período</p>
+                <p class="valor-kpi texto-ok">@Texto.Moeda(ex.Entradas)</p>
+                <p class="pequeno mudo">saldo anterior @Texto.Moeda(ex.SaldoAnterior)</p>
+            </div>
+            <div class="kpi"><p class="rotulo-kpi">Saídas no período</p><p class="valor-kpi texto-erro">@Texto.Moeda(ex.Saidas)</p></div>
+            <div class="kpi">
+                <p class="rotulo-kpi">Saldo no fim do período</p>
+                <p class="valor-kpi @(ex.SaldoFinal < 0 ? "texto-erro" : "")">@Texto.Moeda(ex.SaldoFinal)</p>
+                @if (ex.TotalPendente > 0)
+                {
+                    <p class="pequeno mudo">projetado @Texto.Moeda(ex.SaldoProjetado)</p>
+                }
+            </div>
+        </div>
+
+        <div class="tabela-container">
+            <table class="tabela extrato">
+                <thead>
+                    <tr><th>Data</th><th>Histórico</th><th>Categoria</th><th class="num">Entrada</th><th class="num">Saída</th><th class="num">Saldo</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @if (filtro.De is not null)
+                    {
+                        <tr class="saldo-anterior">
+                            <td>@Texto.Data(filtro.De)</td><td colspan="4"><b>Saldo anterior</b></td>
+                            <td class="num"><b>@Texto.Moeda(ex.SaldoAnterior)</b></td><td></td>
+                        </tr>
+                    }
+                    @if (ex.Movimentos.Count == 0)
+                    {
+                        <tr><td colspan="7" class="vazio">Nenhuma movimentação no período.</td></tr>
+                    }
+                    @foreach (var m in ex.Movimentos)
+                    {
+                        <tr>
+                            <td>@Texto.Data(m.Data)</td>
+                            <td><b>@m.Descricao</b>@if (m.Detalhe is not null) { <p class="pequeno mudo">@m.Detalhe</p> }</td>
+                            <td>@m.Categoria</td>
+                            <td class="num texto-ok">@(m.Entrada > 0 ? Texto.Moeda(m.Entrada) : "")</td>
+                            <td class="num texto-erro">@(m.Saida > 0 ? "−" + Texto.Moeda(m.Saida) : "")</td>
+                            <td class="num @(m.Saldo < 0 ? "texto-erro" : "")"><b>@Texto.Moeda(m.Saldo)</b></td>
+                            <td>
+                                <ComprovantesAnexos Origem="@(m.ReceitaId is { } r ? OrigemComprovante.DaReceita(r) : OrigemComprovante.DoLancamento(m.LancamentoId!.Value))"
+                                                    Quantidade="@contagem.GetValueOrDefault(m.ReceitaId ?? m.LancamentoId!.Value)"
+                                                    Titulo="@($"{m.Descricao} ({Texto.Data(m.Data)})")" AoAlterar="CarregarContagem" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3"><b>Totais do período</b></td>
+                        <td class="num texto-ok"><b>@Texto.Moeda(ex.Entradas)</b></td>
+                        <td class="num texto-erro"><b>−@Texto.Moeda(ex.Saidas)</b></td>
+                        <td class="num"><b>@Texto.Moeda(ex.SaldoFinal)</b></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        @if (filtro.Tipo != TipoExtrato.RECEITAS)
+        {
+            <h3 class="espaco-topo">Despesas a pagar <span class="pequeno mudo">(fora do saldo)</span></h3>
+            @if (ex.Pendentes.Count == 0)
+            {
+                <p class="pequeno mudo">Nenhuma despesa a pagar no período.</p>
+            }
+            else
+            {
+                <div class="tabela-container">
+                    <table class="tabela">
+                        <thead><tr><th>Vencimento</th><th>Despesa</th><th>Categoria</th><th>Situação</th><th class="num">Valor</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in ex.Pendentes)
+                            {
+                                <tr>
+                                    <td>@Texto.Data(p.Vencimento ?? p.Competencia)</td>
+                                    <td><b>@p.Descricao</b>@if (p.Justificativa is not null) { <p class="pequeno justificativa">“@p.Justificativa”</p> }</td>
+                                    <td>@p.Categoria</td>
+                                    <td>
+                                        @if (p.Status == StatusLancamento.NAO_PAGO) { <span class="badge status-NAO_PAGO">Não pago</span> }
+                                        else if (p.Vencida) { <span class="badge status-NAO_PAGO">Vencida</span> }
+                                        else { <span class="mudo">a vencer</span> }
+                                    </td>
+                                    <td class="num">@Texto.Moeda(p.Valor)</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4"><b>Total a pagar</b> · saldo projetado @Texto.Moeda(ex.SaldoProjetado)</td>
+                                <td class="num"><b>@Texto.Moeda(ex.TotalPendente)</b></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+            <p class="pequeno mudo">Para pagar, marque a despesa no checklist mensal abaixo; ela passa para o extrato na data do pagamento.</p>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private FiltroExtrato filtro = Padrao();
+    private Extrato? ex;
+    private IReadOnlyList<DespesaCategoria> categorias = [];
+    private IReadOnlyDictionary<Guid, int> contagem = new Dictionary<Guid, int>();
+
+    /// <summary>Padrão: do início do ano até o fim do mês atual (mostra também as contas do mês a pagar).</summary>
+    private static FiltroExtrato Padrao()
+    {
+        var hoje = DatasBR.Hoje();
+        return new FiltroExtrato { De = new DateOnly(hoje.Year, 1, 1), Ate = new DateOnly(hoje.Year, hoje.Month, 1).AddMonths(1).AddDays(-1) };
+    }
+
+    private string CategoriaSelecionada
+    {
+        get => filtro.CategoriaId?.ToString() ?? "";
+        set => filtro.CategoriaId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    /// <summary>Os mesmos filtros da tela, para o PDF e o Excel.</summary>
+    private string Consulta
+    {
+        get
+        {
+            var partes = new List<string>();
+            if (filtro.De is { } de) partes.Add($"de={de:yyyy-MM-dd}");
+            if (filtro.Ate is { } ate) partes.Add($"ate={ate:yyyy-MM-dd}");
+            if (filtro.Tipo != TipoExtrato.TODOS) partes.Add($"tipo={filtro.Tipo}");
+            if (filtro.CategoriaId is { } c) partes.Add($"categoria={c}");
+            if (Texto.Limpo(filtro.Busca) is { } b) partes.Add($"busca={Uri.EscapeDataString(b)}");
+            return partes.Count == 0 ? "" : "?" + string.Join("&", partes);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () => categorias = await Despesas.CategoriasAsync(incluirInativas: true));
+        await Carregar();
+    }
+
+    /// <summary>Chamado pela aba quando uma receita ou despesa muda.</summary>
+    public async Task RecarregarAsync()
+    {
+        await Carregar();
+        // o evento veio de outra seção: este componente precisa redesenhar por conta própria
+        StateHasChanged();
+    }
+
+    private Task Carregar() => Executar(async () =>
+    {
+        ex = await Servico.GerarAsync(Usuario, ImovelId, filtro);
+        contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId);
+    });
+
+    private async Task CarregarContagem()
+    {
+        await Executar(async () => contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId));
+    }
+
+    private Task Limpar()
+    {
+        filtro = Padrao();
+        return Carregar();
+    }
+
+    private Task Periodo(int dias)
+    {
+        var hoje = DatasBR.Hoje();
+        filtro.De = hoje.AddDays(-dias);
+        filtro.Ate = hoje;
+        return Carregar();
+    }
+
+    private Task EsteAno()
+    {
+        var p = Padrao();
+        filtro.De = p.De;
+        filtro.Ate = new DateOnly(p.De!.Value.Year, 12, 31);
+        return Carregar();
+    }
+
+    private Task Tudo()
+    {
+        filtro.De = null;
+        filtro.Ate = null;
+        return Carregar();
+    }
+}

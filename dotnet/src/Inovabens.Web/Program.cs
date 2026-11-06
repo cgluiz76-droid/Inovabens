@@ -188,22 +188,31 @@ imovel.MapGet("ficha-financeira.xlsx", (Guid id, CodigoIndice? indice, HttpConte
 
 // Pré-visualização do site público (páginas próprias, abertas em outra aba pelo botão "Ver no site"):
 // /site (início), /site/imoveis?finalidade=venda|locacao (busca) e /site/imovel/{id} (ficha). Logo e menu ligam as três.
-async Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s)
+Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s) => PaginaImovelSite(id, c, s, false);
+async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, bool soSimulador)
 {
     try
     {
         var d = await s.DetalheAsync(UsuarioAtual.De(c.User)!, id);
         var linkAtual = d.Dados.ImobibrasilId is { } ib ? $"https://www.inovabens.com.br/imovel/{ib}" : null;
         return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
-            new { Detalhe = d, LinkImobibrasil = linkAtual });
+            new { Detalhe = d, LinkImobibrasil = linkAtual, SoSimulador = soSimulador });
     }
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
 }
 imovel.MapGet("site", FichaSite).RequireAuthorization(Permissoes.ImoveisVer);
+// Extrato (livro caixa) com os mesmos filtros da tela: ?de=AAAA-MM-DD&ate=AAAA-MM-DD&tipo=RECEITAS|DESPESAS&categoria=<id>&busca=texto
+imovel.MapGet("extrato.pdf", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato? tipo, Guid? categoria, string? busca, HttpContext c, RelatoriosService r) =>
+    Baixar(c, u => r.ExtratoPdfAsync(u, id, new FiltroExtrato { De = de, Ate = ate, Tipo = tipo ?? TipoExtrato.TODOS, CategoriaId = categoria, Busca = busca })))
+    .RequireAuthorization(Permissoes.FinanceiroExportar);
+imovel.MapGet("extrato.xlsx", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato? tipo, Guid? categoria, string? busca, HttpContext c, RelatoriosService r) =>
+    Baixar(c, u => r.ExtratoXlsxAsync(u, id, new FiltroExtrato { De = de, Ate = ate, Tipo = tipo ?? TipoExtrato.TODOS, CategoriaId = categoria, Busca = busca })))
+    .RequireAuthorization(Permissoes.FinanceiroExportar);
 
 var site = app.MapGroup("/site").RequireAuthorization(Permissoes.ImoveisVer);
 site.MapGet("imovel/{id:guid}", FichaSite);
+site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s) => PaginaImovelSite(id, c, s, true));
 site.MapGet("", async (HttpContext c, ImoveisService s) =>
 {
     var u = UsuarioAtual.De(c.User)!;
@@ -240,6 +249,19 @@ app.MapGet("/imoveis/midias/{midiaId:guid}/{arquivo}", async (Guid midiaId, stri
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
 }).RequireAuthorization(Permissoes.ImoveisVer);
+
+// Comprovantes financeiros (Drive "07 - Financeiro"): só quem edita o financeiro abre.
+app.MapGet("/financeiro/comprovantes/{id:guid}", async (Guid id, HttpContext c, ComprovantesService s) =>
+{
+    try
+    {
+        var a = await s.ArquivoAsync(UsuarioAtual.De(c.User)!, id, c.RequestAborted);
+        c.Response.Headers.CacheControl = "private, no-store";
+        return a.Download ? Results.File(a.Dados, a.ContentType, a.Nome) : Results.File(a.Dados, a.ContentType);
+    }
+    catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
+    catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
+}).RequireAuthorization(Permissoes.FinanceiroEditar);
 
 // Google Agenda: mesmos caminhos da API Node, para não mudar a configuração no Google Cloud Console.
 app.MapGet("/api/v1/integracoes/google/callback", async (string? code, string? state, string? error, GoogleService g, ILogger<Program> log) =>
@@ -290,6 +312,7 @@ static async Task<IResult> Baixar(HttpContext c, Func<UsuarioAtual, Task<Arquivo
     }
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
+    catch (RegraNegocioException e) { return Results.Problem(e.Message, statusCode: 400); }
 }
 
 /// <summary>

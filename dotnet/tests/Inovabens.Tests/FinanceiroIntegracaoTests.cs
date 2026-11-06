@@ -141,7 +141,7 @@ public class FinanceiroIntegracaoTests
         // --- tela: a aba Financeiro renderiza as quatro seções com os dados gravados ---
         var html = await RenderizarAba(r, admin, id);
         Assert.DoesNotContain("msg-erro", html);
-        foreach (var trecho in new[] { "Aquisição (CAPEX)", "checklist mensal", "Receitas (venda / locação)", "Retorno do investimento",
+        foreach (var trecho in new[] { "Aquisição (CAPEX)", "checklist mensal", "Receitas (venda / locação)", "Retorno do investimento", "Extrato do imóvel (livro caixa)", "Saldo atual do imóvel",
                      "100.000,00", "110.000,00", "140.000,00", "30.000,00", "27,27%", "Reforma", "ndices (BCB)" })
             Assert.Contains(trecho, html);
         Assert.DoesNotContain("ndices (BCB)", await RenderizarAba(r, corretor, idCorretor));
@@ -176,7 +176,8 @@ public class FinanceiroIntegracaoTests
     private static async Task<string> RenderizarAba(IServiceProvider sp, UsuarioAtual usuario, Guid imovelId)
     {
         var servicos = new ServiceCollection();
-        foreach (var t in new[] { typeof(AquisicaoService), typeof(DespesasService), typeof(ReceitasService), typeof(IndicesService), typeof(RetornoService) })
+        foreach (var t in new[] { typeof(AquisicaoService), typeof(DespesasService), typeof(ReceitasService), typeof(IndicesService), typeof(RetornoService),
+                     typeof(ExtratoService), typeof(ComprovantesService) })
             servicos.AddSingleton(t, sp.GetRequiredService(t));
         servicos.AddSingleton(sp.GetRequiredService<ILoggerFactory>());
         servicos.AddSingleton<IJSRuntime, SemJs>();

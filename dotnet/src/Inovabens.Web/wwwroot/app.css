@@ -408,3 +408,14 @@ pre.json { background: #f8f9fc; border: 1px solid var(--borda); border-radius: v
 .badge-neutro { background: #f0f2f7; color: var(--mudo); border-color: var(--borda); }
 .btn-link { background: none; border: 0; padding: 0; margin-left: .35rem; color: var(--erro); font-size: inherit; cursor: pointer; text-decoration: underline; }
 @media (max-width: 760px) { .config-campos { grid-template-columns: 1fr; } }
+
+/* financeiro: extrato (livro caixa) e comprovantes */
+.extrato-filtros { flex-wrap: wrap; align-items: flex-end; }
+.atalhos-periodo { display: inline-flex; gap: .35rem; }
+.tabela .num { text-align: right; white-space: nowrap; }
+.tabela.extrato tr.saldo-anterior td { background: var(--fundo-suave, rgba(0,0,0,.03)); }
+.tabela.extrato tfoot td { border-top: 2px solid var(--borda, #e2e8f0); }
+.btn-anexo { white-space: nowrap; }
+.lista-comprovantes { list-style: none; padding: 0; margin: 0 0 .75rem; display: grid; gap: .4rem; }
+.lista-comprovantes li { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.lista-comprovantes a { font-weight: 600; word-break: break-all; }

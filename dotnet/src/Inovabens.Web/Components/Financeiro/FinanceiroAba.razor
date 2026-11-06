@@ -2,6 +2,7 @@
 
 <p class="pequeno mudo">Custo total = valor pago + impostos + taxas + despesas (calculado automaticamente pelo banco).</p>
 
+<ExtratoSecao @ref="extrato" ImovelId="ImovelId" />
 <AquisicaoSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AtualizarRetorno" />
 <DespesasSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AtualizarRetorno" />
 <ReceitasSecao ImovelId="ImovelId" Editar="Editar" AoAlterar="AoAlterarReceita" />
@@ -13,11 +14,16 @@
     [Parameter] public Func<Task>? AoAlterarImovel { get; set; }
 
     private RetornoSecao? retorno;
+    private ExtratoSecao? extrato;
 
     private bool Editar => Usuario.Pode(Permissoes.FinanceiroEditar);
 
-    /// <summary>Qualquer lançamento muda o retorno: recalcula o quadro de indicadores.</summary>
-    private Task AtualizarRetorno() => retorno?.RecarregarAsync() ?? Task.CompletedTask;
+    /// <summary>Qualquer lançamento muda o extrato e o retorno: recalcula os dois quadros.</summary>
+    private async Task AtualizarRetorno()
+    {
+        if (extrato is not null) await extrato.RecarregarAsync();
+        if (retorno is not null) await retorno.RecarregarAsync();
+    }
 
     private async Task AoAlterarReceita()
     {
