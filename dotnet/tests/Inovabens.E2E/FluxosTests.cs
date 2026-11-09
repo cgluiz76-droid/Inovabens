@@ -107,6 +107,39 @@ public class FluxosTests(Aplicacao app)
         await Expect(p.GetByLabel("Observações")).ToHaveValueAsync("Prefere andar alto");
     }
 
+    [Fact]
+    public async Task Crm_arrastar_cartao_muda_de_coluna_e_de_posicao()
+    {
+        var s = Navegacao.Sufixo();
+        var p = await app.NovaPaginaAsync();
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+        await p.GotoAsync("/crm");
+        await p.Interativa();
+        foreach (var n in new[] { "Um", "Dois" })
+        {
+            await p.Botao("+ Novo lead").ClickAsync();
+            await p.GetByLabel("Nome *").FillAsync($"Arraste {n} {s}");
+            await p.Botao("Criar lead").ClickAsync();
+            await Expect(p.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
+        }
+
+        var colunas = p.Locator(".kanban .coluna");
+        ILocator Cartao(string n) => p.Locator(".cartao-lead").Filter(new() { HasText = $"Arraste {n} {s}" });
+        await Expect(colunas.First.Locator(".cartao-lead").Filter(new() { HasText = $"Arraste Um {s}" })).ToHaveCountAsync(1);
+
+        // "Um" vai da 1ª para a 2ª coluna
+        await Cartao("Um").DragToAsync(colunas.Nth(1));
+        await Expect(colunas.Nth(1).Locator(".cartao-lead").Filter(new() { HasText = $"Arraste Um {s}" })).ToHaveCountAsync(1);
+        await Expect(colunas.First.Locator(".cartao-lead").Filter(new() { HasText = $"Arraste Um {s}" })).ToHaveCountAsync(0);
+
+        // "Dois" solto sobre "Um": fica antes dele na 2ª coluna
+        await Cartao("Dois").DragToAsync(Cartao("Um"));
+        var nomes = colunas.Nth(1).Locator(".cartao-lead .forte");
+        await Expect(nomes.Filter(new() { HasText = s })).ToHaveTextAsync([$"Arraste Dois {s}", $"Arraste Um {s}"]);
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } arquivo)
+            await p.Locator(".kanban").ScreenshotAsync(new() { Path = arquivo });
+    }
+
     /// <summary>Consulta o ViaCEP de verdade (precisa de internet).</summary>
     [Fact]
     public async Task Pessoa_cep_completa_endereco_editavel_e_avisa_quando_nao_encontra()

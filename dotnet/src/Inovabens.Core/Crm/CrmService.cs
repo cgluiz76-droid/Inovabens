@@ -236,6 +236,10 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         var anterior = l.Estagio!;
         await using var tx = await db.Database.BeginTransactionAsync();
         var prox = (await db.Leads.Where(x => x.EstagioId == novo.Id).MaxAsync(x => (int?)x.Ordem) ?? -1) + 1;
+        // posição escolhida (soltar o cartão sobre outro): abre espaço empurrando os de baixo
+        if (ordem is { } pos)
+            await db.Leads.Where(x => x.EstagioId == novo.Id && x.Id != id && x.Ordem >= pos)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Ordem, x => x.Ordem + 1));
         l.EstagioId = novo.Id;
         l.Estagio = novo;
         l.Ordem = ordem ?? prox;

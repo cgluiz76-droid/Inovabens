@@ -32,14 +32,17 @@ else
     <div class="kanban">
         @foreach (var col in colunas)
         {
-            <div class="coluna" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")">
+            <div class="coluna @(arrastando is not null && colunaAlvo == col.Estagio.Id ? "alvo" : "")" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")"
+                 @ondragenter="() => colunaAlvo = col.Estagio.Id" @ondragover:preventDefault @ondrop="() => Soltar(col.Estagio, null)">
                 <div class="coluna-topo">
                     <strong>@col.Estagio.Nome</strong>
                     <span class="badge">@col.Leads.Count</span>
                 </div>
                 @foreach (var l in col.Leads)
                 {
-                    <div class="cartao-lead @(l.VincularImovel ? "vincular" : "")" @key="(l.Id, versao)">
+                    <div class="cartao-lead @(l.VincularImovel ? "vincular" : "") @(arrastando?.Id == l.Id ? "arrastando" : "")" @key="(l.Id, versao)"
+                         draggable="@(PodeMover ? "true" : "false")" @ondragstart="() => arrastando = l" @ondragend="FimArraste"
+                         @ondrop="() => Soltar(col.Estagio, l)" @ondrop:stopPropagation>
                         <button class="link-cartao" @onclick="() => Abrir(l.Id)">
                             <span class="forte">@l.PessoaNome</span>
                             <span class="pequeno mudo">@(l.Telefone ?? l.Email ?? "")</span>
@@ -322,6 +325,35 @@ else
         colunas = await Servico.PipelineAsync(Usuario, funil);
         versao++;
     });
+
+    /* ---- arrastar e soltar: o cartão vai para a coluna (ou para antes do cartão) onde for solto ---- */
+
+    private bool PodeMover => Usuario.Pode(Permissoes.CrmEditar);
+    private LeadCartao? arrastando;
+    private Guid? colunaAlvo;
+
+    private void FimArraste()
+    {
+        arrastando = null;
+        colunaAlvo = null;
+    }
+
+    private async Task Soltar(FunilEstagio destino, LeadCartao? sobre)
+    {
+        var l = arrastando;
+        FimArraste();
+        if (l is null || !PodeMover || sobre?.Id == l.Id) return;
+        var origem = colunas!.First(c => c.Leads.Any(x => x.Id == l.Id)).Estagio;
+        if (origem.Id == destino.Id && sobre is null) return; // solto na própria coluna, fora de outro cartão
+        if (destino.Tipo == TipoEstagio.PERDIDO && origem.Id != destino.Id)
+        {
+            erroModal = null;
+            motivo = "";
+            perda = (l, destino);
+            return;
+        }
+        if (await Executar(() => Servico.MoverAsync(Usuario, l.Id, destino.Id, ordem: sobre?.Ordem))) await Carregar();
+    }
 
     private Task TrocarFunil(Funil f)
     {
