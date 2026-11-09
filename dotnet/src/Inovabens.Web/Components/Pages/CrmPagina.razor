@@ -4,6 +4,7 @@
 @inject CrmService Servico
 @inject OpcoesService Opcoes
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <PageTitle>CRM · Inovabens</PageTitle>
 
@@ -38,7 +39,7 @@ else
                 </div>
                 @foreach (var l in col.Leads)
                 {
-                    <div class="cartao-lead" @key="(l.Id, versao)">
+                    <div class="cartao-lead @(l.VincularImovel ? "vincular" : "")" @key="(l.Id, versao)">
                         <button class="link-cartao" @onclick="() => Abrir(l.Id)">
                             <span class="forte">@l.PessoaNome</span>
                             <span class="pequeno mudo">@(l.Telefone ?? l.Email ?? "")</span>
@@ -53,6 +54,10 @@ else
                                 <span class="mudo"> · @l.Origem</span>
                             }
                         </p>
+                        @if (l.VincularImovel)
+                        {
+                            <p class="pequeno aviso-vinculo">📲 Vincular imóvel@(l.ImovelSugerido is { } sug ? $" · sugerido {sug}" : "")</p>
+                        }
                         @if (l.ProximaAcaoEm is { } p)
                         {
                             <p class="pequeno @(p < DateTime.UtcNow ? "texto-erro" : "mudo")">Próxima ação: @Texto.DataHora(p)</p>
@@ -156,6 +161,23 @@ else
             <p class="msg-erro">Motivo da perda: @mp</p>
         }
         <MensagemErro Texto="@erroModal" />
+        @if (detalhe.VincularImovel)
+        {
+            <div class="aviso-whatsapp">
+                <p><b>📲 Lead recebido pelo WhatsApp.</b> Vincule o imóvel de interesse e complete os dados do lead.</p>
+                @if (detalhe.ImovelSugerido is { } s && Usuario.Pode(Permissoes.CrmEditar))
+                {
+                    <p>
+                        A mensagem cita o imóvel <a href="imoveis/@s.Id">@s.Codigo</a> · @s.Titulo.
+                        <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => VincularSugerido(s.Id)">Vincular este imóvel</button>
+                    </p>
+                }
+                else
+                {
+                    <p class="pequeno mudo">Marque o imóvel em “Imóveis de interesse” abaixo e salve.</p>
+                }
+            </div>
+        }
 
         <h3>Dados do lead</h3>
         <EditForm Model="edicao" OnValidSubmit="SalvarLead" class="formulario">
@@ -214,7 +236,7 @@ else
                 {
                     <li>
                         <span class="badge">@Texto.Rotulo(i.Dados.Canal)</span> @i.Dados.Resumo
-                        <span class="pequeno mudo">· @(i.UsuarioNome ?? "—") · @Texto.DataHora(i.Dados.CriadoEm)</span>
+                        <span class="pequeno mudo">· @(i.UsuarioNome ?? (i.Dados.Canal == CanalInteracao.WHATSAPP ? "automático" : "—")) · @Texto.DataHora(i.Dados.CriadoEm)</span>
                     </li>
                 }
             </ul>
@@ -269,6 +291,26 @@ else
             imoveis = await Opcoes.ImoveisParaInteresseAsync(Usuario);
             if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
         });
+        await Carregar();
+        // vindo do alerta "novo lead" (crm?lead=<id>): abre o lead no funil dele
+        var consulta = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (consulta.TryGetValue("lead", out var lid) && Guid.TryParse(lid, out var leadId))
+        {
+            await Abrir(leadId);
+            if (detalhe is not null && CrmService.FunilDa(detalhe.Dados.Finalidade) != funil)
+            {
+                funil = CrmService.FunilDa(detalhe.Dados.Finalidade);
+                await Carregar();
+            }
+        }
+    }
+
+    private async Task VincularSugerido(Guid imovelId)
+    {
+        var id = detalhe!.Dados.Id;
+        await Executar(() => Servico.DefinirInteresseAsync(Usuario, id, [.. detalhe.ImoveisInteresse.Select(i => i.Id), imovelId]), noModal: true);
+        if (erroModal is not null) return;
+        await Abrir(id);
         await Carregar();
     }
 

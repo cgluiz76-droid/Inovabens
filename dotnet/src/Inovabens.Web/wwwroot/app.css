@@ -365,6 +365,11 @@ tr.cancelado td { color: var(--mudo); text-decoration: line-through; }
 .cartao-lead { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio-p); padding: .7rem; margin-bottom: .55rem; box-shadow: var(--sombra-1); transition: box-shadow .15s, transform .15s; }
 .cartao-lead:hover { box-shadow: var(--sombra-2); transform: translateY(-1px); }
 .cartao-lead p { margin: .25rem 0; }
+/* lead do WhatsApp sem imóvel vinculado */
+.cartao-lead.vincular { border-left: 3px solid var(--ok); }
+.aviso-vinculo { color: var(--ok); font-weight: 600; }
+.aviso-whatsapp { background: var(--ok-fundo); border: 1px solid var(--borda); border-left: 3px solid var(--ok); border-radius: var(--raio-p); padding: .6rem .8rem; margin: .5rem 0 1rem; }
+.aviso-whatsapp p { margin: .25rem 0; }
 .cartao-lead select { width: 100%; margin-top: .45rem; }
 .link-cartao { all: unset; cursor: pointer; display: flex; flex-direction: column; width: 100%; }
 .link-cartao:hover .forte { color: var(--azul); text-decoration: underline; }

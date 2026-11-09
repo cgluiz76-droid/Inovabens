@@ -39,6 +39,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Receita> Receitas => Set<Receita>();
     public DbSet<ComprovanteFinanceiro> ComprovantesFinanceiros => Set<ComprovanteFinanceiro>();
     public DbSet<IndiceSerie> IndicesSerie => Set<IndiceSerie>();
+    public DbSet<WhatsappMensagem> WhatsappMensagens => Set<WhatsappMensagem>();
     public DbSet<Alerta> Alertas => Set<Alerta>();
 
     public DbSet<PessoaPapel> PessoaPapeis => Set<PessoaPapel>();

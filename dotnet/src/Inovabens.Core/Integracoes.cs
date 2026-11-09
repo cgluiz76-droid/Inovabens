@@ -18,7 +18,7 @@ public sealed record GrupoConfiguracao(string Codigo, string Titulo, string Desc
 public static class CatalogoConfiguracoes
 {
     public const string GoogleDrive = "google_drive", R2 = "r2", Magnific = "magnific", GoogleAgenda = "google_agenda",
-        GoogleMaps = "google_maps", Site = "site", Imobibrasil = "imobibrasil";
+        GoogleMaps = "google_maps", Site = "site", Imobibrasil = "imobibrasil", Whatsapp = "whatsapp";
 
     /// <summary>Portais que recebem os anúncios (código, nome). Cada um ganha o grupo "portal_{código}".</summary>
     public static readonly IReadOnlyList<(string Codigo, string Nome)> Portais =
@@ -44,6 +44,11 @@ public static class CatalogoConfiguracoes
         new(GoogleMaps, "Google Maps (localização pelo endereço)",
             "Sem a chave, a localização usa o OpenStreetMap (gratuito, menos preciso).", Testavel: true),
         new(Site, "Site da Inovabens", "Dados de contato exibidos no site e usados nos anúncios."),
+        new(Whatsapp, "WhatsApp Business (leads no CRM)",
+            "Cada mensagem recebida no WhatsApp da empresa cria um lead na primeira coluna do funil (ou entra no histórico do lead " +
+            "aberto do mesmo contato). No app da Meta (WhatsApp → Configuração → Webhooks), cadastre a URL " +
+            "https://SEU-SITE/api/v1/webhooks/whatsapp com o mesmo token de verificação daqui e assine os campos " +
+            "\"messages\" e \"smb_message_echoes\". Parceiro (BSP) que repassa as mensagens: use a URL com ?token=<token de verificação>."),
         new(Imobibrasil, "Imobibrasil (site atual)",
             "Endereço do site atual, de onde a importação lê os anúncios publicados.", Testavel: true),
         .. Portais.Select(p => new GrupoConfiguracao("portal_" + p.Codigo, p.Nome,
@@ -84,6 +89,15 @@ public static class CatalogoConfiguracoes
         new("site.email_contato", Site, "E-mail de contato", Variavel: "SITE_EMAIL_CONTATO", Tipo: TipoCampoConfig.Email),
         new("site.telefone", Site, "Telefone", Variavel: "SITE_TELEFONE", Tipo: TipoCampoConfig.Telefone),
         new("site.creci", Site, "CRECI da imobiliária", Variavel: "SITE_CRECI"),
+
+        new("whatsapp.verify_token", Whatsapp, "Token de verificação do webhook",
+            "Texto longo e aleatório criado por você; o mesmo vai no campo \"Verificar token\" da Meta.",
+            Secreto: true, Variavel: "WHATSAPP_VERIFY_TOKEN"),
+        new("whatsapp.app_secret", Whatsapp, "Chave secreta do app (App Secret)",
+            "Painel da Meta → Configurações do app → Básico. Confere a assinatura de cada aviso da Meta.",
+            Secreto: true, Variavel: "WHATSAPP_APP_SECRET"),
+        new("whatsapp.phone_number_id", Whatsapp, "ID do número de telefone (opcional)",
+            "Com ele, só as mensagens desse número entram no CRM.", Variavel: "WHATSAPP_PHONE_NUMBER_ID"),
 
         new("imobibrasil.site", Imobibrasil, "Endereço do site no Imobibrasil", Variavel: "IMOBIBRASIL_SITE",
             Tipo: TipoCampoConfig.Url, Padrao: "https://www.inovabens.com.br"),
@@ -162,6 +176,10 @@ public sealed class Integracoes(IReadOnlyDictionary<string, string> valores)
     public string? GoogleRedirectUri => this["google_agenda.redirect_uri"];
     public string? GoogleWebhookUrl => this["google_agenda.webhook_url"];
     public bool GoogleConfigurado => GoogleClientId is not null && GoogleClientSecret is not null && GoogleRedirectUri is not null;
+
+    public string? WhatsappVerifyToken => this["whatsapp.verify_token"];
+    public string? WhatsappAppSecret => this["whatsapp.app_secret"];
+    public string? WhatsappPhoneNumberId => this["whatsapp.phone_number_id"];
 
     public string ImobibrasilSite => (this["imobibrasil.site"] ?? "https://www.inovabens.com.br").TrimEnd('/');
 

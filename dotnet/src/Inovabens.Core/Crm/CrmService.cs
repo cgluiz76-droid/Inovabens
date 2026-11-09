@@ -10,11 +10,17 @@ namespace Inovabens.Core.Crm;
 
 public sealed record LeadCartao(
     Guid Id, string PessoaNome, string? Telefone, string? Email, FinalidadeLead Finalidade, string? Origem,
-    string? ResponsavelNome, decimal? OrcamentoMax, DateTime? ProximaAcaoEm, int Ordem);
+    string? ResponsavelNome, decimal? OrcamentoMax, DateTime? ProximaAcaoEm, int Ordem,
+    bool VincularImovel = false, string? ImovelSugerido = null);
 
 public sealed record ColunaFunil(FunilEstagio Estagio, IReadOnlyList<LeadCartao> Leads);
 
-public sealed record LeadDetalhe(Lead Dados, Pessoa Pessoa, FunilEstagio Estagio, string? ResponsavelNome, IReadOnlyList<ImovelInteresse> ImoveisInteresse);
+public sealed record LeadDetalhe(Lead Dados, Pessoa Pessoa, FunilEstagio Estagio, string? ResponsavelNome, IReadOnlyList<ImovelInteresse> ImoveisInteresse,
+    ImovelInteresse? ImovelSugerido = null)
+{
+    /// <summary>Lead que chegou pelo WhatsApp e ainda não tem imóvel de interesse.</summary>
+    public bool VincularImovel => Dados.Origem == WhatsappService.Origem && ImoveisInteresse.Count == 0;
+}
 
 public sealed record ImovelInteresse(Guid Id, string Codigo, string Titulo, SituacaoImovel Situacao);
 
@@ -100,8 +106,10 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
             .Select(l => new
             {
                 l.EstagioId,
-                Cartao = new LeadCartao(l.Id, l.Pessoa!.NomeRazao, l.Pessoa.Telefone, l.Pessoa.Email, l.Finalidade, l.Origem,
-                    l.Responsavel != null ? l.Responsavel.Nome : null, l.OrcamentoMax, l.ProximaAcaoEm, l.Ordem),
+                Cartao = new LeadCartao(l.Id, l.Pessoa!.NomeRazao, l.Pessoa.Telefone ?? l.Pessoa.Whatsapp, l.Pessoa.Email, l.Finalidade, l.Origem,
+                    l.Responsavel != null ? l.Responsavel.Nome : null, l.OrcamentoMax, l.ProximaAcaoEm, l.Ordem,
+                    l.Origem == WhatsappService.Origem && !db.LeadImoveisInteresse.Any(i => i.LeadId == l.Id),
+                    db.Imoveis.Where(i => i.Id == l.ImovelSugeridoId).Select(i => i.Codigo).FirstOrDefault()),
             })
             .ToListAsync();
         return [.. estagios.Select(e => new ColunaFunil(e, [.. leads.Where(l => l.EstagioId == e.Id).Select(l => l.Cartao)]))];
@@ -123,7 +131,11 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         var interesse = await db.LeadImoveisInteresse.AsNoTracking().Where(i => i.LeadId == id)
             .Join(db.Imoveis.Where(im => im.ExcluidoEm == null), i => i.ImovelId, im => im.Id, (i, im) => new ImovelInteresse(im.Id, im.Codigo, im.Titulo, im.Situacao))
             .ToListAsync();
-        return new LeadDetalhe(l, l.Pessoa!, l.Estagio!, l.Responsavel?.Nome, interesse);
+        var sugerido = l.ImovelSugeridoId is { } sid && interesse.All(i => i.Id != sid)
+            ? await db.Imoveis.AsNoTracking().Where(im => im.Id == sid && im.ExcluidoEm == null)
+                .Select(im => new ImovelInteresse(im.Id, im.Codigo, im.Titulo, im.Situacao)).FirstOrDefaultAsync()
+            : null;
+        return new LeadDetalhe(l, l.Pessoa!, l.Estagio!, l.Responsavel?.Nome, interesse, sugerido);
     }
 
     private static async Task<FunilEstagio> EstagioInicial(InovabensDb db, Funil funil) =>
@@ -318,6 +330,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         await db.LeadImoveisInteresse.Where(i => i.LeadId == id).ExecuteDeleteAsync();
         db.LeadImoveisInteresse.AddRange(ids.Select(im => new LeadImovelInteresse { LeadId = id, ImovelId = im }));
         await db.SaveChangesAsync();
+        if (ids.Count > 0) await WhatsappService.ResolverAlertasDoLead(db, id);
     }
 
     /* ----------------------- Estágios (configuráveis) ----------------------- */

@@ -22,6 +22,8 @@ public class ExtratoComprovantesTests : IAsyncLifetime
     // um provider só para a classe: cada provider novo conta no limite de 20 do EF (ManyServiceProvidersCreatedWarning)
     private static readonly ArmazenamentoMemoria _drive = new();
     private static readonly Lazy<ServiceProvider> _sp = new(Criar);
+    /// <summary>Usado também por outras classes de integração (WhatsApp), para não criar mais providers do EF.</summary>
+    internal static ServiceProvider Compartilhado => _sp.Value;
     private IServiceScope _escopo = default!;
 
     private static DateOnly D(int a, int m, int d) => new(a, m, d);

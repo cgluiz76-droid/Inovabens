@@ -135,6 +135,7 @@ public class Alerta
     public Guid UsuarioId { get; set; }
     public Guid? CompromissoId { get; set; }
     public Guid? LancamentoId { get; set; }
+    public Guid? LeadId { get; set; }
     public string Mensagem { get; set; } = "";
     public DateTime GeradoEm { get; set; } = DateTime.UtcNow;
     public DateTime? LidoEm { get; set; }
@@ -187,6 +188,8 @@ public class Lead
     public string? MotivoPerda { get; set; }
     public DateTime? ProximaAcaoEm { get; set; }
     public string? Observacoes { get; set; }
+    /// <summary>Imóvel citado na primeira mensagem do WhatsApp; o usuário confirma o vínculo.</summary>
+    public Guid? ImovelSugeridoId { get; set; }
     public int Ordem { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
@@ -218,6 +221,23 @@ public class LeadInteracao
     public CanalInteracao Canal { get; set; }
     public string Resumo { get; set; } = "";
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Mensagem do WhatsApp recebida pelo webhook (Id = id da mensagem na Meta, garante que não entra duas vezes).</summary>
+[Table("whatsapp_mensagens")]
+public class WhatsappMensagem
+{
+    public string Id { get; set; } = "";
+    public string Telefone { get; set; } = "";
+    public string? NomeContato { get; set; }
+    /// <summary>ENTRADA (do cliente) ou SAIDA (enviada pelo celular da empresa).</summary>
+    public string Direcao { get; set; } = "ENTRADA";
+    public string Tipo { get; set; } = "text";
+    public string? Texto { get; set; }
+    public Guid? PessoaId { get; set; }
+    public Guid? LeadId { get; set; }
+    public DateTime EnviadaEm { get; set; }
+    public DateTime RecebidaEm { get; set; } = DateTime.UtcNow;
 }
 
 [Table("lead_imoveis_interesse")]

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Inovabens.Core.Crm;
 using Inovabens.Core;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Agenda;
@@ -282,6 +284,42 @@ app.MapPost("/api/v1/webhooks/google/calendar", async (HttpRequest req, GoogleSe
     await g.WebhookAsync(req.Headers["x-goog-channel-id"], req.Headers["x-goog-channel-token"], req.Headers["x-goog-resource-state"]);
     return Results.Ok();
 }).AllowAnonymous().DisableAntiforgery();
+
+// WhatsApp Business (Cloud API): a Meta confere a URL com GET e entrega as mensagens com POST assinado.
+app.MapGet("/api/v1/webhooks/whatsapp", (HttpRequest req, WhatsappService w) =>
+{
+    SemPaginaDeErro(req);
+    return w.Desafio(req.Query["hub.mode"], req.Query["hub.verify_token"], req.Query["hub.challenge"]) is { } desafio
+        ? Results.Text(desafio, "text/plain")
+        : Results.StatusCode(StatusCodes.Status403Forbidden);
+}).AllowAnonymous();
+app.MapPost("/api/v1/webhooks/whatsapp", async (HttpRequest req, WhatsappService w, CancellationToken ct) =>
+{
+    SemPaginaDeErro(req);
+    if (!w.Configurado) return Results.NotFound();
+    if (req.ContentLength > 1_000_000) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+    using var buffer = new MemoryStream();
+    await req.Body.CopyToAsync(buffer, ct);
+    if (buffer.Length > 1_000_000) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+    var corpo = buffer.ToArray();
+    if (!w.Autentico(corpo, req.Headers["X-Hub-Signature-256"], req.Query["token"])) return Results.Unauthorized();
+    JsonDocument aviso;
+    try { aviso = JsonDocument.Parse(corpo); }
+    catch (JsonException) { return Results.BadRequest(); }
+    using (aviso)
+    {
+        // erro de banco devolve 500: a Meta reenvia depois, e mensagens já gravadas não entram de novo
+        await w.ProcessarAsync(aviso.RootElement, ct);
+    }
+    return Results.Ok();
+}).AllowAnonymous().DisableAntiforgery();
+
+// Webhook responde só o código HTTP: sem reexecutar a página "não encontrado" do site (viraria 400 no POST).
+static bool SemPaginaDeErro(HttpRequest req)
+{
+    if (req.HttpContext.Features.Get<Microsoft.AspNetCore.Diagnostics.IStatusCodePagesFeature>() is { } f) f.Enabled = false;
+    return true;
+}
 
 // Depois de trocar a senha, a tela de Conta reemite o cookie desta sessão com o novo selo (as demais caem).
 app.MapGet("/conta/renovar-sessao", async (string t, HttpContext c, AuthService auth, RenovacaoSessao renovacao) =>
