@@ -25,6 +25,7 @@ var opcoes = InovabensOpcoes.De(builder.Configuration, builder.Environment.IsPro
 builder.Services.AddInovabensCore(opcoes);
 builder.Services.AddHostedService<SincronizacaoIndicesJob>();
 builder.Services.AddHostedService<AlertasCompromissosJob>();
+builder.Services.AddHostedService<ExpiracaoPropostasJob>();
 builder.Services.AddHostedService<RotinaFinanceiraDiariaJob>();
 builder.Services.AddHostedService<SincronizacaoGoogleJob>();
 builder.Services.AddHostedService<RenovacaoCanaisGoogleJob>();
@@ -211,6 +212,12 @@ imovel.MapGet("extrato.pdf", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato?
 imovel.MapGet("extrato.xlsx", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato? tipo, Guid? categoria, string? busca, HttpContext c, RelatoriosService r) =>
     Baixar(c, u => r.ExtratoXlsxAsync(u, id, new FiltroExtrato { De = de, Ate = ate, Tipo = tipo ?? TipoExtrato.TODOS, CategoriaId = categoria, Busca = busca })))
     .RequireAuthorization(Permissoes.FinanceiroExportar);
+
+// Documento da proposta: PDF padrão ou modelo Word preenchido (?modelo=<id>); e o arquivo original de um modelo (admin)
+app.MapGet("/crm/propostas/{id:guid}/documento", (Guid id, Guid? modelo, HttpContext c, DocumentosService d) => Baixar(c, u => d.GerarAsync(u, id, modelo)))
+    .RequireAuthorization(Permissoes.CrmVer);
+app.MapGet("/admin/modelos/{id:guid}/arquivo", (Guid id, HttpContext c, DocumentosService d) => Baixar(c, u => d.BaixarModeloAsync(u, id)))
+    .RequireAuthorization(Permissoes.AdminConfig);
 
 var site = app.MapGroup("/site").RequireAuthorization(Permissoes.ImoveisVer);
 site.MapGet("imovel/{id:guid}", FichaSite);

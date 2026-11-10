@@ -1,3 +1,4 @@
+using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Crm;
 using Inovabens.Core.Dados;
@@ -215,5 +216,63 @@ public class PropostasTests : IAsyncLifetime
         // corretor não faz proposta com imóvel alheio que não está no interesse do lead
         var deleLead = await S<CrmService>().CriarAsync(corretor, new LeadForm { NovoNome = $"Da Carla {sufixo}" });
         await Assert.ThrowsAsync<NaoEncontradoException>(() => propostas.CriarAsync(corretor, deleLead, Venda(im, (TipoItemProposta.ENTRADA, 90_000))));
+    }
+
+    [Fact]
+    public async Task Proposta_vencida_expira_registra_no_lead_e_avisa_o_responsavel()
+    {
+        var propostas = S<PropostasService>();
+        var casa = await Imovel("Casa Validade", corretor, venda: 300_000);
+        var lead = await S<CrmService>().CriarAsync(corretor, new LeadForm { NovoNome = $"Validade {sufixo}", ResponsavelId = corretor.Id });
+        var f = Venda(casa, (TipoItemProposta.ENTRADA, 280_000));
+        f.ValidadeEm = DatasBR.Hoje();
+        var id = await propostas.CriarAsync(corretor, lead, f);
+
+        // ainda no dia da validade: não expira
+        await propostas.ExpirarVencidasAsync();
+        Assert.Equal(StatusProposta.EM_ANALISE, (await propostas.ObterAsync(corretor, id)).Dados.Status);
+
+        await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+            await db.Propostas.Where(p => p.Id == id).ExecuteUpdateAsync(x => x.SetProperty(p => p.ValidadeEm, DatasBR.Hoje().AddDays(-1)));
+        Assert.True(await propostas.ExpirarVencidasAsync() >= 1);
+        var d = await propostas.ObterAsync(corretor, id);
+        Assert.Equal(StatusProposta.EXPIRADA, d.Dados.Status);
+        Assert.StartsWith("Validade vencida em", d.Dados.MotivoDecisao);
+        Assert.Contains("expirou", (await S<CrmService>().InteracoesAsync(corretor, lead))[0].Dados.Resumo);
+        var alerta = Assert.Single((await S<AlertasService>().ListarAsync(corretor, false)).Where(a => a.LeadId == lead));
+        Assert.Equal(TipoAlerta.PROPOSTA_EXPIRADA, alerta.Dados.Tipo);
+        // a rotina é idempotente
+        await propostas.ExpirarVencidasAsync();
+        Assert.Single((await S<AlertasService>().ListarAsync(corretor, false)).Where(a => a.LeadId == lead));
+
+        // nova proposta resolve o aviso
+        await propostas.CriarAsync(corretor, lead, Venda(casa, (TipoItemProposta.ENTRADA, 290_000)));
+        Assert.Empty((await S<AlertasService>().ListarAsync(corretor, false)).Where(a => a.LeadId == lead));
+    }
+
+    [Fact]
+    public async Task Imovel_recebido_em_permuta_fica_ligado_a_proposta()
+    {
+        var propostas = S<PropostasService>();
+        var casa = await Imovel("Casa Permuta", corretor, venda: 800_000);
+        var lead = await S<CrmService>().CriarAsync(corretor, new LeadForm { NovoNome = $"Permutante {sufixo}" });
+        var f = Venda(casa, (TipoItemProposta.ENTRADA, 300_000), (TipoItemProposta.PERMUTA_IMOVEL, 450_000));
+        f.Itens[1].Descricao = "Apartamento 2 quartos no Centro";
+        var id = await propostas.CriarAsync(corretor, lead, f);
+        var item = (await propostas.ObterAsync(corretor, id)).Dados.Itens[1];
+
+        var dados = await propostas.PermutaAsync(corretor, item.Id);
+        Assert.Equal(lead, dados.LeadId);
+        Assert.Equal(450_000, dados.Valor);
+        Assert.Equal("Apartamento 2 quartos no Centro", dados.Descricao);
+        // só a parte "permuta de imóvel" serve
+        var entrada = (await propostas.ObterAsync(corretor, id)).Dados.Itens[0].Id;
+        await Assert.ThrowsAsync<NaoEncontradoException>(() => propostas.PermutaAsync(corretor, entrada));
+
+        var apto = await Imovel("Apto da permuta", corretor);
+        await propostas.VincularPermutaAsync(corretor, item.Id, apto);
+        Assert.Equal(apto, (await propostas.ObterAsync(corretor, id)).Dados.Itens[1].ImovelPermutaId);
+        Assert.Contains("Imóvel da permuta", (await S<CrmService>().InteracoesAsync(corretor, lead))[0].Dados.Resumo);
+        await Assert.ThrowsAsync<RegraNegocioException>(() => propostas.VincularPermutaAsync(corretor, item.Id, apto));
     }
 }

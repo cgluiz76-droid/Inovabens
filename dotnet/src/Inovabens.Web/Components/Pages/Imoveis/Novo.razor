@@ -2,22 +2,64 @@
 @attribute [Authorize(Policy = Permissoes.ImoveisCriar)]
 @inherits ComponenteBase
 @inject ImoveisService Servico
+@inject PropostasService Propostas
 @inject NavigationManager Nav
 
 <PageTitle>Novo imóvel · Inovabens</PageTitle>
 
-<a href="imoveis" class="voltar">← Imóveis</a>
-<div class="titulo"><h1>Novo imóvel</h1></div>
+@if (permuta is { } pm)
+{
+    <a href="crm?lead=@pm.LeadId" class="voltar">← Voltar ao lead</a>
+    <div class="titulo"><h1>Imóvel recebido em permuta</h1></div>
+    <p class="aviso-whatsapp">
+        Permuta da proposta nº @pm.PropostaNumero (@pm.ImovelCodigo) do lead <b>@pm.LeadNome</b>, avaliada em @Texto.Moeda(pm.Valor).
+        Ao cadastrar, o imóvel fica ligado à proposta.
+    </p>
+}
+else
+{
+    <a href="imoveis" class="voltar">← Imóveis</a>
+    <div class="titulo"><h1>Novo imóvel</h1></div>
+}
+<MensagemErro Texto="@Erro" />
 <div class="card">
     <ImovelFormulario Form="form" AoSalvar="Criar" RotuloBotao="Cadastrar imóvel" />
 </div>
 
 @code {
+    /// <summary>Parte "permuta de imóvel" de uma proposta: o cadastro já vem preenchido e fica ligado a ela.</summary>
+    [SupplyParameterFromQuery(Name = "permuta")] public Guid? PermutaId { get; set; }
+
     private readonly ImovelForm form = new();
+    private PermutaParaCadastro? permuta;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (PermutaId is not { } id) return;
+        await Executar(async () => permuta = await Propostas.PermutaAsync(Usuario, id));
+        if (permuta is null) return;
+        if (permuta.ImovelPermutaId is { } ja)
+        {
+            Nav.NavigateTo($"imoveis/{ja}");
+            return;
+        }
+        var desc = permuta.Descricao ?? "imóvel em permuta";
+        form.Titulo = $"Permuta · {(desc.Length > 80 ? desc[..80] : desc)}";
+        form.Situacao = SituacaoImovel.CAPTACAO;
+        form.PrecoVenda = permuta.Valor;
+        form.DescricaoInterna = $"Recebido em permuta na proposta nº {permuta.PropostaNumero} ({permuta.ImovelCodigo}) do lead {permuta.LeadNome}."
+            + (permuta.Descricao is { } d ? $"\nDescrição na proposta: {d}" : "");
+    }
 
     private async Task Criar(ImovelForm f)
     {
         var id = await Servico.CriarAsync(Usuario, f);
+        if (permuta is { } pm)
+        {
+            await Propostas.VincularPermutaAsync(Usuario, pm.ItemId, id);
+            Nav.NavigateTo($"crm?lead={pm.LeadId}");
+            return;
+        }
         Nav.NavigateTo($"imoveis/{id}");
     }
 }

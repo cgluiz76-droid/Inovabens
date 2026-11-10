@@ -429,7 +429,7 @@ public sealed class RelatoriosService(
 
     /* ------------------------------- PDF: apoio ------------------------------- */
 
-    private static byte[] NovoPdf(string titulo, string subtitulo, string rodape, Action<ColumnDescriptor> conteudo) =>
+    internal static byte[] NovoPdf(string titulo, string subtitulo, string rodape, Action<ColumnDescriptor> conteudo) =>
         Document.Create(doc => doc.Page(p =>
         {
             p.Size(PageSizes.A4);
@@ -460,12 +460,12 @@ public sealed class RelatoriosService(
             });
         })).WithMetadata(new DocumentMetadata { Title = titulo, Author = "Inovabens" }).GeneratePdf();
 
-    private static void Secao(ColumnDescriptor col, string titulo) =>
+    internal static void Secao(ColumnDescriptor col, string titulo) =>
         col.Item().PaddingTop(10).BorderBottom(1).BorderColor(Linha).PaddingBottom(2)
             .Text(titulo.ToUpperInvariant()).FontSize(11).Bold().FontColor(Marca);
 
     /// <summary>Grade de "rótulo / valor" em N colunas.</summary>
-    private static void Campos(ColumnDescriptor col, int colunas, params (string Rotulo, string? Valor)[] pares)
+    internal static void Campos(ColumnDescriptor col, int colunas, params (string Rotulo, string? Valor)[] pares)
     {
         foreach (var grupo in pares.Chunk(colunas))
             col.Item().PaddingBottom(4).Row(r =>
@@ -480,10 +480,10 @@ public sealed class RelatoriosService(
             });
     }
 
-    private static void Paragrafo(ColumnDescriptor col, string? texto) =>
+    internal static void Paragrafo(ColumnDescriptor col, string? texto) =>
         col.Item().Text(string.IsNullOrWhiteSpace(texto) ? "—" : texto.Trim()).Justify();
 
-    private static void Tabela(ColumnDescriptor col, (string Titulo, float Peso)[] colunas, IReadOnlyList<string[]> linhas,
+    internal static void Tabela(ColumnDescriptor col, (string Titulo, float Peso)[] colunas, IReadOnlyList<string[]> linhas,
         string vazio = "Nenhum registro.", bool alinharUltimaDireita = false, int colunasDireita = 0)
     {
         if (alinharUltimaDireita) colunasDireita = Math.Max(colunasDireita, 1);

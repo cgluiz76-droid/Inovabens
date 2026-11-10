@@ -56,6 +56,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<LeadInteracao> LeadInteracoes => Set<LeadInteracao>();
     public DbSet<Proposta> Propostas => Set<Proposta>();
     public DbSet<PropostaItem> PropostaItens => Set<PropostaItem>();
+    public DbSet<ModeloDocumento> ModelosDocumento => Set<ModeloDocumento>();
     public DbSet<LeadImovelInteresse> LeadImoveisInteresse => Set<LeadImovelInteresse>();
 
     /// <summary>Configura o Npgsql: conexão e tipos enum do PostgreSQL (rótulos iguais aos nomes C#).</summary>
@@ -86,6 +87,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             n.MapEnum<AutorProposta>("autor_proposta", nameTranslator: semTraducao);
             n.MapEnum<TipoItemProposta>("tipo_item_proposta", nameTranslator: semTraducao);
             n.MapEnum<GarantiaLocacao>("garantia_locacao", nameTranslator: semTraducao);
+            n.MapEnum<TipoModeloDocumento>("tipo_modelo_documento", nameTranslator: semTraducao);
         });
 
     /// <summary>Aceita tanto "Host=...;Database=..." quanto a URL do Node (postgres://user:senha@host:5432/banco).</summary>

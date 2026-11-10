@@ -1,0 +1,137 @@
+@* Modelos Word (.docx) de proposta e contrato com marcadores {{campo}}: envio, ativar/desativar e a lista de marcadores. *@
+@inherits ComponenteBase
+@inject DocumentosService Servico
+@inject ConversorPdf Conversor
+
+<section class="card">
+    <h2>Novo modelo</h2>
+    <p class="pequeno mudo">
+        Prepare o documento no Word escrevendo os marcadores entre chaves duplas onde os dados devem entrar,
+        por exemplo <code>{{cliente.nome}}</code> ou <code>{{proposta.total_extenso}}</code>. A lista completa está abaixo.
+        @(Conversor.Disponivel ? "O documento preenchido sai em PDF." : "Sem LibreOffice no servidor, o documento preenchido sai em Word (.docx).")
+    </p>
+    <div class="formulario">
+        <div class="grade-4">
+            <label class="campo col-2">
+                <span>Nome *</span>
+                <input class="input" @bind="nome" placeholder="Ex.: Proposta de compra padrão" />
+            </label>
+            <label class="campo">
+                <span>Tipo</span>
+                <select class="input" @bind="tipo">
+                    <option value="@TipoModeloDocumento.PROPOSTA">Proposta</option>
+                    <option value="@TipoModeloDocumento.CONTRATO">Contrato</option>
+                </select>
+            </label>
+            <label class="campo">
+                <span>Uso</span>
+                <select class="input" @bind="finalidade">
+                    <option value="">Venda e locação</option>
+                    <option value="@FinalidadeLead.COMPRA">Venda</option>
+                    <option value="@FinalidadeLead.LOCACAO">Locação</option>
+                </select>
+            </label>
+        </div>
+        <MensagemErro Texto="@Erro" />
+        @if (aviso is not null)
+        {
+            <p class="aviso-whatsapp">@aviso</p>
+        }
+        <label class="btn-primary" style="display:inline-block">
+            @(Ocupado ? "Enviando…" : "Escolher arquivo .docx e enviar")
+            <InputFile OnChange="Enviar" class="oculto" accept=".docx" disabled="@Ocupado" />
+        </label>
+        <p class="pequeno mudo">Até @(DocumentosService.TamanhoMaximo / 1024 / 1024) MB.</p>
+    </div>
+</section>
+
+<section class="card">
+    <h2>Modelos <span class="badge">@(modelos?.Count ?? 0)</span></h2>
+    @if (modelos is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else if (modelos.Count == 0)
+    {
+        <p class="vazio">Nenhum modelo enviado. Sem modelo, as propostas usam o PDF padrão do sistema.</p>
+    }
+    else
+    {
+        <div class="tabela-rolagem">
+            <table class="tabela">
+                <thead><tr><th>Nome</th><th>Tipo</th><th>Uso</th><th>Arquivo</th><th>Enviado em</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var m in modelos)
+                    {
+                        <tr class="@(m.Ativo ? "" : "mudo")">
+                            <td>@m.Nome @(m.Ativo ? "" : "(desativado)")</td>
+                            <td>@(m.Tipo == TipoModeloDocumento.PROPOSTA ? "Proposta" : "Contrato")</td>
+                            <td>@(m.Finalidade switch { FinalidadeLead.COMPRA => "Venda", FinalidadeLead.LOCACAO => "Locação", _ => "Venda e locação" })</td>
+                            <td><a href="admin/modelos/@m.Id/arquivo" download>@m.NomeArquivo</a> <span class="pequeno mudo">@(m.Tamanho / 1024) KB</span></td>
+                            <td>@Texto.DataHora(m.CriadoEm)</td>
+                            <td>
+                                <button type="button" class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Ativar(m, !m.Ativo)">@(m.Ativo ? "Desativar" : "Reativar")</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="pequeno mudo">Para corrigir um modelo, envie a versão nova e desative a antiga.</p>
+    }
+</section>
+
+<section class="card">
+    <h2>Marcadores disponíveis</h2>
+    <div class="tabela-rolagem">
+        <table class="tabela">
+            <thead><tr><th>Marcador</th><th>O que entra</th></tr></thead>
+            <tbody>
+                @foreach (var (chave, desc) in DocumentosService.Campos)
+                {
+                    <tr><td><code>{{@chave}}</code></td><td>@desc</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<ModeloResumo>? modelos;
+    private string? nome;
+    private TipoModeloDocumento tipo = TipoModeloDocumento.PROPOSTA;
+    private FinalidadeLead? finalidade;
+    private string? aviso;
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () => modelos = await Servico.ModelosAsync(Usuario, incluirInativos: true));
+
+    private async Task Enviar(InputFileChangeEventArgs e)
+    {
+        aviso = null;
+        ModeloEnviado? r = null;
+        var ok = await Executar(async () =>
+        {
+            if (e.File.Size > DocumentosService.TamanhoMaximo) throw new RegraNegocioException("arquivo", "O modelo pode ter no máximo 10 MB");
+            await using var s = e.File.OpenReadStream(DocumentosService.TamanhoMaximo);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            r = await Servico.EnviarModeloAsync(Usuario, nome, tipo, finalidade, e.File.Name, ms.ToArray());
+        });
+        if (!ok || r is null) return;
+        aviso = r.Marcadores.Count == 0
+            ? "Modelo enviado, mas nenhum marcador {{…}} foi encontrado: o documento sairá igual ao original."
+            : r.Desconhecidos.Count > 0
+                ? $"Modelo enviado. Marcadores não reconhecidos (ficarão como estão no documento): {string.Join(", ", r.Desconhecidos.Select(x => $"{{{{{x}}}}}"))}."
+                : $"Modelo enviado com {r.Marcadores.Count} marcador(es) reconhecido(s).";
+        nome = null;
+        await Carregar();
+        StateHasChanged();
+    }
+
+    private async Task Ativar(ModeloResumo m, bool ativo)
+    {
+        if (await Executar(() => Servico.AtivarModeloAsync(Usuario, m.Id, ativo))) await Carregar();
+    }
+}

@@ -17,6 +17,10 @@ public sealed record PropostaDetalhe(Proposta Dados, string ImovelCodigo, string
     public decimal? DiferencaPct => PropostasService.DiferencaPct(Dados.ValorTotal, Dados.ValorAnunciado);
 }
 
+/// <summary>Imóvel oferecido em permuta, para pré-preencher o cadastro dele.</summary>
+public sealed record PermutaParaCadastro(Guid ItemId, Guid LeadId, string LeadNome, int PropostaNumero, string ImovelCodigo,
+    decimal Valor, string? Descricao, Guid? ImovelPermutaId);
+
 public sealed class PropostaItemForm
 {
     public TipoItemProposta Tipo { get; set; } = TipoItemProposta.ENTRADA;
@@ -216,6 +220,8 @@ public sealed class PropostasService(IDbContextFactory<InovabensDb> fabrica, Aud
         audit.Registrar(db, u.Id, "propostas", p.Id, "CRIAR", depois: new { p.LeadId, p.ImovelId, p.Numero, p.Autor, p.ValorTotal, p.AnteriorId });
         await db.SaveChangesAsync();
         if (!noInteresse) await WhatsappService.ResolverAlertasDoLead(db, leadId);
+        await db.Alertas.Where(a => a.LeadId == leadId && a.Tipo == TipoAlerta.PROPOSTA_EXPIRADA && a.ResolvidoEm == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.ResolvidoEm, DateTime.UtcNow));
         await tx.CommitAsync();
         if (proximo is { } c) google.Empurrar(c);
         return p.Id;
@@ -270,6 +276,72 @@ public sealed class PropostasService(IDbContextFactory<InovabensDb> fabrica, Aud
         await db.SaveChangesAsync();
         await tx.CommitAsync();
         if (c is { } cid) google.Empurrar(cid);
+    }
+
+    /// <summary>
+    /// REGRA (rotina diária): proposta em análise com a validade vencida (antes de hoje) vira EXPIRADA, fica registrada no lead
+    /// e avisa no sino o responsável do lead (ou quem registrou a proposta). Idempotente: só pega as que ainda estão em análise.
+    /// </summary>
+    public async Task<int> ExpirarVencidasAsync(CancellationToken ct = default)
+    {
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var hoje = DatasBR.Hoje();
+        var vencidas = await db.Propostas
+            .Where(p => p.Status == StatusProposta.EM_ANALISE && p.ValidadeEm != null && p.ValidadeEm < hoje)
+            .Join(db.Leads, p => p.LeadId, l => l.Id, (p, l) => new { p, l.ResponsavelId, l.ExcluidoEm })
+            .Where(x => x.ExcluidoEm == null)
+            .Select(x => new { x.p, x.ResponsavelId, Codigo = db.Imoveis.Where(i => i.Id == x.p.ImovelId).Select(i => i.Codigo).First() })
+            .ToListAsync(ct);
+        if (vencidas.Count == 0) return 0;
+        var agora = DateTime.UtcNow;
+        foreach (var v in vencidas)
+        {
+            var p = v.p;
+            var validade = p.ValidadeEm!.Value.ToString("dd/MM/yyyy");
+            (p.Status, p.MotivoDecisao, p.DecididoEm, p.AtualizadoEm) = (StatusProposta.EXPIRADA, $"Validade vencida em {validade}", agora, agora);
+            var resumo = $"Proposta nº {p.Numero} ({v.Codigo}) expirou: validade até {validade}";
+            db.LeadInteracoes.Add(new LeadInteracao { LeadId = p.LeadId, Canal = CanalInteracao.OUTRO, Resumo = resumo, PropostaId = p.Id });
+            if ((v.ResponsavelId ?? p.CriadoPor) is { } quem)
+                db.Alertas.Add(new Alerta { Id = Guid.NewGuid(), Tipo = TipoAlerta.PROPOSTA_EXPIRADA, UsuarioId = quem, LeadId = p.LeadId, Mensagem = resumo });
+            audit.Registrar(db, null, "propostas", p.Id, "ATUALIZAR", new { status = "EM_ANALISE" }, new { status = "EXPIRADA" });
+        }
+        await db.SaveChangesAsync(ct);
+        return vencidas.Count;
+    }
+
+    /// <summary>Dados do imóvel oferecido em permuta, para abrir o cadastro já preenchido.</summary>
+    public async Task<PermutaParaCadastro> PermutaAsync(UsuarioAtual u, Guid itemId)
+    {
+        u.Exigir(P.CrmVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var r = await (from i in db.PropostaItens
+                       join p in db.Propostas on i.PropostaId equals p.Id
+                       join l in Leads(db, u) on p.LeadId equals l.Id
+                       where i.Id == itemId && i.Tipo == TipoItemProposta.PERMUTA_IMOVEL
+                       select new PermutaParaCadastro(i.Id, l.Id, l.Pessoa!.NomeRazao, p.Numero,
+                           db.Imoveis.Where(x => x.Id == p.ImovelId).Select(x => x.Codigo).First(), i.Valor, i.Descricao, i.ImovelPermutaId))
+            .SingleOrDefaultAsync();
+        return r ?? throw new NaoEncontradoException("Permuta não encontrada.");
+    }
+
+    /// <summary>Liga o imóvel cadastrado à parte "permuta de imóvel" da proposta e registra no lead.</summary>
+    public async Task VincularPermutaAsync(UsuarioAtual u, Guid itemId, Guid imovelId)
+    {
+        u.Exigir(P.CrmEditar);
+        var dados = await PermutaAsync(u, itemId);
+        if (dados.ImovelPermutaId is not null) throw new RegraNegocioException("_", "Esta permuta já tem imóvel cadastrado");
+        await using var db = await fabrica.CreateDbContextAsync();
+        var codigo = await db.Imoveis.Where(i => i.Id == imovelId && i.ExcluidoEm == null).Select(i => i.Codigo).SingleOrDefaultAsync()
+            ?? throw new NaoEncontradoException("Imóvel não encontrado.");
+        var item = await db.PropostaItens.SingleAsync(i => i.Id == itemId);
+        item.ImovelPermutaId = imovelId;
+        db.LeadInteracoes.Add(new LeadInteracao
+        {
+            LeadId = dados.LeadId, UsuarioId = u.Id, Canal = CanalInteracao.OUTRO, PropostaId = item.PropostaId,
+            Resumo = $"Imóvel da permuta (proposta nº {dados.PropostaNumero}) cadastrado: {codigo}",
+        });
+        audit.Registrar(db, u.Id, "proposta_itens", itemId, "ATUALIZAR", null, new { imovel_permuta_id = imovelId });
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Etapa de fechamento = a última aberta antes do ganho. Só avança (lead já depois dela não volta).</summary>

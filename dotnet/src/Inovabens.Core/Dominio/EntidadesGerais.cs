@@ -294,6 +294,24 @@ public class PropostaItem
     public Guid? ImovelPermutaId { get; set; }
 }
 
+/// <summary>Modelo Word (.docx) de proposta ou contrato, com marcadores {{campo}}. Desativado some das listas, mas fica guardado.</summary>
+[Table("modelos_documento")]
+public class ModeloDocumento
+{
+    public Guid Id { get; set; }
+    public string Nome { get; set; } = "";
+    public TipoModeloDocumento Tipo { get; set; }
+    /// <summary>Venda (COMPRA) ou locação; vazio = as duas.</summary>
+    public FinalidadeLead? Finalidade { get; set; }
+    public string NomeArquivo { get; set; } = "";
+    public byte[] Conteudo { get; set; } = [];
+    public int Tamanho { get; set; }
+    public bool Ativo { get; set; } = true;
+    public Guid? CriadoPor { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>Mensagem do WhatsApp recebida pelo webhook (Id = id da mensagem na Meta, garante que não entra duas vezes).</summary>
 [Table("whatsapp_mensagens")]
 public class WhatsappMensagem

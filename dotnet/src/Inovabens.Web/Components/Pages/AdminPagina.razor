@@ -33,6 +33,9 @@ else
         case Aba.Cadastros:
             <CadastrosAdmin />
             break;
+        case Aba.Modelos:
+            <ModelosAdmin />
+            break;
         case Aba.Configuracoes:
             <ConfiguracoesAdmin />
             break;
@@ -43,7 +46,7 @@ else
 }
 
 @code {
-    private enum Aba { Usuarios, Perfis, Cadastros, Configuracoes, Auditoria }
+    private enum Aba { Usuarios, Perfis, Cadastros, Modelos, Configuracoes, Auditoria }
 
     private Aba aba;
 
@@ -56,6 +59,7 @@ else
         (Aba.Usuarios, "Usuários", Usuario.Pode(Permissoes.UsuariosGerir)),
         (Aba.Perfis, "Perfis de usuário e permissões", Usuario.Pode(Permissoes.RbacGerir)),
         (Aba.Cadastros, "Cadastros", Usuario.Pode(Permissoes.AdminConfig)),
+        (Aba.Modelos, "Modelos de documentos", Usuario.Pode(Permissoes.AdminConfig)),
         (Aba.Configuracoes, "Configurações", Usuario.Pode(Permissoes.AdminConfig)),
         (Aba.Auditoria, "Auditoria", Usuario.Pode(Permissoes.AuditoriaVer)),
     ];

@@ -280,6 +280,13 @@ public class FluxosTests(Aplicacao app)
         await Expect(cartao.Locator(".proposta-cartao")).ToContainTextAsync("✔ Aceita");
         if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta)
             await p.ScreenshotAsync(new() { Path = Path.Combine(pasta, "propostas.png") });
+
+        // PDF padrão da proposta
+        await proposta.Locator("summary", new() { HasText = "Documento" }).ClickAsync();
+        var download = await p.RunAndWaitForDownloadAsync(() => proposta.GetByRole(AriaRole.Link, new() { Name = "PDF padrão" }).ClickAsync());
+        Assert.EndsWith("-n1.pdf", download.SuggestedFilename);
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta2)
+            await download.SaveAsAsync(Path.Combine(pasta2, "proposta.pdf"));
     }
 
     /// <summary>Consulta o ViaCEP de verdade (precisa de internet).</summary>

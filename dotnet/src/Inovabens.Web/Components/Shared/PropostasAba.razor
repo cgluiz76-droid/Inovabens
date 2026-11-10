@@ -2,6 +2,7 @@
    e cancelar. Cada uma dessas ações é registrada no lead e pede o próximo passo. *@
 @inherits ComponenteBase
 @inject PropostasService Servico
+@inject DocumentosService Documentos
 
 @{
     var propostas = Propostas;
@@ -39,7 +40,23 @@
                         <ul class="proposta-itens">
                             @foreach (var i in p.Itens)
                             {
-                                <li><span>@PropostasService.Rotulo(i.Tipo)@Complemento(i)</span><span>@Texto.Moeda(i.Valor)</span></li>
+                                <li>
+                                    <span>
+                                        @PropostasService.Rotulo(i.Tipo)@Complemento(i)
+                                        @if (i.Tipo == TipoItemProposta.PERMUTA_IMOVEL)
+                                        {
+                                            @if (i.ImovelPermutaId is { } ip)
+                                            {
+                                                <a class="pequeno" href="imoveis/@ip"> · 🏠 ver imóvel</a>
+                                            }
+                                            else if (Usuario.Pode(Permissoes.ImoveisCriar) && PodeEditar && p.Status is StatusProposta.EM_ANALISE or StatusProposta.ACEITA)
+                                            {
+                                                <a class="pequeno" href="imoveis/novo?permuta=@i.Id"> · + cadastrar imóvel</a>
+                                            }
+                                        }
+                                    </span>
+                                    <span>@Texto.Moeda(i.Valor)</span>
+                                </li>
                             }
                         </ul>
                     }
@@ -67,9 +84,19 @@
                     {
                         <p class="pequeno mudo">@PropostasService.Rotulo(p.Status) em @Texto.DataHora(de)@(d.DecididoPorNome is { } dn ? $" por {dn}" : "")@(p.MotivoDecisao is { } mo ? $": {mo}" : "")</p>
                     }
+                    <div class="acoes proposta-acoes">
+                        <details class="menu-cartao">
+                            <summary class="btn-ghost mini">📄 Documento</summary>
+                            <div class="menu-cartao-itens">
+                                <a class="btn-ghost mini" href="crm/propostas/@p.Id/documento" download>PDF padrão</a>
+                                @foreach (var m in modelos)
+                                {
+                                    <a class="btn-ghost mini" href="crm/propostas/@p.Id/documento?modelo=@m.Id" download>@m.Nome</a>
+                                }
+                            </div>
+                        </details>
                     @if (d.EmAnalise && !Perdido)
                     {
-                        <div class="acoes proposta-acoes">
                             @if (PodeDecidir)
                             {
                                 <button type="button" class="btn-primary mini" @onclick="() => AbrirDecisao(d, Decisao.Aceitar)">✔ Aceitar</button>
@@ -80,8 +107,8 @@
                                 <button type="button" class="btn-ghost mini" @onclick="() => Contraproposta(p)">↔ Contraproposta</button>
                                 <button type="button" class="btn-ghost mini texto-erro" @onclick="() => AbrirDecisao(d, Decisao.Cancelar)">Cancelar</button>
                             }
-                        </div>
                     }
+                    </div>
                 </li>
             }
         </ul>
@@ -136,6 +163,7 @@
     /// <summary>Proposta registrada ou decidida: o painel recarrega o lead e o funil.</summary>
     [Parameter] public EventCallback AoAlterar { get; set; }
 
+    private IReadOnlyList<ModeloResumo> modelos = [];
     private PropostaForm? form;
     private bool contra;
     private PropostaDetalhe? decidindo;
@@ -166,6 +194,13 @@
         if (i.Descricao is { } d) partes.Add(d);
         if (i.DataPrevista is { } dt) partes.Add(dt.ToString("dd/MM/yyyy"));
         return partes.Count == 0 ? "" : $" ({string.Join(" · ", partes)})";
+    }
+
+    /// <summary>Modelos ativos para a finalidade do lead (os de venda e locação servem aos dois).</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        try { modelos = await Documentos.ModelosAsync(Usuario, Finalidade); }
+        catch (AcessoNegadoException) { modelos = []; }
     }
 
     private void Nova()

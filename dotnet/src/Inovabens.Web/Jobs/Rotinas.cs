@@ -1,6 +1,7 @@
 using Inovabens.Core;
 using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
+using Inovabens.Core.Crm;
 using Inovabens.Core.Financeiro;
 using Inovabens.Core.Imoveis;
 using Inovabens.Core.Servicos;
@@ -90,6 +91,23 @@ public sealed class RotinaFinanceiraDiariaJob(IServiceScopeFactory e, InovabensO
         var r = await sp.GetRequiredService<AlertasService>().VerificarDespesasAsync(ct);
         Log.LogInformation("Rotina financeira: {Gerados} lançamento(s) gerado(s); alertas {Criados} criado(s), {Resolvidos} resolvido(s)",
             gerados, r.Criados, r.Resolvidos);
+    }
+}
+
+/// <summary>Todo dia às 00:30: propostas em análise com a validade vencida viram "expirada" e avisam o responsável no sino.</summary>
+public sealed class ExpiracaoPropostasJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<ExpiracaoPropostasJob> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "expiração de propostas";
+    protected internal override DateTime ProximaBR(DateTime agoraBR)
+    {
+        var alvo = agoraBR.Date.AddMinutes(30);
+        return alvo > agoraBR ? alvo : alvo.AddDays(1);
+    }
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<PropostasService>().ExpirarVencidasAsync(ct);
+        if (n > 0) Log.LogInformation("Propostas: {Qtd} expirada(s)", n);
     }
 }
 
