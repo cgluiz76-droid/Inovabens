@@ -17,3 +17,6 @@ ChaveMagnific.txt
 
 # chave JSON da conta de serviço do Google Drive (nunca commitar)
 google-drive*.json
+
+# token do Fly.io (nunca commitar)
+Fly.md

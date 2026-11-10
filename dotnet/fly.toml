@@ -1,0 +1,33 @@
+# Fly.io (https://fly.io/docs/reference/configuration/). Publicar a partir desta pasta (dotnet/):  fly deploy
+# Uma máquina sempre ligada em São Paulo: o Blazor Server mantém a conexão com o navegador e as rotinas
+# (WhatsApp, posts, expiração de propostas) rodam no próprio processo. Banco: Postgres do Fly (inovabens-db),
+# ligado com "fly postgres attach" (cria o segredo DATABASE_URL). Demais segredos: fly secrets set/import.
+app = "inovabens"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ASPNETCORE_ENVIRONMENT = "Production"
+  TRUST_PROXY = "1"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/v1/health"
+    [http_service.checks.headers]
+      X-Forwarded-Proto = "https"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
