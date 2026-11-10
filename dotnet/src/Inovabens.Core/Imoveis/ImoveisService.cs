@@ -48,6 +48,14 @@ public sealed class ImoveisService(
             .Select(i => new ImovelListaItem(i.Id, i.Codigo, i.Titulo, i.Tipo, i.Situacao, i.Finalidade, i.Cidade, i.Bairro, i.Uf,
                 i.PrecoVenda, i.PrecoLocacao, i.Corretor != null ? i.Corretor.Nome : null))
             .ToListAsync();
+
+        // miniatura: a foto de capa (ou a primeira foto); publicada no site, vem direto do R2, senão pelo sistema (Drive)
+        var ids = itens.Select(i => i.Id).ToList();
+        var fotos = await db.ImovelMidias.AsNoTracking()
+            .Where(m => ids.Contains(m.ImovelId) && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
+            .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
+        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.UrlPublica ?? d.Url : null);
+        itens = [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id) })];
         return new Paginado<ImovelListaItem>(itens, total, pagina, tamanho);
     }
 

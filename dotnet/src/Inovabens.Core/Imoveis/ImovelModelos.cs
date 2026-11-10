@@ -15,12 +15,13 @@ public sealed record FiltroImoveis
     public string? Cidade { get; init; }
     public Guid? CorretorId { get; init; }
     public int Pagina { get; init; } = 1;
-    public int TamanhoPagina { get; init; } = 20;
+    public int TamanhoPagina { get; init; } = 25;
 }
 
 public sealed record ImovelListaItem(
     Guid Id, string Codigo, string Titulo, string Tipo, SituacaoImovel Situacao, FinalidadeImovel Finalidade,
-    string? Cidade, string? Bairro, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, string? CorretorNome);
+    string? Cidade, string? Bairro, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, string? CorretorNome,
+    string? CapaUrl = null);
 
 /// <param name="Url">Endereço no próprio sistema (o arquivo vem do Drive pelo servidor, com verificação de acesso).</param>
 /// <param name="UrlPublica">Endereço da cópia no R2 (site), quando publicada e com domínio público configurado.</param>

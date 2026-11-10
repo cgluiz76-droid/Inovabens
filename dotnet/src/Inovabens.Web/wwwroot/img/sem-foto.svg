@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Inovabens · Sem foto">
+  <!-- Imagem padrão para imóvel sem foto: fundo claro, ícone da marca, nome e "Sem foto" (4:3, escala sem perder qualidade) -->
+  <defs>
+    <linearGradient id="fundo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F4F6FB"/>
+      <stop offset="1" stop-color="#E3E8F4"/>
+    </linearGradient>
+    <clipPath id="c"><rect width="100" height="100" rx="18"/></clipPath>
+    <linearGradient id="ouro" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#B8801F"/>
+      <stop offset=".55" stop-color="#E2B04F"/>
+      <stop offset="1" stop-color="#C8902F"/>
+    </linearGradient>
+    <linearGradient id="azul" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0F3BB0"/>
+      <stop offset="1" stop-color="#0A2E96"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="600" fill="url(#fundo)"/>
+  <!-- curva dourada discreta no rodapé, como na marca -->
+  <path d="M0 520 C 260 505, 520 470, 800 395 L800 600 L0 600 Z" fill="#03075F" opacity=".06"/>
+  <path d="M0 520 C 260 505, 520 470, 800 395" fill="none" stroke="url(#ouro)" stroke-width="3" opacity=".55"/>
+
+  <!-- ícone da marca (marca.svg), 150 px -->
+  <g transform="translate(325 120) scale(1.5)">
+    <g clip-path="url(#c)">
+      <rect width="100" height="100" fill="url(#azul)"/>
+      <path d="M0 77 C 38 74, 72 64, 100 45 L100 100 L0 100 Z" fill="#03075F"/>
+      <path d="M0 77 C 38 74, 72 64, 100 45" fill="none" stroke="url(#ouro)" stroke-width="3.2"/>
+    </g>
+    <path fill="#fff" d="M29.5 11h41v2.6c-4.4.4-6.8 1.6-7.6 3.6v65.6c.8 2 3.2 3.2 7.6 3.6V89h-41v-2.6c4.4-.4 6.8-1.6 7.6-3.6V17.2c-.8-2-3.2-3.2-7.6-3.6z"/>
+  </g>
+
+  <text x="400" y="335" text-anchor="middle" font-family="Montserrat, 'Segoe UI', Arial, sans-serif" font-size="46" font-weight="700" letter-spacing="4">
+    <tspan fill="#0A2E96">INOVA</tspan><tspan fill="#C8902F">BENS</tspan>
+  </text>
+  <text x="400" y="362" text-anchor="middle" font-family="Montserrat, 'Segoe UI', Arial, sans-serif" font-size="14" font-weight="600" letter-spacing="5" fill="#626A85">GESTÃO PATRIMONIAL</text>
+
+  <!-- câmera + "Sem foto" -->
+  <g transform="translate(318 410)" fill="none" stroke="#626A85" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M4 12h9l5-7h14l5 7h9a3 3 0 0 1 3 3v24a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V15a3 3 0 0 1 3-3z"/>
+    <circle cx="25" cy="27" r="8"/>
+  </g>
+  <text x="378" y="447" font-family="Montserrat, 'Segoe UI', Arial, sans-serif" font-size="30" font-weight="600" fill="#2C3557">Sem foto</text>
+</svg>

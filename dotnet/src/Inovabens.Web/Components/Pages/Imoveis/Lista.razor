@@ -41,12 +41,24 @@ else
     <div class="tabela-container">
         <table class="tabela">
             <thead>
-                <tr><th>Código</th><th>Imóvel</th><th>Local</th><th>Situação</th><th>Preço</th><th>Corretor</th><th>Site</th></tr>
+                <tr><th class="col-capa"><span class="sr-only">Foto</span></th><th>Código</th><th>Imóvel</th><th>Local</th><th>Situação</th><th>Preço</th><th>Corretor</th><th>Site</th></tr>
             </thead>
             <tbody>
                 @foreach (var i in resultado.Itens)
                 {
                     <tr>
+                        <td class="col-capa">
+                            <a href="imoveis/@i.Id" tabindex="-1" aria-hidden="true">
+                                @if (i.CapaUrl is { } capa)
+                                {
+                                    <img class="miniatura-imovel" src="@capa" alt="" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <img class="miniatura-imovel" src="img/sem-foto.svg" alt="" />
+                                }
+                            </a>
+                        </td>
                         <td class="codigo"><a href="imoveis/@i.Id">@i.Codigo</a></td>
                         <td>
                             <a class="forte" href="imoveis/@i.Id">@i.Titulo</a>
@@ -72,7 +84,8 @@ else
 @code {
     private Paginado<ImovelListaItem>? resultado;
     private string termo = "";
-    private string situacao = "";
+    /// <summary>Começa mostrando só os disponíveis; "Todas as situações" continua no filtro.</summary>
+    private string situacao = nameof(SituacaoImovel.DISPONIVEL);
     private int pagina = 1;
     private CancellationTokenSource? espera;
 
@@ -84,6 +97,7 @@ else
             Termo = termo,
             Situacao = Enum.TryParse<SituacaoImovel>(situacao, out var s) ? s : null,
             Pagina = pagina,
+            TamanhoPagina = 25,
         }));
 
     /// <summary>Espera o usuário parar de digitar (300 ms) antes de consultar.</summary>

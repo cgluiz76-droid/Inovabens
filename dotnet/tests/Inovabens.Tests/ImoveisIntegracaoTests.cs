@@ -83,6 +83,19 @@ public class ImoveisIntegracaoTests
         Assert.Equal(2, carac.Count);
         Assert.Equal("aquecida", carac.Single(c => c.Chave.Equals("piscina", StringComparison.OrdinalIgnoreCase)).Valor);
 
+        // --- lista: 25 por página e miniatura da capa (a foto marcada como capa vence a primeira da ordem) ---
+        await using (var dbm = await fabrica.CreateDbContextAsync())
+        {
+            dbm.ImovelMidias.Add(new ImovelMidia { ImovelId = id1, Tipo = TipoMidia.FOTO, ArquivoChave = "drive-a", Ordem = 0 });
+            dbm.ImovelMidias.Add(new ImovelMidia { ImovelId = id1, Tipo = TipoMidia.FOTO, ArquivoChave = "drive-capa", Ordem = 1, Capa = true });
+            dbm.ImovelMidias.Add(new ImovelMidia { ImovelId = id1, Tipo = TipoMidia.PLANTA, ArquivoChave = "drive-planta", Ordem = 2 });
+            await dbm.SaveChangesAsync();
+        }
+        var lista = await s.ListarAsync(admin, new FiltroImoveis { Termo = "gonzaga" });
+        Assert.Equal(25, lista.TamanhoPagina);
+        var item = Assert.Single(lista.Itens, i => i.Id == id1);
+        Assert.EndsWith("/drive-capa", item.CapaUrl);
+
         // --- mídias: sem Google Drive configurado, envio é recusado de forma controlada ---
         await Assert.ThrowsAsync<ServicoIndisponivelException>(() =>
             s.EnviarMidiaAsync(admin, id1, new MemoryStream([1, 2, 3]), "foto.jpg", "image/jpeg", SubpastasDrive.FotosVideos));

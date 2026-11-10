@@ -121,7 +121,10 @@
 
             @if (Fotos.Count == 0)
             {
-                <div class="sem-fotos mudo">Sem fotos públicas. Marque as fotos como públicas na ficha do imóvel.</div>
+                <div class="galeria poucas">
+                    <div class="principal"><img src="img/sem-foto.svg" alt="Imóvel sem foto" /></div>
+                </div>
+                <p class="pequeno mudo aviso-sem-fotos">Sem fotos públicas: marque as fotos como públicas na ficha do imóvel.</p>
             }
             else
             {
@@ -129,6 +132,11 @@
                     @foreach (var (f, k) in Fotos.Take(Fotos.Count < 5 ? 1 : 5).Select((f, k) => (f, k)))
                     {
                         <button type="button" class="@(k == 0 ? "principal" : "")" data-luz="@k" aria-label="Ampliar foto @(k + 1) de @Fotos.Count">
+                            @if (Fotos.Count < 5)
+                            {
+                                @* foto sozinha: aparece inteira, na proporção dela; as laterais ficam com a própria foto desfocada *@
+                                <img class="fundo" src="@f.Src" alt="" aria-hidden="true" />
+                            }
                             <img src="@f.Src" alt="@(f.Legenda ?? Im.Titulo)" loading="@(k == 0 ? "eager" : "lazy")" />
                         </button>
                     }

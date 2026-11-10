@@ -507,9 +507,12 @@ public class FluxosTests(Aplicacao app)
         await c.EntrarAsync(email, "SenhaForte#2026");
         var proprio = await c.CriarImovelAsync($"Imóvel do corretor {s}");
 
-        // a lista só mostra o próprio imóvel
+        // a lista só mostra o próprio imóvel (o filtro começa em "Disponível"; o imóvel novo está em captação)
         await c.GotoAsync("/imoveis");
         await c.Interativa();
+        var situacao = c.Locator("select.filtro");
+        await Expect(situacao).ToHaveValueAsync("DISPONIVEL");
+        await situacao.SelectOptionAsync("");
         await Expect(c.GetByText($"Imóvel do corretor {s}")).ToBeVisibleAsync();
         await Expect(c.GetByText($"Imóvel do admin {s}")).ToHaveCountAsync(0);
 
