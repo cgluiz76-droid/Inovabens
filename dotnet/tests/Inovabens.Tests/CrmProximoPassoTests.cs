@@ -51,6 +51,26 @@ public class ProximoPassoRegrasTests
             Assert.Equal(SituacaoProximoPasso.Hoje, LeadCartao.SituacaoDe(fimDoDia));
     }
 
+    [Fact]
+    public void Dados_alterados_compara_so_os_campos_do_lead_e_ignora_mudanca_de_estagio()
+    {
+        Assert.Equal(["orçamento máximo", "observações"], CrmService.CamposAlterados(
+            """{"origem":"Site","orcamento_max":100,"observacoes":null,"atualizado_em":"a"}""",
+            """{"origem":"Site","orcamento_max":200,"observacoes":"x","atualizado_em":"b"}"""));
+        Assert.Empty(CrmService.CamposAlterados("""{"estagio":"A"}""", """{"estagio":"B","motivo_perda":null}"""));
+        Assert.Empty(CrmService.CamposAlterados(null, "{}"));
+        Assert.Empty(CrmService.CamposAlterados("não é json", "{}"));
+    }
+
+    [Fact]
+    public void Link_do_whatsapp_poe_o_codigo_do_pais()
+    {
+        Assert.Equal("https://wa.me/5511988887777", Texto.LinkWhatsapp("(11) 98888-7777"));
+        Assert.Equal("https://wa.me/5511988887777", Texto.LinkWhatsapp("+55 11 98888-7777"));
+        Assert.Null(Texto.LinkWhatsapp("1234"));
+        Assert.Null(Texto.LinkWhatsapp(null));
+    }
+
     [Theory]
     [InlineData(950, "R$ 950")]
     [InlineData(480_000, "R$ 480 mil")]
@@ -243,6 +263,43 @@ public class CrmProximoPassoTests : IAsyncLifetime
 
         // a corretora não vê a aba de imóvel alheio
         await Assert.ThrowsAsync<AcessoNegadoException>(() => crm.InteressadosAsync(corretor, casa));
+    }
+
+    [Fact]
+    public async Task Linha_do_tempo_junta_acoes_atividades_estagios_e_dados()
+    {
+        var crm = S<CrmService>();
+        var estagios = (await crm.EstagiosAsync(Funil.VENDA)).Where(e => e.Ativo).OrderBy(e => e.Ordem).ToList();
+        var perdido = estagios.First(e => e.Tipo == TipoEstagio.PERDIDO);
+        var id = await crm.CriarAsync(admin, new LeadForm { NovoNome = $"Linha do Tempo {sufixo}" });
+        await crm.CriarInteracaoAsync(admin, id, new InteracaoForm
+        {
+            Canal = CanalInteracao.TELEFONE, Resumo = "Atendeu e pediu fotos", Titulo = "Mandar fotos", Tipo = TipoCompromisso.MENSAGEM, Inicio = Amanha(),
+        });
+        await crm.AgendarAsync(admin, id, new ProximoPassoForm { Titulo = "Ligar de novo", Inicio = Amanha(15) });
+        await crm.AtualizarAsync(admin, id, new LeadForm { OrcamentoMax = 500_000, Observacoes = "Quer garagem" });
+        await crm.MoverAsync(admin, id, perdido.Id, "Comprou em outro lugar");
+
+        var eventos = await crm.LinhaDoTempoAsync(admin, id);
+        var acao = Assert.Single(eventos, e => e.Tipo == TipoEventoLead.Acao);
+        Assert.Equal("Atendeu e pediu fotos", acao.Titulo);
+        Assert.StartsWith("Próximo passo: Mandar fotos", acao.Detalhe);
+        Assert.Equal("📞", acao.Icone);
+        // agendada pela ação não se repete; a do "+" aparece; as duas foram canceladas ao perder
+        Assert.Single(eventos, e => e.Titulo == "Atividade agendada: Ligar de novo");
+        Assert.DoesNotContain(eventos, e => e.Titulo == "Atividade agendada: Mandar fotos");
+        Assert.Equal(2, eventos.Count(e => e.Titulo.StartsWith("Atividade cancelada")));
+        Assert.Contains(eventos, e => e.Tipo == TipoEventoLead.Estagio && e.Titulo.EndsWith($"→ {perdido.Nome}"));
+        Assert.Contains(eventos, e => e.Tipo == TipoEventoLead.Estagio && e.Titulo.StartsWith("Lead criado em"));
+        var dados = Assert.Single(eventos, e => e.Tipo == TipoEventoLead.Dados);
+        Assert.Contains("orçamento máximo", dados.Detalhe);
+        Assert.Contains("observações", dados.Detalhe);
+        Assert.Equal(eventos.OrderByDescending(e => e.Em).Select(e => e.Titulo), eventos.Select(e => e.Titulo));
+
+        // atividades do lead: as encerradas também aparecem
+        Assert.Equal(2, (await crm.AtividadesDoLeadAsync(admin, id)).Count);
+        Assert.Empty(await crm.PendentesDoLeadAsync(admin, id));
+        await Assert.ThrowsAnyAsync<Exception>(() => crm.LinhaDoTempoAsync(corretor, id)); // lead de outro responsável
     }
 
     [Fact]

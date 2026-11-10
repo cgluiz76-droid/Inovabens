@@ -66,13 +66,13 @@ else
                                 }
                             </div>
                             <div class="atividade-acoes">
-                                @if (LinkWhatsapp(a.Whatsapp) is { } wa)
+                                @if (Texto.LinkWhatsapp(a.Whatsapp) is { } wa)
                                 {
                                     <a class="btn-ghost mini" href="@wa" target="_blank" rel="noopener" title="Abrir conversa no WhatsApp">💬 WhatsApp</a>
                                 }
                                 @if (a.Telefone is { } tel)
                                 {
-                                    <a class="btn-ghost mini" href="tel:@Digitos(tel)" title="Ligar">📞 Ligar</a>
+                                    <a class="btn-ghost mini" href="tel:@Texto.Digitos(tel)" title="Ligar">📞 Ligar</a>
                                 }
                                 @if (PodeConcluir(a))
                                 {
@@ -179,16 +179,6 @@ else
         return d.ToString("ddd dd/MM", Texto.PtBr);
     }
 
-    private static string Digitos(string s) => new([.. s.Where(char.IsDigit)]);
-
-    /// <summary>wa.me exige o número com o código do país (55 para números brasileiros de 10 ou 11 dígitos).</summary>
-    public static string? LinkWhatsapp(string? telefone)
-    {
-        if (telefone is null) return null;
-        var d = Digitos(telefone);
-        if (d.Length is 10 or 11) d = "55" + d;
-        return d.Length >= 12 ? $"https://wa.me/{d}" : null;
-    }
 
     private bool PodeConcluir(AtividadeItem a) =>
         a.LeadId is not null ? Usuario.Pode(Permissoes.CrmEditar) : Usuario.Pode(Permissoes.AgendaEditar);

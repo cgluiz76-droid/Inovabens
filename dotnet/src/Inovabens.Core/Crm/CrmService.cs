@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
@@ -62,7 +63,13 @@ public sealed record LeadDetalhe(Lead Dados, Pessoa Pessoa, FunilEstagio Estagio
     public bool VincularImovel => Dados.Origem == WhatsappService.Origem && ImoveisInteresse.Count == 0;
 }
 
-public sealed record ImovelInteresse(Guid Id, string Codigo, string Titulo, SituacaoImovel Situacao);
+public sealed record ImovelInteresse(Guid Id, string Codigo, string Titulo, SituacaoImovel Situacao,
+    decimal? PrecoVenda = null, decimal? PrecoLocacao = null);
+
+public enum TipoEventoLead { Acao, Atividade, Estagio, Dados }
+
+/// <summary>Item da linha do tempo do lead (ações, atividades, mudanças de estágio e de dados).</summary>
+public sealed record EventoLead(DateTime Em, TipoEventoLead Tipo, string Icone, string Titulo, string? Detalhe, string? Usuario);
 
 public sealed record HistoricoEstagio(Guid Id, DateTime CriadoEm, string? EstagioAnterior, string EstagioNovo, string? Usuario);
 
@@ -278,11 +285,11 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         var l = await Visiveis(db, u).AsNoTracking().Include(x => x.Pessoa).Include(x => x.Estagio).Include(x => x.Responsavel)
             .SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Lead não encontrado.");
         var interesse = await db.LeadImoveisInteresse.AsNoTracking().Where(i => i.LeadId == id)
-            .Join(db.Imoveis.Where(im => im.ExcluidoEm == null), i => i.ImovelId, im => im.Id, (i, im) => new ImovelInteresse(im.Id, im.Codigo, im.Titulo, im.Situacao))
+            .Join(db.Imoveis.Where(im => im.ExcluidoEm == null), i => i.ImovelId, im => im.Id, (i, im) => new ImovelInteresse(im.Id, im.Codigo, im.Titulo, im.Situacao, im.PrecoVenda, im.PrecoLocacao))
             .ToListAsync();
         var sugerido = l.ImovelSugeridoId is { } sid && interesse.All(i => i.Id != sid)
             ? await db.Imoveis.AsNoTracking().Where(im => im.Id == sid && im.ExcluidoEm == null)
-                .Select(im => new ImovelInteresse(im.Id, im.Codigo, im.Titulo, im.Situacao)).FirstOrDefaultAsync()
+                .Select(im => new ImovelInteresse(im.Id, im.Codigo, im.Titulo, im.Situacao, im.PrecoVenda, im.PrecoLocacao)).FirstOrDefaultAsync()
             : null;
         return new LeadDetalhe(l, l.Pessoa!, l.Estagio!, l.Responsavel?.Nome, interesse, sugerido);
     }
@@ -480,14 +487,98 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
     }
 
     /// <summary>Atividades pendentes do lead (para escolher qual concluir ao registrar o resultado).</summary>
-    public async Task<IReadOnlyList<Compromisso>> PendentesDoLeadAsync(UsuarioAtual u, Guid id)
+    public async Task<IReadOnlyList<Compromisso>> PendentesDoLeadAsync(UsuarioAtual u, Guid id) =>
+        [.. (await AtividadesDoLeadAsync(u, id)).Where(c => c.Status == StatusCompromisso.PENDENTE)];
+
+    /// <summary>Todas as atividades do lead: pendentes primeiro (da mais próxima), depois as encerradas (da mais recente).</summary>
+    public async Task<IReadOnlyList<Compromisso>> AtividadesDoLeadAsync(UsuarioAtual u, Guid id)
     {
         u.Exigir(P.CrmVer);
         await using var db = await fabrica.CreateDbContextAsync();
         await Detalhe(db, u, id);
-        return await db.Compromissos.AsNoTracking()
-            .Where(c => c.LeadId == id && c.Status == StatusCompromisso.PENDENTE && c.ExcluidoEm == null)
-            .OrderBy(c => c.InicioEm).ToListAsync();
+        var todas = await db.Compromissos.AsNoTracking().Where(c => c.LeadId == id && c.ExcluidoEm == null).ToListAsync();
+        return [.. todas.Where(c => c.Status == StatusCompromisso.PENDENTE).OrderBy(c => c.InicioEm),
+            .. todas.Where(c => c.Status != StatusCompromisso.PENDENTE).OrderByDescending(c => c.ConcluidoEm ?? c.AtualizadoEm)];
+    }
+
+    /// <summary>Campos do lead que aparecem como "dados alterados" na linha do tempo (chaves do JSON da auditoria).</summary>
+    private static readonly (string Chave, string Rotulo)[] CamposAuditados =
+    [
+        ("origem", "origem"), ("orcamento_min", "orçamento mínimo"), ("orcamento_max", "orçamento máximo"),
+        ("observacoes", "observações"), ("responsavel_id", "responsável"),
+    ];
+
+    internal static IReadOnlyList<string> CamposAlterados(string? antes, string? depois)
+    {
+        if (antes is null || depois is null) return [];
+        try
+        {
+            using var a = JsonDocument.Parse(antes);
+            using var d = JsonDocument.Parse(depois);
+            static string? V(JsonDocument doc, string k) =>
+                doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty(k, out var p) ? p.ToString() : null;
+            if (V(d, "estagio") is not null) return []; // mudança de estágio: já vem do histórico
+            return [.. CamposAuditados.Where(c => V(a, c.Chave) != V(d, c.Chave)).Select(c => c.Rotulo)];
+        }
+        catch (JsonException) { return []; }
+    }
+
+    private static string IconeCanal(CanalInteracao c) => c switch
+    {
+        CanalInteracao.TELEFONE => "📞",
+        CanalInteracao.WHATSAPP => "💬",
+        CanalInteracao.EMAIL => "✉️",
+        CanalInteracao.VISITA => "🏠",
+        _ => "📝",
+    };
+
+    /// <summary>Linha do tempo do lead, do mais recente para o mais antigo.</summary>
+    public async Task<IReadOnlyList<EventoLead>> LinhaDoTempoAsync(UsuarioAtual u, Guid id)
+    {
+        var historico = await HistoricoAsync(u, id); // também confere o acesso ao lead
+        await using var db = await fabrica.CreateDbContextAsync();
+        var nomes = await db.Usuarios.AsNoTracking().Select(x => new { x.Id, x.Nome }).ToDictionaryAsync(x => x.Id, x => x.Nome);
+        string? Nome(Guid? uid) => uid is { } g ? nomes.GetValueOrDefault(g) : null;
+        var eventos = new List<EventoLead>();
+
+        var compromissos = await db.Compromissos.AsNoTracking().Where(c => c.LeadId == id && c.ExcluidoEm == null).ToDictionaryAsync(c => c.Id);
+        var interacoes = await db.LeadInteracoes.AsNoTracking().Where(i => i.LeadId == id).ToListAsync();
+        foreach (var i in interacoes)
+        {
+            var detalhe = i.ProximoCompromissoId is { } pc && compromissos.TryGetValue(pc, out var c)
+                ? $"Próximo passo: {c.Titulo} · {Texto.DataHora(c.InicioEm)}"
+                : i.MotivoSemProximo is { } m ? $"Sem próximo passo: {m}" : null;
+            if (i.CompromissoConcluidoId is { } cc && compromissos.TryGetValue(cc, out var feito))
+                detalhe = $"Concluiu: {feito.Titulo}" + (detalhe is null ? "" : $" · {detalhe}");
+            eventos.Add(new EventoLead(i.CriadoEm, TipoEventoLead.Acao, IconeCanal(i.Canal), i.Resumo, detalhe,
+                Nome(i.UsuarioId) ?? (i.Canal == CanalInteracao.WHATSAPP ? "automático" : null)));
+        }
+
+        // atividades agendadas fora de uma ação ("+" do cartão, agenda) e as encerradas sem ação de resultado
+        var agendadasEmAcao = interacoes.Where(i => i.ProximoCompromissoId != null).Select(i => i.ProximoCompromissoId!.Value).ToHashSet();
+        var concluidasEmAcao = interacoes.Where(i => i.CompromissoConcluidoId != null).Select(i => i.CompromissoConcluidoId!.Value).ToHashSet();
+        foreach (var c in compromissos.Values)
+        {
+            if (!agendadasEmAcao.Contains(c.Id))
+                eventos.Add(new EventoLead(c.CriadoEm, TipoEventoLead.Atividade, "🗓️", $"Atividade agendada: {c.Titulo}",
+                    Texto.DataHora(c.InicioEm), Nome(c.ResponsavelId)));
+            if (c.Status == StatusCompromisso.CONCLUIDO && !concluidasEmAcao.Contains(c.Id))
+                eventos.Add(new EventoLead(c.ConcluidoEm ?? c.AtualizadoEm, TipoEventoLead.Atividade, "✔️", $"Atividade concluída: {c.Titulo}", null, Nome(c.ResponsavelId)));
+            if (c.Status == StatusCompromisso.CANCELADO)
+                eventos.Add(new EventoLead(c.AtualizadoEm, TipoEventoLead.Atividade, "✖️", $"Atividade cancelada: {c.Titulo}", null, null));
+        }
+
+        foreach (var h in historico)
+            eventos.Add(new EventoLead(h.CriadoEm, TipoEventoLead.Estagio, "➡️",
+                h.EstagioAnterior is null ? $"Lead criado em {h.EstagioNovo}" : $"{h.EstagioAnterior} → {h.EstagioNovo}", null, h.Usuario));
+
+        var auditoria = await db.AuditLog.AsNoTracking().Where(a => a.Entidade == "leads" && a.EntidadeId == id && a.Acao == "ATUALIZAR")
+            .Select(a => new { a.CriadoEm, a.UsuarioId, a.ValoresAntes, a.ValoresDepois }).ToListAsync();
+        foreach (var a in auditoria)
+            if (CamposAlterados(a.ValoresAntes, a.ValoresDepois) is { Count: > 0 } campos)
+                eventos.Add(new EventoLead(a.CriadoEm, TipoEventoLead.Dados, "✏️", "Dados alterados", string.Join(", ", campos), Nome(a.UsuarioId)));
+
+        return [.. eventos.OrderByDescending(e => e.Em)];
     }
 
     /// <summary>REGRA: mover para um estágio de perda exige motivo (até 500 caracteres); nos demais ele é descartado.</summary>

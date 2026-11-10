@@ -103,8 +103,11 @@ public class FluxosTests(Aplicacao app)
         await p.GetByLabel("Observações").FillAsync("Prefere andar alto");
         await p.Botao("Criar lead").ClickAsync();
         await p.GetByRole(AriaRole.Button).Filter(new() { HasText = $"Cliente E2E {s}" }).ClickAsync();
-        await Expect(p.GetByRole(AriaRole.Link, new() { Name = "IMV-", Exact = false })).ToHaveCountAsync(1);
-        await Expect(p.GetByLabel("Observações")).ToHaveValueAsync("Prefere andar alto");
+        var painel = p.Locator(".painel-lateral");
+        await painel.GetByRole(AriaRole.Tab, new() { Name = "Imóveis", Exact = false }).ClickAsync();
+        await Expect(painel.GetByRole(AriaRole.Link, new() { Name = "IMV-", Exact = false })).ToHaveCountAsync(1);
+        await painel.GetByRole(AriaRole.Tab, new() { Name = "Dados" }).ClickAsync();
+        await Expect(painel.GetByLabel("Observações")).ToHaveValueAsync("Prefere andar alto");
     }
 
     [Fact]
@@ -178,19 +181,32 @@ public class FluxosTests(Aplicacao app)
         await Expect(p.Locator(".cartao-lead")).ToHaveCountAsync(1);
         await Expect(cartao.Locator(".situacao")).ToHaveTextAsync("Sem próximo passo");
 
-        // registrar ação: sem o próximo passo não grava; com ele, vai para a agenda
+        // painel lateral: registrar ação sem o próximo passo não grava; com ele, vai para a agenda
         await cartao.Locator(".link-cartao").ClickAsync();
-        await dlg.GetByPlaceholder("O que aconteceu?", new() { Exact = false }).FillAsync("Primeiro contato por telefone");
-        await dlg.Botao("Registrar").ClickAsync();
-        await Expect(dlg.GetByText("Informe o próximo passo")).ToBeVisibleAsync();
-        await dlg.GetByRole(AriaRole.Button, new() { Name = "Visita", Exact = false }).ClickAsync();
-        await dlg.GetByLabel("O que fazer *").FillAsync($"Visita guiada {s}");
-        await dlg.Botao("Registrar").ClickAsync();
-        await Expect(dlg.Locator("li").Filter(new() { HasText = $"Visita guiada {s}" })).ToBeVisibleAsync(); // em "Atividades pendentes"
-        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta)
-            await dlg.ScreenshotAsync(new() { Path = Path.Combine(pasta, "lead.png") });
-        await dlg.GetByRole(AriaRole.Button, new() { Name = "Fechar", Exact = false }).First.ClickAsync();
+        var painel = p.Locator(".painel-lateral");
+        await Expect(painel.Locator(".painel-proximo")).ToContainTextAsync("Sem próximo passo");
+        await painel.Botao("📝 Registrar ação…").ClickAsync();
+        await painel.GetByPlaceholder("O que aconteceu?", new() { Exact = false }).FillAsync("Primeiro contato por telefone");
+        await painel.Botao("Registrar").ClickAsync();
+        await Expect(painel.GetByText("Informe o próximo passo")).ToBeVisibleAsync();
+        await painel.Locator(".tipos-atividade").GetByRole(AriaRole.Button, new() { Name = "Visita", Exact = false }).ClickAsync();
+        await painel.GetByLabel("O que fazer *").FillAsync($"Visita guiada {s}");
+        await painel.Botao("Registrar").ClickAsync();
+        await Expect(painel.Locator(".painel-proximo")).ToContainTextAsync($"Visita guiada {s}");
+        await Expect(painel.Locator(".linha-tempo")).ToContainTextAsync("Primeiro contato por telefone");
         await Expect(cartao.Locator(".situacao")).ToHaveTextAsync("Agendado");
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta)
+            await p.ScreenshotAsync(new() { Path = Path.Combine(pasta, "painel.png") });
+
+        // mudar de etapa pela barra do painel pede o próximo passo
+        await painel.GetByRole(AriaRole.Button, new() { Name = "Contato Realizado" }).ClickAsync();
+        await Expect(dlg).ToContainTextAsync("Manter o já agendado");
+        await dlg.Botao("Mover").ClickAsync();
+        await Expect(dlg).ToHaveCountAsync(0);
+        await Expect(painel.Locator(".etapa.atual")).ToHaveTextAsync("Contato Realizado");
+        await Expect(painel.Locator(".linha-tempo")).ToContainTextAsync("Novo Lead → Contato Realizado");
+        await painel.GetByRole(AriaRole.Button, new() { Name = "Fechar", Exact = true }).ClickAsync();
+        await Expect(painel).ToHaveCountAsync(0);
         if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta2)
             await p.Locator(".kanban").ScreenshotAsync(new() { Path = Path.Combine(pasta2, "funil.png") });
 

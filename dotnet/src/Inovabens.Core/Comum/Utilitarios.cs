@@ -33,6 +33,16 @@ public static class Texto
 
     public static string Rotulo<TEnum>(TEnum valor) where TEnum : struct, Enum => Rotulo(valor.ToString());
 
+    public static string Digitos(string? s) => new([.. (s ?? "").Where(char.IsDigit)]);
+
+    /// <summary>Link wa.me (exige o código do país: 55 para números brasileiros de 10 ou 11 dígitos), ou null.</summary>
+    public static string? LinkWhatsapp(string? telefone)
+    {
+        var d = Digitos(telefone);
+        if (d.Length is 10 or 11) d = "55" + d;
+        return d.Length >= 12 ? $"https://wa.me/{d}" : null;
+    }
+
     /// <summary>Campo de formulário vazio vira null; o resto é aparado.</summary>
     public static string? Limpo(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
