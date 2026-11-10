@@ -3,6 +3,7 @@
 @inherits ComponenteBase
 @inject CrmService Servico
 @inject AgendaService Agenda
+@inject PropostasService Propostas
 @inject IJSRuntime JS
 
 <aside class="painel-lateral" role="region" aria-label="@(detalhe?.Pessoa.NomeRazao ?? "Lead")" tabindex="-1" @ref="raiz" @onkeydown="Tecla">
@@ -71,7 +72,11 @@
                 {
                     <span>👤 @r</span>
                 }
-                @if (ValorAnunciado is { } v)
+                @if (PropostaVigente is { } pv)
+                {
+                    <span class="valor-lead">💰 @Texto.MoedaCompacta(pv.Dados.ValorTotal) @(pv.EmAnalise ? "em proposta" : "aceita")@PropostasAba.Pct(pv.DiferencaPct, " · ")</span>
+                }
+                else if (ValorAnunciado is { } v)
                 {
                     <span class="valor-lead">@Texto.MoedaCompacta(v) anunciado</span>
                 }
@@ -152,6 +157,7 @@
             <button type="button" role="tab" class="aba @(aba == Aba.Linha ? "ativa" : "")" aria-selected="@(aba == Aba.Linha)" @onclick="() => aba = Aba.Linha">Linha do tempo</button>
             <button type="button" role="tab" class="aba @(aba == Aba.Atividades ? "ativa" : "")" aria-selected="@(aba == Aba.Atividades)" @onclick="() => aba = Aba.Atividades">Atividades <span class="badge">@atividades.Count</span></button>
             <button type="button" role="tab" class="aba @(aba == Aba.Imoveis ? "ativa" : "")" aria-selected="@(aba == Aba.Imoveis)" @onclick="() => aba = Aba.Imoveis">Imóveis <span class="badge">@detalhe.ImoveisInteresse.Count</span></button>
+            <button type="button" role="tab" class="aba @(aba == Aba.Propostas ? "ativa" : "")" aria-selected="@(aba == Aba.Propostas)" @onclick="() => aba = Aba.Propostas">Propostas <span class="badge">@propostas.Count</span></button>
             <button type="button" role="tab" class="aba @(aba == Aba.Dados ? "ativa" : "")" aria-selected="@(aba == Aba.Dados)" @onclick="() => aba = Aba.Dados">Dados</button>
         </nav>
 
@@ -258,6 +264,11 @@
                     }
                     break;
 
+                case Aba.Propostas:
+                    <PropostasAba LeadId="LeadId" Finalidade="detalhe.Dados.Finalidade" Imoveis="detalhe.ImoveisInteresse" Propostas="propostas"
+                                  Perdido="perdido" AoAlterar="Alterado" />
+                    break;
+
                 case Aba.Dados:
                     <EditForm Model="edicao" OnValidSubmit="SalvarLead" class="formulario">
                         <DataAnnotationsValidator />
@@ -324,7 +335,7 @@
 </aside>
 
 @code {
-    private enum Aba { Linha, Atividades, Imoveis, Dados }
+    private enum Aba { Linha, Atividades, Imoveis, Propostas, Dados }
 
     [Parameter, EditorRequired] public Guid LeadId { get; set; }
     /// <summary>Estágios ativos do funil do lead, na ordem.</summary>
@@ -350,6 +361,7 @@
     private LeadForm? edicao;
     private IReadOnlyList<EventoLead> eventos = [];
     private IReadOnlyList<Compromisso> atividades = [];
+    private IReadOnlyList<PropostaDetalhe> propostas = [];
     private List<Guid> interesse = [];
     private bool compositorAberto;
     private InteracaoForm interacao = new();
@@ -363,6 +375,10 @@
 
     private int DiasNaFase => eventos.Where(e => e.Tipo == TipoEventoLead.Estagio).Select(e => (DateTime?)e.Em).Max() is { } d
         ? Math.Max(0, DatasBR.Hoje().DayNumber - DateOnly.FromDateTime(DatasBR.DeUtc(d)).DayNumber) : 0;
+
+    /// <summary>Aceita (prioridade) ou a mais recente em análise.</summary>
+    private PropostaDetalhe? PropostaVigente => propostas.Where(p => p.Dados.Status == StatusProposta.ACEITA).FirstOrDefault()
+        ?? propostas.FirstOrDefault(p => p.EmAnalise);
 
     private decimal? ValorAnunciado => detalhe!.ImoveisInteresse
         .Select(i => detalhe.Dados.Finalidade == FinalidadeLead.COMPRA ? i.PrecoVenda : i.PrecoLocacao).Max();
@@ -406,6 +422,7 @@
             var d = await Servico.ObterAsync(Usuario, id);
             eventos = await Servico.LinhaDoTempoAsync(Usuario, id);
             atividades = await Servico.AtividadesDoLeadAsync(Usuario, id);
+            propostas = await Propostas.DoLeadAsync(Usuario, id);
             detalhe = d;
         });
         if (detalhe is null) return;

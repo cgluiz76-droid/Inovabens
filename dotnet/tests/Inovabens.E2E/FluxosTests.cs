@@ -233,6 +233,55 @@ public class FluxosTests(Aplicacao app)
         await Expect(p.GetByText("Sem próximo passo")).ToBeVisibleAsync();
     }
 
+    [Fact]
+    public async Task Crm_proposta_com_formas_de_pagamento_aceita_vai_para_fechamento()
+    {
+        var s = Navegacao.Sufixo();
+        var p = await app.NovaPaginaAsync();
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+        var imovel = await p.CriarImovelAsync($"Casa Proposta {s}");
+        await p.GotoAsync($"crm?novo=1&imovel={imovel}");
+        await p.Interativa();
+        var dlg = p.GetByRole(AriaRole.Dialog);
+        await dlg.GetByLabel("Nome *").FillAsync($"Cliente Proposta {s}");
+        await p.Botao("Criar lead").ClickAsync();
+        await Expect(dlg).ToHaveCountAsync(0);
+
+        var cartao = p.Locator(".cartao-lead").Filter(new() { HasText = $"Cliente Proposta {s}" });
+        await cartao.Locator(".link-cartao").ClickAsync();
+        var painel = p.Locator(".painel-lateral");
+        await painel.GetByRole(AriaRole.Tab, new() { Name = "Propostas", Exact = false }).ClickAsync();
+        await Expect(painel.GetByText("Nenhuma proposta registrada.")).ToBeVisibleAsync();
+
+        // entrada + financiamento; o total soma as partes
+        await painel.Botao("+ Nova proposta").ClickAsync();
+        await dlg.GetByLabel("Valor da parte 1").FillAsync("100000");
+        await dlg.GetByRole(AriaRole.Group, new() { Name = "Adicionar forma de pagamento" }).Botao("+ Financiamento bancário").ClickAsync();
+        await dlg.GetByLabel("Valor da parte 2").FillAsync("250000");
+        await dlg.GetByLabel("Banco").FillAsync("Caixa");
+        await dlg.GetByLabel("O que fazer *").FillAsync($"Levar proposta ao proprietário {s}");
+        await dlg.GetByLabel("O que fazer *").BlurAsync();
+        await Expect(dlg.Locator(".total-proposta")).ToContainTextAsync("350.000");
+        await dlg.Botao("Registrar proposta").ClickAsync();
+        await Expect(dlg).ToHaveCountAsync(0);
+        var proposta = painel.Locator(".lista-propostas > li").First;
+        await Expect(proposta).ToContainTextAsync("Em análise");
+        await Expect(proposta).ToContainTextAsync("Financiamento bancário (Caixa)");
+        await Expect(cartao.Locator(".proposta-cartao")).ToContainTextAsync("Proposta");
+        await Expect(painel.Locator(".painel-proximo")).ToContainTextAsync($"Levar proposta ao proprietário {s}");
+
+        // o administrador aceita: o lead vai para Documentação/Fechamento, com a assinatura agendada
+        await proposta.Botao("✔ Aceitar").ClickAsync();
+        await Expect(dlg.GetByLabel("O que fazer *")).ToHaveValueAsync("Assinatura do contrato");
+        await dlg.Botao("Aceitar proposta").ClickAsync();
+        await Expect(dlg).ToHaveCountAsync(0);
+        await Expect(painel.Locator(".etapa.atual")).ToHaveTextAsync("Documentação/Fechamento");
+        await Expect(proposta).ToContainTextAsync("Aceita");
+        await Expect(cartao.Locator(".proposta-cartao")).ToContainTextAsync("✔ Aceita");
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta)
+            await p.ScreenshotAsync(new() { Path = Path.Combine(pasta, "propostas.png") });
+    }
+
     /// <summary>Consulta o ViaCEP de verdade (precisa de internet).</summary>
     [Fact]
     public async Task Pessoa_cep_completa_endereco_editavel_e_avisa_quando_nao_encontra()

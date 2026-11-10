@@ -66,7 +66,7 @@ else
                 </div>
                 @if (col.ValorTotal > 0)
                 {
-                    <p class="coluna-valor" title="Soma do valor anunciado dos imóveis de interesse">@Texto.MoedaCompacta(col.ValorTotal)</p>
+                    <p class="coluna-valor" title="Soma do valor das propostas (ou do anunciado, sem proposta)">@Texto.MoedaCompacta(col.ValorTotal)</p>
                 }
                 @foreach (var l in col.Leads)
                 {
@@ -101,6 +101,12 @@ else
                         else if (l.OrcamentoMax is { } o)
                         {
                             <p class="pequeno">até @Texto.Moeda(o)</p>
+                        }
+                        @if (l.StatusProposta is { } sp && l.ValorProposta is { } vp)
+                        {
+                            <p class="pequeno proposta-cartao proposta-@sp.ToString().ToLowerInvariant()">
+                                @(sp == StatusProposta.ACEITA ? "✔ Aceita" : "💰 Proposta") @Texto.MoedaCompacta(vp)@PropostasAba.Pct(l.DiferencaPct, " · ")
+                            </p>
                         }
                         @if (l.VincularImovel)
                         {

@@ -1,0 +1,216 @@
+@* Aba "Propostas" do painel do lead: histórico de propostas e contrapropostas, registrar nova, aceitar/recusar (administrador)
+   e cancelar. Cada uma dessas ações é registrada no lead e pede o próximo passo. *@
+@inherits ComponenteBase
+@inject PropostasService Servico
+
+@{
+    var propostas = Propostas;
+}
+@if (PodeEditar && !Perdido)
+    {
+        <div class="acoes-topo espaco-baixo">
+            <button type="button" class="btn-primary mini" @onclick="Nova">+ Nova proposta</button>
+        </div>
+    }
+    @if (propostas.Count == 0)
+    {
+        <p class="vazio">Nenhuma proposta registrada.</p>
+    }
+    else
+    {
+        <ul class="lista-propostas">
+            @foreach (var d in propostas)
+            {
+                var p = d.Dados;
+                <li class="proposta proposta-@p.Status.ToString().ToLowerInvariant()" @key="p.Id">
+                    <div class="proposta-topo">
+                        <div>
+                            <span class="badge proposta-@p.Status.ToString().ToLowerInvariant()">@PropostasService.Rotulo(p.Status)</span>
+                            <strong>Nº @p.Numero · @(p.Autor == AutorProposta.CLIENTE ? "Cliente" : "Proprietário")</strong>
+                            <span class="pequeno mudo">· @d.ImovelCodigo</span>
+                        </div>
+                        <p class="proposta-valor">
+                            @Texto.Moeda(p.ValorTotal)@(p.Finalidade == FinalidadeLead.LOCACAO ? "/mês" : "")
+                            <span class="pequeno mudo">@Pct(d.DiferencaPct, " ")</span>
+                        </p>
+                    </div>
+                    @if (p.Finalidade == FinalidadeLead.COMPRA)
+                    {
+                        <ul class="proposta-itens">
+                            @foreach (var i in p.Itens)
+                            {
+                                <li><span>@PropostasService.Rotulo(i.Tipo)@Complemento(i)</span><span>@Texto.Moeda(i.Valor)</span></li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="pequeno">
+                            @(p.Garantia is { } g ? PropostasService.Rotulo(g) : "Garantia não informada")
+                            @(p.PrazoMeses is { } pm ? $" · {pm} meses" : "")
+                            @(p.IndiceReajuste is { } ir ? $" · reajuste {ir}" : "")
+                            @(p.CarenciaMeses is > 0 ? $" · {p.CarenciaMeses} meses de carência" : "")
+                        </p>
+                    }
+                    @if (p.Condicoes is { } c)
+                    {
+                        <p class="pequeno proposta-condicoes">@c</p>
+                    }
+                    <p class="pequeno mudo">
+                        @Texto.DataHora(p.CriadoEm)@(d.CriadoPorNome is { } cn ? $" · {cn}" : "")
+                        @if (p.ValidadeEm is { } v)
+                        {
+                            <span class="@(d.EmAnalise && v < DatasBR.Hoje() ? "texto-erro" : "")"> · válida até @v.ToString("dd/MM/yyyy")</span>
+                        }
+                    </p>
+                    @if (p.DecididoEm is { } de && !d.EmAnalise)
+                    {
+                        <p class="pequeno mudo">@PropostasService.Rotulo(p.Status) em @Texto.DataHora(de)@(d.DecididoPorNome is { } dn ? $" por {dn}" : "")@(p.MotivoDecisao is { } mo ? $": {mo}" : "")</p>
+                    }
+                    @if (d.EmAnalise && !Perdido)
+                    {
+                        <div class="acoes proposta-acoes">
+                            @if (PodeDecidir)
+                            {
+                                <button type="button" class="btn-primary mini" @onclick="() => AbrirDecisao(d, Decisao.Aceitar)">✔ Aceitar</button>
+                                <button type="button" class="btn-ghost mini" @onclick="() => AbrirDecisao(d, Decisao.Recusar)">✕ Recusar</button>
+                            }
+                            @if (PodeEditar)
+                            {
+                                <button type="button" class="btn-ghost mini" @onclick="() => Contraproposta(p)">↔ Contraproposta</button>
+                                <button type="button" class="btn-ghost mini texto-erro" @onclick="() => AbrirDecisao(d, Decisao.Cancelar)">Cancelar</button>
+                            }
+                        </div>
+                    }
+                </li>
+            }
+        </ul>
+}
+
+@if (form is not null)
+{
+    <Modal Titulo="@(contra ? "Contraproposta" : "Nova proposta")" Largo="true" AoFechar="() => form = null">
+        <PropostaFormulario Form="form" Finalidade="Finalidade" Imoveis="Imoveis" Erro="@Erro" Ocupado="Ocupado"
+                            AoSalvar="Salvar" AoCancelar="() => form = null" />
+    </Modal>
+}
+
+@if (decidindo is not null)
+{
+    <Modal Titulo="@TituloDecisao" AoFechar="() => decidindo = null">
+        <EditForm Model="proximo" OnValidSubmit="Decidir" class="formulario">
+            <DataAnnotationsValidator />
+            <p>
+                Proposta nº @decidindo.Dados.Numero · @decidindo.ImovelCodigo ·
+                <strong>@Texto.Moeda(decidindo.Dados.ValorTotal)</strong> <span class="mudo">@Pct(decidindo.DiferencaPct, " ")</span>
+            </p>
+            @if (decisao == Decisao.Aceitar)
+            {
+                <p class="pequeno">O lead vai para a etapa de documentação/fechamento.</p>
+            }
+            else
+            {
+                <label class="campo">
+                    <span>Motivo *</span>
+                    <InputText class="input" @bind-Value="motivo" placeholder="@(decisao == Decisao.Recusar ? "Ex.: valor abaixo do mínimo do proprietário" : "Ex.: cliente desistiu desta proposta")" />
+                </label>
+            }
+            <ProximoPassoCampos Form="proximo" />
+            <MensagemErro Texto="@Erro" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">@TituloDecisao</button>
+                <button type="button" class="btn-ghost" @onclick="() => decidindo = null">Voltar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    private enum Decisao { Aceitar, Recusar, Cancelar }
+
+    [Parameter, EditorRequired] public Guid LeadId { get; set; }
+    [Parameter, EditorRequired] public FinalidadeLead Finalidade { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<ImovelInteresse> Imoveis { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<PropostaDetalhe> Propostas { get; set; } = [];
+    [Parameter] public bool Perdido { get; set; }
+    /// <summary>Proposta registrada ou decidida: o painel recarrega o lead e o funil.</summary>
+    [Parameter] public EventCallback AoAlterar { get; set; }
+
+    private PropostaForm? form;
+    private bool contra;
+    private PropostaDetalhe? decidindo;
+    private Decisao decisao;
+    private string? motivo;
+    private ProximoPassoForm proximo = new();
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.CrmEditar);
+    private bool PodeDecidir => Usuario.Pode(Permissoes.CrmPropostasDecidir);
+
+    private string TituloDecisao => decisao switch
+    {
+        Decisao.Aceitar => "Aceitar proposta",
+        Decisao.Recusar => "Recusar proposta",
+        _ => "Cancelar proposta",
+    };
+
+    /// <summary>Diferença para o anunciado, ex.: " · −8,5%". Vazio sem anunciado.</summary>
+    public static string Pct(decimal? d, string prefixo) => d is { } x
+        ? $"{prefixo}{(x > 0 ? "+" : x < 0 ? "−" : "")}{Math.Abs(x).ToString("0.#", Texto.PtBr)}%" : "";
+
+    private static string Complemento(PropostaItem i)
+    {
+        var partes = new List<string>();
+        if (i.Instituicao is { } inst) partes.Add(inst);
+        if (i.Parcelas is { } n) partes.Add(i.Tipo == TipoItemProposta.FINANCIAMENTO ? $"{n} meses" : $"{n}x");
+        if (i.CreditoAprovado == true) partes.Add("crédito aprovado");
+        if (i.Descricao is { } d) partes.Add(d);
+        if (i.DataPrevista is { } dt) partes.Add(dt.ToString("dd/MM/yyyy"));
+        return partes.Count == 0 ? "" : $" ({string.Join(" · ", partes)})";
+    }
+
+    private void Nova()
+    {
+        Erro = null;
+        contra = false;
+        form = new PropostaForm { ImovelId = Imoveis.Count == 1 ? Imoveis[0].Id : null };
+        if (Finalidade == FinalidadeLead.COMPRA) form.Itens.Add(new PropostaItemForm { Tipo = TipoItemProposta.ENTRADA });
+    }
+
+    private void Contraproposta(Proposta p)
+    {
+        Erro = null;
+        contra = true;
+        form = PropostaForm.ContrapropostaDe(p);
+    }
+
+    private void AbrirDecisao(PropostaDetalhe d, Decisao qual)
+    {
+        Erro = null;
+        decidindo = d;
+        decisao = qual;
+        motivo = null;
+        proximo = new ProximoPassoForm();
+        proximo.Limpar();
+        if (qual == Decisao.Aceitar) proximo.Titulo = "Assinatura do contrato";
+    }
+
+    private async Task Salvar()
+    {
+        if (!await Executar(() => Servico.CriarAsync(Usuario, LeadId, form!))) return;
+        form = null;
+        await Alterado();
+    }
+
+    private async Task Decidir()
+    {
+        var d = decidindo!;
+        var ok = decisao == Decisao.Cancelar
+            ? await Executar(() => Servico.CancelarAsync(Usuario, d.Dados.Id, motivo, proximo))
+            : await Executar(() => Servico.DecidirAsync(Usuario, d.Dados.Id, decisao == Decisao.Aceitar, motivo, proximo));
+        if (!ok) return;
+        decidindo = null;
+        await Alterado();
+    }
+
+    private Task Alterado() => AoAlterar.InvokeAsync();
+}

@@ -20,9 +20,15 @@ public sealed record LeadCartao(
     Guid Id, string PessoaNome, string? Telefone, string? Email, FinalidadeLead Finalidade, string? Origem,
     string? ResponsavelNome, decimal? OrcamentoMax, DateTime? ProximaAcaoEm, int Ordem,
     bool VincularImovel = false, string? ImovelSugerido = null,
-    string? ProximoTitulo = null, DateTime? NaFaseDesde = null, string? ImovelCodigo = null, int OutrosImoveis = 0, decimal? Valor = null)
+    string? ProximoTitulo = null, DateTime? NaFaseDesde = null, string? ImovelCodigo = null, int OutrosImoveis = 0, decimal? Valor = null,
+    decimal? ValorProposta = null, decimal? PropostaAnunciado = null, StatusProposta? StatusProposta = null)
 {
     public SituacaoProximoPasso Situacao => SituacaoDe(ProximaAcaoEm);
+
+    /// <summary>Valor da negociação: a proposta em análise ou aceita; sem proposta, o anunciado.</summary>
+    public decimal? ValorAtual => ValorProposta ?? Valor;
+
+    public decimal? DiferencaPct => ValorProposta is { } v ? PropostasService.DiferencaPct(v, PropostaAnunciado) : null;
 
     public int DiasNaFase => NaFaseDesde is { } d ? Math.Max(0, DatasBR.Hoje().DayNumber - DateOnly.FromDateTime(DatasBR.DeUtc(d)).DayNumber) : 0;
 
@@ -37,15 +43,18 @@ public sealed record LeadCartao(
 
 public sealed record ColunaFunil(FunilEstagio Estagio, IReadOnlyList<LeadCartao> Leads)
 {
-    public decimal ValorTotal => Leads.Sum(l => l.Valor ?? 0);
+    public decimal ValorTotal => Leads.Sum(l => l.ValorAtual ?? 0);
 }
 
 /// <summary>Lead interessado num imóvel (aba "Interessados" da ficha do imóvel).</summary>
 public sealed record InteressadoImovel(
     Guid LeadId, string PessoaNome, string? Telefone, FinalidadeLead Finalidade, string Estagio, string? EstagioCor, TipoEstagio EstagioTipo,
-    DateTime? ProximaAcaoEm, string? ProximoTitulo, string? ResponsavelNome, bool SoSugerido)
+    DateTime? ProximaAcaoEm, string? ProximoTitulo, string? ResponsavelNome, bool SoSugerido,
+    decimal? ValorProposta = null, decimal? PropostaAnunciado = null, StatusProposta? StatusProposta = null)
 {
     public SituacaoProximoPasso Situacao => LeadCartao.SituacaoDe(ProximaAcaoEm);
+
+    public decimal? DiferencaPct => ValorProposta is { } v ? PropostasService.DiferencaPct(v, PropostaAnunciado) : null;
 }
 
 /// <summary>Atividade pendente da agenda (tela "Minhas atividades").</summary>
@@ -207,6 +216,9 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
                 Proximo = db.Compromissos.Where(c => c.LeadId == l.Id && c.Status == StatusCompromisso.PENDENTE && c.ExcluidoEm == null)
                     .OrderBy(c => c.InicioEm).Select(c => new { c.InicioEm, c.Titulo }).FirstOrDefault(),
                 NaFase = db.LeadHistoricoEstagios.Where(h => h.LeadId == l.Id && h.EstagioNovoId == l.EstagioId).Max(h => (DateTime?)h.CriadoEm),
+                Proposta = db.Propostas.Where(p => p.LeadId == l.Id && (p.Status == StatusProposta.EM_ANALISE || p.Status == StatusProposta.ACEITA))
+                    .OrderByDescending(p => p.Status == StatusProposta.ACEITA).ThenByDescending(p => p.CriadoEm)
+                    .Select(p => new { p.ValorTotal, p.ValorAnunciado, p.Status }).FirstOrDefault(),
                 Imoveis = (from i in db.LeadImoveisInteresse
                            where i.LeadId == l.Id
                            join imv in db.Imoveis on i.ImovelId equals imv.Id
@@ -220,7 +232,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
             l.Proximo?.InicioEm ?? l.ProximaAcaoEm, l.Ordem,
             l.Origem == WhatsappService.Origem && l.SemInteresse, l.Sugerido,
             l.Proximo?.Titulo, l.NaFase ?? l.CriadoEm, l.Imoveis.FirstOrDefault()?.Codigo, Math.Max(0, l.Imoveis.Count - 1),
-            l.Imoveis.Max(i => i.Preco)))).ToList();
+            l.Imoveis.Max(i => i.Preco), l.Proposta?.ValorTotal, l.Proposta?.ValorAnunciado, l.Proposta?.Status))).ToList();
         return [.. estagios.Select(e => new ColunaFunil(e, [.. cartoes.Where(l => l.EstagioId == e.Id).Select(l => l.Cartao)]))];
     }
 
@@ -241,10 +253,14 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
                     .OrderBy(c => c.InicioEm).Select(c => new { c.InicioEm, c.Titulo }).FirstOrDefault(),
                 Responsavel = l.Responsavel != null ? l.Responsavel.Nome : null,
                 SoSugerido = !db.LeadImoveisInteresse.Any(i => i.LeadId == l.Id && i.ImovelId == imovelId),
+                Proposta = db.Propostas.Where(p => p.LeadId == l.Id && p.ImovelId == imovelId && (p.Status == StatusProposta.EM_ANALISE || p.Status == StatusProposta.ACEITA))
+                    .OrderByDescending(p => p.Status == StatusProposta.ACEITA).ThenByDescending(p => p.CriadoEm)
+                    .Select(p => new { p.ValorTotal, p.ValorAnunciado, p.Status }).FirstOrDefault(),
             })
             .ToListAsync();
         return [.. linhas.Select(l => new InteressadoImovel(l.Id, l.Nome, l.Telefone, l.Finalidade, l.Estagio, l.Cor, l.Tipo,
-            l.Proximo?.InicioEm ?? l.ProximaAcaoEm, l.Proximo?.Titulo, l.Responsavel, l.SoSugerido))];
+            l.Proximo?.InicioEm ?? l.ProximaAcaoEm, l.Proximo?.Titulo, l.Responsavel, l.SoSugerido,
+            l.Proposta?.ValorTotal, l.Proposta?.ValorAnunciado, l.Proposta?.Status))];
     }
 
     /// <summary>Atividades pendentes da agenda (com o contato do lead), as do próprio usuário ou de todos.</summary>
@@ -435,7 +451,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
     /// Grava o próximo passo de uma ação: cria o compromisso na agenda (responsável = o do lead) ou guarda o motivo de
     /// ter pulado. Devolve o id do compromisso criado. Quem chama salva e abre a transação.
     /// </summary>
-    private static async Task<Guid?> ProximoPasso(InovabensDb db, UsuarioAtual u, Lead l, ProximoPassoForm p, LeadInteracao? acao)
+    internal static async Task<Guid?> ProximoPasso(InovabensDb db, UsuarioAtual u, Lead l, ProximoPassoForm p, LeadInteracao? acao)
     {
         if (p.Pular)
         {
@@ -550,7 +566,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
                 : i.MotivoSemProximo is { } m ? $"Sem próximo passo: {m}" : null;
             if (i.CompromissoConcluidoId is { } cc && compromissos.TryGetValue(cc, out var feito))
                 detalhe = $"Concluiu: {feito.Titulo}" + (detalhe is null ? "" : $" · {detalhe}");
-            eventos.Add(new EventoLead(i.CriadoEm, TipoEventoLead.Acao, IconeCanal(i.Canal), i.Resumo, detalhe,
+            eventos.Add(new EventoLead(i.CriadoEm, TipoEventoLead.Acao, i.PropostaId is null ? IconeCanal(i.Canal) : "💰", i.Resumo, detalhe,
                 Nome(i.UsuarioId) ?? (i.Canal == CanalInteracao.WHATSAPP ? "automático" : null)));
         }
 

@@ -54,6 +54,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadHistoricoEstagio> LeadHistoricoEstagios => Set<LeadHistoricoEstagio>();
     public DbSet<LeadInteracao> LeadInteracoes => Set<LeadInteracao>();
+    public DbSet<Proposta> Propostas => Set<Proposta>();
+    public DbSet<PropostaItem> PropostaItens => Set<PropostaItem>();
     public DbSet<LeadImovelInteresse> LeadImoveisInteresse => Set<LeadImovelInteresse>();
 
     /// <summary>Configura o Npgsql: conexão e tipos enum do PostgreSQL (rótulos iguais aos nomes C#).</summary>
@@ -80,6 +82,10 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             n.MapEnum<Funil>("funil", nameTranslator: semTraducao);
             n.MapEnum<TipoEstagio>("tipo_estagio", nameTranslator: semTraducao);
             n.MapEnum<CanalInteracao>("canal_interacao", nameTranslator: semTraducao);
+            n.MapEnum<StatusProposta>("status_proposta", nameTranslator: semTraducao);
+            n.MapEnum<AutorProposta>("autor_proposta", nameTranslator: semTraducao);
+            n.MapEnum<TipoItemProposta>("tipo_item_proposta", nameTranslator: semTraducao);
+            n.MapEnum<GarantiaLocacao>("garantia_locacao", nameTranslator: semTraducao);
         });
 
     /// <summary>Aceita tanto "Host=...;Database=..." quanto a URL do Node (postgres://user:senha@host:5432/banco).</summary>
@@ -171,6 +177,12 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         mb.Entity<CompromissoParticipante>().HasOne<Compromisso>().WithMany().HasForeignKey(x => x.CompromissoId);
         mb.Entity<LeadHistoricoEstagio>().HasOne<Lead>().WithMany().HasForeignKey(x => x.LeadId);
         mb.Entity<LeadInteracao>().HasOne<Lead>().WithMany().HasForeignKey(x => x.LeadId);
+        mb.Entity<Proposta>(e =>
+        {
+            e.HasOne<Lead>().WithMany().HasForeignKey(x => x.LeadId);
+            e.HasMany(x => x.Itens).WithOne().HasForeignKey(x => x.PropostaId);
+        });
+        mb.Entity<LeadInteracao>().HasOne<Proposta>().WithMany().HasForeignKey(x => x.PropostaId);
 
         mb.Entity<DataProtectionKey>().ToTable("data_protection_keys");
 

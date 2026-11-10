@@ -37,6 +37,8 @@ public static class Permissoes
     public const string CrmCriar = "crm:criar";
     public const string CrmEditar = "crm:editar";
     public const string CrmExcluir = "crm:excluir";
+    /// <summary>Aceitar ou recusar propostas (só o perfil Administrador recebe por padrão).</summary>
+    public const string CrmPropostasDecidir = "crm:propostas:decidir";
 
     public static readonly IReadOnlyList<string> Todas =
     [
@@ -46,6 +48,6 @@ public static class Permissoes
         FinanceiroVer, FinanceiroEditar, FinanceiroExportar,
         MemorandosVer, MemorandosCriar, MemorandosEditar, MemorandosExcluir,
         AgendaVer, AgendaCriar, AgendaEditar, AgendaExcluir,
-        CrmVer, CrmCriar, CrmEditar, CrmExcluir,
+        CrmVer, CrmCriar, CrmEditar, CrmExcluir, CrmPropostasDecidir,
     ];
 }

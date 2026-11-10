@@ -535,3 +535,29 @@ pre.json { background: #f8f9fc; border: 1px solid var(--borda); border-radius: v
 .lista-comprovantes { list-style: none; padding: 0; margin: 0 0 .75rem; display: grid; gap: .4rem; }
 .lista-comprovantes li { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
 .lista-comprovantes a { font-weight: 600; word-break: break-all; }
+
+/* Propostas (CRM) */
+.col-3 { grid-column: span 3; }
+.proposta-form .item-proposta { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: .6rem .75rem; margin-bottom: .6rem; background: var(--superficie); }
+.item-proposta-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
+.item-proposta .check { align-self: end; padding-bottom: .5rem; }
+.total-proposta { margin: .6rem 0 0; font-size: .95rem; }
+.valor-anunciado { margin: 0; padding: .55rem 0; font-weight: 600; }
+.lista-propostas { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }
+.proposta { border: 1px solid var(--borda); border-left: 4px solid #f97316; border-radius: var(--raio-p); padding: .75rem .9rem; }
+.proposta-aceita { border-left-color: #16a34a; }
+.proposta-recusada, .proposta-cancelada, .proposta-expirada { border-left-color: var(--erro); }
+.proposta-substituida { border-left-color: var(--borda-forte); opacity: .75; }
+.proposta-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-wrap: wrap; }
+.proposta-topo .badge { margin-right: .35rem; }
+.proposta-valor { margin: 0; font-weight: 700; font-size: 1.05rem; }
+.proposta-itens { list-style: none; margin: .5rem 0; padding: 0; font-size: .85rem; }
+.proposta-itens li { display: flex; justify-content: space-between; gap: .75rem; padding: .2rem 0; border-bottom: 1px dashed var(--borda); }
+.proposta-condicoes { white-space: pre-line; background: #f6f7fb; border-radius: var(--raio-p); padding: .4rem .6rem; }
+.proposta-acoes { margin-top: .5rem; }
+.badge.proposta-em_analise { background: #fff1e6; color: #9a3412; }
+.badge.proposta-aceita { background: #e7f6ec; color: #166534; }
+.badge.proposta-recusada, .badge.proposta-cancelada, .badge.proposta-expirada { background: var(--erro-fundo); color: var(--erro); }
+.proposta-cartao { color: #9a3412; font-weight: 600; }
+.proposta-cartao.proposta-aceita { color: #166534; }
+@media (max-width: 640px) { .col-3 { grid-column: span 2; } }

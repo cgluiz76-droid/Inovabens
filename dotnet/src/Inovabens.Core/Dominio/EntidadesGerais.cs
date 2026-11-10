@@ -229,7 +229,69 @@ public class LeadInteracao
     public string? MotivoSemProximo { get; set; }
     /// <summary>Atividade da agenda concluída por esta ação (o resumo é o resultado).</summary>
     public Guid? CompromissoConcluidoId { get; set; }
+    /// <summary>Proposta registrada, aceita ou recusada nesta ação.</summary>
+    public Guid? PropostaId { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Proposta (do cliente) ou contraproposta (do proprietário) de um lead para um imóvel. A contraproposta é uma nova
+/// proposta ligada à anterior (<see cref="AnteriorId"/>), que fica SUBSTITUIDA. Índice único no banco: uma EM_ANALISE
+/// por lead e imóvel.
+/// </summary>
+[Table("propostas")]
+public class Proposta
+{
+    public Guid Id { get; set; }
+    public Guid LeadId { get; set; }
+    public Guid ImovelId { get; set; }
+    /// <summary>Versão na negociação deste lead com este imóvel (1, 2, 3…).</summary>
+    public int Numero { get; set; }
+    public Guid? AnteriorId { get; set; }
+    public AutorProposta Autor { get; set; } = AutorProposta.CLIENTE;
+    public FinalidadeLead Finalidade { get; set; } = FinalidadeLead.COMPRA;
+    public StatusProposta Status { get; set; } = StatusProposta.EM_ANALISE;
+    /// <summary>Preço anunciado do imóvel no dia da proposta (o preço pode mudar depois).</summary>
+    public decimal? ValorAnunciado { get; set; }
+    /// <summary>Venda: soma dos itens. Locação: aluguel mensal.</summary>
+    public decimal ValorTotal { get; set; }
+    public DateOnly? ValidadeEm { get; set; }
+    public string? Condicoes { get; set; }
+    public decimal? Aluguel { get; set; }
+    public GarantiaLocacao? Garantia { get; set; }
+    public int? PrazoMeses { get; set; }
+    public string? IndiceReajuste { get; set; }
+    public int? CarenciaMeses { get; set; }
+    /// <summary>Motivo da recusa ou do cancelamento.</summary>
+    public string? MotivoDecisao { get; set; }
+    public Guid? DecididoPor { get; set; }
+    public DateTime? DecididoEm { get; set; }
+    public Guid? CriadoPor { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+    public List<PropostaItem> Itens { get; set; } = [];
+
+    public Proposta Copia() => (Proposta)MemberwiseClone();
+}
+
+/// <summary>Uma parte do pagamento (entrada, financiamento, permuta…). CHECK no banco: valor &gt; 0.</summary>
+[Table("proposta_itens")]
+public class PropostaItem
+{
+    public Guid Id { get; set; }
+    public Guid PropostaId { get; set; }
+    public int Ordem { get; set; }
+    public TipoItemProposta Tipo { get; set; }
+    public decimal Valor { get; set; }
+    /// <summary>Veículo (marca/modelo/ano/placa), endereço do imóvel em permuta, observações.</summary>
+    public string? Descricao { get; set; }
+    /// <summary>Banco do financiamento ou administradora do consórcio.</summary>
+    public string? Instituicao { get; set; }
+    public int? Parcelas { get; set; }
+    public DateOnly? DataPrevista { get; set; }
+    public bool? CreditoAprovado { get; set; }
+    /// <summary>Imóvel em permuta já cadastrado no sistema.</summary>
+    public Guid? ImovelPermutaId { get; set; }
 }
 
 /// <summary>Mensagem do WhatsApp recebida pelo webhook (Id = id da mensagem na Meta, garante que não entra duas vezes).</summary>

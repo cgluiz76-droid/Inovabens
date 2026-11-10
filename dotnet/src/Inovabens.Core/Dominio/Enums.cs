@@ -46,3 +46,12 @@ public enum Funil { VENDA, LOCACAO }
 public enum TipoEstagio { ABERTO, GANHO, PERDIDO }
 
 public enum CanalInteracao { TELEFONE, WHATSAPP, EMAIL, VISITA, OUTRO }
+
+public enum StatusProposta { EM_ANALISE, ACEITA, RECUSADA, SUBSTITUIDA, CANCELADA, EXPIRADA }
+
+/// <summary>Quem fez a oferta: o cliente (proposta) ou o proprietário (contraproposta).</summary>
+public enum AutorProposta { CLIENTE, PROPRIETARIO }
+
+public enum TipoItemProposta { ENTRADA, PARCELAS_PROPRIETARIO, FINANCIAMENTO, FGTS, CONSORCIO, PERMUTA_IMOVEL, PERMUTA_VEICULO, OUTRO }
+
+public enum GarantiaLocacao { FIADOR, CAUCAO, SEGURO_FIANCA, TITULO_CAPITALIZACAO, SEM_GARANTIA }

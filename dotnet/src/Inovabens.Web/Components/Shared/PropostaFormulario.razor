@@ -1,0 +1,159 @@
+@* Proposta ou contraproposta: venda (partes do pagamento) ou locação (aluguel, garantia, prazo), com o próximo passo. *@
+<EditForm Model="Form" OnValidSubmit="AoSalvar" class="formulario proposta-form">
+    <DataAnnotationsValidator />
+    <div class="grade-4">
+        <label class="campo col-2">
+            <span>Imóvel *</span>
+            <InputSelect class="input" @bind-Value="Form.ImovelId">
+                <option value="">Selecione…</option>
+                @foreach (var i in Imoveis)
+                {
+                    <option value="@i.Id">@i.Codigo · @i.Titulo</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="() => Form.ImovelId" />
+        </label>
+        <label class="campo">
+            <span>Validade</span>
+            <InputDate class="input" @bind-Value="Form.ValidadeEm" />
+            <ValidationMessage For="() => Form.ValidadeEm" />
+        </label>
+        <div class="campo">
+            <span>Anunciado</span>
+            <p class="valor-anunciado">@(Anunciado is { } a ? Texto.Moeda(a) : "sem preço")</p>
+        </div>
+    </div>
+    <div class="checks">
+        <label><input type="radio" name="autor" checked="@(Form.Autor == AutorProposta.CLIENTE)" @onchange="() => Form.Autor = AutorProposta.CLIENTE" /> Proposta do cliente</label>
+        <label><input type="radio" name="autor" checked="@(Form.Autor == AutorProposta.PROPRIETARIO)" @onchange="() => Form.Autor = AutorProposta.PROPRIETARIO" /> Contraproposta do proprietário</label>
+    </div>
+
+    @if (Venda)
+    {
+        <fieldset class="proximo-passo">
+            <legend>Formas de pagamento</legend>
+            @foreach (var (item, n) in Form.Itens.Select((x, n) => (x, n)))
+            {
+                <div class="item-proposta" @key="item">
+                    <div class="item-proposta-topo">
+                        <strong>@PropostasService.Rotulo(item.Tipo)</strong>
+                        <button type="button" class="btn-ghost mini" aria-label="Remover @PropostasService.Rotulo(item.Tipo)" @onclick="() => Form.Itens.Remove(item)">✕</button>
+                    </div>
+                    <div class="grade-4">
+                        <label class="campo">
+                            <span>Valor *</span>
+                            <InputNumber class="input" step="0.01" @bind-Value="item.Valor" aria-label="@($"Valor da parte {n + 1}")" />
+                        </label>
+                        @switch (item.Tipo)
+                        {
+                            case TipoItemProposta.ENTRADA:
+                                <label class="campo"><span>Data do pagamento</span><InputDate class="input" @bind-Value="item.DataPrevista" /></label>
+                                break;
+                            case TipoItemProposta.PARCELAS_PROPRIETARIO:
+                                <label class="campo"><span>Nº de parcelas</span><InputNumber class="input" @bind-Value="item.Parcelas" /></label>
+                                <label class="campo"><span>1º vencimento</span><InputDate class="input" @bind-Value="item.DataPrevista" /></label>
+                                <label class="campo"><span>Correção</span><InputText class="input" placeholder="Ex.: IPCA, sem correção" @bind-Value="item.Descricao" /></label>
+                                break;
+                            case TipoItemProposta.FINANCIAMENTO:
+                                <label class="campo"><span>Banco</span><InputText class="input" @bind-Value="item.Instituicao" /></label>
+                                <label class="campo"><span>Prazo (meses)</span><InputNumber class="input" @bind-Value="item.Parcelas" /></label>
+                                <label class="check"><input type="checkbox" checked="@(item.CreditoAprovado == true)" @onchange="e => item.CreditoAprovado = e.Value is true" /> Crédito aprovado</label>
+                                break;
+                            case TipoItemProposta.CONSORCIO:
+                                <label class="campo col-2"><span>Administradora</span><InputText class="input" @bind-Value="item.Instituicao" /></label>
+                                break;
+                            case TipoItemProposta.PERMUTA_IMOVEL:
+                                <label class="campo col-3"><span>Imóvel oferecido</span><InputText class="input" placeholder="Endereço, tipo, área…" @bind-Value="item.Descricao" /></label>
+                                break;
+                            case TipoItemProposta.PERMUTA_VEICULO:
+                                <label class="campo col-3"><span>Veículo</span><InputText class="input" placeholder="Marca, modelo, ano, placa" @bind-Value="item.Descricao" /></label>
+                                break;
+                            case TipoItemProposta.FGTS:
+                                break;
+                            default:
+                                <label class="campo col-3"><span>Descrição</span><InputText class="input" @bind-Value="item.Descricao" /></label>
+                                break;
+                        }
+                    </div>
+                </div>
+            }
+            <div class="tipos-atividade" role="group" aria-label="Adicionar forma de pagamento">
+                @foreach (var t in Enum.GetValues<TipoItemProposta>())
+                {
+                    <button type="button" class="chip" @onclick="() => Form.Itens.Add(new PropostaItemForm { Tipo = t })">+ @PropostasService.Rotulo(t)</button>
+                }
+            </div>
+            <p class="total-proposta">Total: <strong>@Texto.Moeda(Total)</strong> @Diferenca</p>
+        </fieldset>
+    }
+    else
+    {
+        <fieldset class="proximo-passo">
+            <legend>Locação</legend>
+            <div class="grade-4">
+                <label class="campo">
+                    <span>Aluguel mensal *</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="Form.Aluguel" />
+                    <ValidationMessage For="() => Form.Aluguel" />
+                </label>
+                <label class="campo">
+                    <span>Garantia</span>
+                    <InputSelect class="input" @bind-Value="Form.Garantia">
+                        <option value="">Não informada</option>
+                        @foreach (var g in Enum.GetValues<GarantiaLocacao>())
+                        {
+                            <option value="@g">@PropostasService.Rotulo(g)</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label class="campo">
+                    <span>Prazo (meses)</span>
+                    <InputNumber class="input" @bind-Value="Form.PrazoMeses" />
+                    <ValidationMessage For="() => Form.PrazoMeses" />
+                </label>
+                <label class="campo">
+                    <span>Reajuste</span>
+                    <InputText class="input" list="indices-reajuste" placeholder="IGP-M, IPCA…" @bind-Value="Form.IndiceReajuste" />
+                    <datalist id="indices-reajuste"><option value="IGP-M" /><option value="IPCA" /><option value="INPC" /><option value="IVAR" /></datalist>
+                </label>
+                <label class="campo">
+                    <span>Carência (meses)</span>
+                    <InputNumber class="input" @bind-Value="Form.CarenciaMeses" />
+                    <ValidationMessage For="() => Form.CarenciaMeses" />
+                </label>
+            </div>
+            <p class="total-proposta">Aluguel: <strong>@Texto.Moeda(Total)</strong> @Diferenca</p>
+        </fieldset>
+    }
+
+    <label class="campo">
+        <span>Condições</span>
+        <InputTextArea class="input" rows="2" placeholder="Prazo de entrega das chaves, quem paga ITBI e escritura, móveis inclusos…" @bind-Value="Form.Condicoes" />
+    </label>
+
+    <ProximoPassoCampos Form="Form" />
+    <MensagemErro Texto="@Erro" />
+    <div class="acoes">
+        <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar proposta</button>
+        <button type="button" class="btn-ghost" @onclick="AoCancelar">Cancelar</button>
+    </div>
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired] public PropostaForm Form { get; set; } = default!;
+    [Parameter, EditorRequired] public FinalidadeLead Finalidade { get; set; }
+    /// <summary>Imóveis de interesse do lead (com os preços anunciados).</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<ImovelInteresse> Imoveis { get; set; } = [];
+    [Parameter] public string? Erro { get; set; }
+    [Parameter] public bool Ocupado { get; set; }
+    [Parameter] public EventCallback AoSalvar { get; set; }
+    [Parameter] public EventCallback AoCancelar { get; set; }
+
+    private bool Venda => Finalidade == FinalidadeLead.COMPRA;
+    private decimal Total => Form.Total(Finalidade);
+
+    private decimal? Anunciado => Imoveis.FirstOrDefault(i => i.Id == Form.ImovelId) is { } i ? (Venda ? i.PrecoVenda : i.PrecoLocacao) : null;
+
+    private string Diferenca => PropostasService.DiferencaPct(Total, Anunciado) is { } d && Total > 0
+        ? $"({(d > 0 ? "+" : "")}{d.ToString("0.#", Texto.PtBr)}% do anunciado)" : "";
+}

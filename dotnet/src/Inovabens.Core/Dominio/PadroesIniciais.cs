@@ -42,6 +42,7 @@ public static class PadroesIniciais
         new("Visita Agendada", TipoEstagio.ABERTO, "#8b5cf6"),
         new("Proposta", TipoEstagio.ABERTO, "#f59e0b"),
         new("Negociação", TipoEstagio.ABERTO, "#f97316"),
+        new("Documentação/Fechamento", TipoEstagio.ABERTO, "#0d9488"),
         new("Concluído", TipoEstagio.GANHO, "#16a34a"),
         new("Perdido", TipoEstagio.PERDIDO, "#dc2626"),
     ];
