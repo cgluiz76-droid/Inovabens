@@ -422,7 +422,13 @@ public class FluxosTests(Aplicacao app)
         await p.GetByText("Price", new() { Exact = true }).ClickAsync();
         await Expect(p.Locator("#rPrimeiraRotulo")).ToHaveTextAsync("Parcela fixa");
         await Expect(p.Locator("#rFinanciado")).ToHaveTextAsync("R$ 350.000,00");
-        await Expect(p.Locator("#simEntrada")).ToHaveValueAsync("150000");
+        await Expect(p.Locator("#simEntrada")).ToHaveValueAsync("150.000,00");
+        // valor do imóvel alterado: a entrada volta a 20% (Price exige 30%) e o financiado é valor menos entrada
+        await p.GetByText("SAC", new() { Exact = true }).ClickAsync();
+        await p.Locator("#simValor").FillAsync("40000000"); // digitado em centavos: 400.000,00
+        await Expect(p.Locator("#simValor")).ToHaveValueAsync("400.000,00");
+        await Expect(p.Locator("#simEntrada")).ToHaveValueAsync("80.000,00");
+        await Expect(p.Locator("#rFinanciado")).ToHaveTextAsync("R$ 320.000,00");
         // idade + prazo até 80 anos e 6 meses
         await p.Locator("#simIdade").FillAsync("60");
         await Expect(p.Locator("#simPrazoTxt")).ToHaveTextAsync("20 anos e 6 meses (246 meses)");

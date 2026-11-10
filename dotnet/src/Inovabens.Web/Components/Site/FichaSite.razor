@@ -61,10 +61,10 @@
                             <label><input type="radio" name="sistema" value="price" /> <span><b>Price</b><small>parcelas fixas · financia até @Pct(FinanciamentoCaixa.CotaPrice)</small></span></label>
                         </fieldset>
                         <label>Valor do imóvel (R$)
-                            <input id="simValor" type="number" min="0" step="1000" inputmode="numeric" value="@Num(Preco ?? 0)" />
+                            <input id="simValor" type="text" inputmode="numeric" autocomplete="off" value="@Brl2(Preco ?? 0)" data-valor="@Num(Preco ?? 0, "0.00")" />
                         </label>
                         <label>Entrada (R$) <small class="mudo" id="simEntradaPct">@Pct(sim.Entrada / (Preco ?? 1)) do valor</small>
-                            <input id="simEntrada" type="number" min="0" step="1000" inputmode="numeric" value="@Num(sim.Entrada)" />
+                            <input id="simEntrada" type="text" inputmode="numeric" autocomplete="off" value="@Brl2(sim.Entrada)" data-valor="@Num(sim.Entrada, "0.00")" />
                         </label>
                         <label>Prazo <output id="simPrazoTxt" for="simPrazo">@PrazoTexto(sim.Prazo)</output>
                             <input id="simPrazo" type="range" min="12" max="@FinanciamentoCaixa.PrazoMaximo" step="6" value="@sim.Prazo" />
@@ -409,6 +409,7 @@
 
     private static string Brl(decimal v) => v.ToString("C2", Br);
     private static string Brl0(decimal v) => v.ToString("C0", Br);
+    private static string Brl2(decimal v) => v.ToString("N2", Br);
     private static string Pct(decimal v) => (v * 100).ToString("0.##", Br) + "%";
     private static string Num(decimal v, string formato = "0") => v.ToString(formato, CultureInfo.InvariantCulture);
     private static string PrazoTexto(int meses) => $"{meses / 12} anos{(meses % 12 > 0 ? $" e {meses % 12} meses" : "")} ({meses} meses)";
@@ -488,11 +489,12 @@
         Simulador = null;
         if (!Locacao && Im.PrecoVenda is { } venda and > 0)
         {
-            Simulador = FinanciamentoCaixa.Simular(venda, 0, FinanciamentoCaixa.PrazoMaximo, FinanciamentoCaixa.TaxaPadrao(venda), sac: true);
+            Simulador = FinanciamentoCaixa.Simular(venda, FinanciamentoCaixa.EntradaPadraoDe(venda), FinanciamentoCaixa.PrazoMaximo, FinanciamentoCaixa.TaxaPadrao(venda), sac: true);
             NotasSimulador = Notas(venda);
             ParametrosSimulador = System.Text.Json.JsonSerializer.Serialize(new
             {
                 cotaSac = FinanciamentoCaixa.CotaSac, cotaPrice = FinanciamentoCaixa.CotaPrice,
+                entradaPadrao = FinanciamentoCaixa.EntradaPadrao,
                 prazoMax = FinanciamentoCaixa.PrazoMaximo, idadeMaxMeses = FinanciamentoCaixa.IdadeMaximaMeses,
                 comprometimento = FinanciamentoCaixa.ComprometimentoRenda, tetoSfh = FinanciamentoCaixa.TetoSfh,
                 tetoSociais = FinanciamentoCaixa.TetoLinhasSociais,

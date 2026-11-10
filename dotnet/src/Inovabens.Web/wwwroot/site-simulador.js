@@ -8,20 +8,37 @@
     const prazoTxt = m => `${Math.floor(m / 12)} anos${m % 12 ? ` e ${m % 12} meses` : ""} (${m} meses)`;
     let taxaEditada = false;
 
+    // Campos em reais no formato brasileiro (28.000.000,00): a digitação vira centavos ("2800000000" = 28.000.000,00)
+    const reais = el => (+el.value.replace(/\D/g, "") || 0) / 100;
+    const escreverReais = (el, v) => {
+        el.value = v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    const mascarar = el => {
+        const fim = el.value.length - (el.selectionEnd ?? el.value.length); // mantém o cursor a partir do fim
+        escreverReais(el, reais(el));
+        const pos = Math.max(0, el.value.length - fim);
+        el.setSelectionRange(pos, pos);
+    };
+
     const calcular = ev => {
+        const alvo = ev?.target?.id;
+        if (alvo === "simValor" || alvo === "simEntrada") mascarar(ev.target);
         const sac = document.querySelector("input[name=sistema]:checked").value === "sac";
-        const valor = Math.max(0, +$("simValor").value || 0);
+        const valor = Math.max(0, reais($("simValor")));
         const sfh = valor <= P.tetoSfh;
         if (!taxaEditada) $("simTaxa").value = ((sfh ? P.taxaSfh : P.taxaSfi) * 100).toFixed(2);
         const avisos = [];
 
+        // ao mudar o valor do imóvel, a entrada volta a ser a padrão (20% do valor); depois pode ser alterada
+        if (alvo === "simValor") escreverReais($("simEntrada"), Math.round(valor * P.entradaPadrao * 100) / 100);
+
         // entrada mínima pela cota do sistema (SAC 80%, Price 70%)
         const cota = sac ? P.cotaSac : P.cotaPrice;
         const entMin = Math.round(valor * (1 - cota) * 100) / 100;
-        let entrada = Math.min(+$("simEntrada").value || 0, valor);
+        let entrada = Math.min(reais($("simEntrada")), valor);
         if (entrada < entMin) {
             entrada = entMin;
-            if (!ev || ev.target.id !== "simEntrada") $("simEntrada").value = Math.ceil(entMin);
+            if (alvo !== "simEntrada") escreverReais($("simEntrada"), entMin);
             avisos.push(`No ${sac ? "SAC" : "Price"} a Caixa financia até ${pct(cota)} do valor: a entrada mínima é de ${brl(entMin)}.`);
         }
         $("simEntradaPct").textContent = valor ? `${pct(entrada / valor)} do valor` : "";
@@ -68,5 +85,7 @@
     $("simTaxa").addEventListener("input", () => { taxaEditada = true; });
     $("simForm").addEventListener("input", calcular);
     $("simEntrada").addEventListener("change", () => calcular());
+    escreverReais($("simValor"), +$("simValor").dataset.valor || 0);
+    escreverReais($("simEntrada"), +$("simEntrada").dataset.valor || 0);
     calcular();
 })();

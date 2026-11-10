@@ -21,6 +21,11 @@ public static class FinanciamentoCaixa
     public const decimal CotaSac = 0.80m;
     public const decimal CotaPrice = 0.70m;
 
+    /// <summary>Entrada sugerida no simulador: 20% do valor do imóvel (o visitante pode alterar).</summary>
+    public const decimal EntradaPadrao = 0.20m;
+
+    public static decimal EntradaPadraoDe(decimal valorImovel) => decimal.Round(valorImovel * EntradaPadrao, 2);
+
     /// <summary>Prazo máximo, em meses (35 anos).</summary>
     public const int PrazoMaximo = 420;
 
@@ -42,7 +47,8 @@ public static class FinanciamentoCaixa
     /// <summary>Taxa de administração mensal cobrada pela Caixa (não entra na simulação; aparece no aviso).</summary>
     public const decimal TarifaAdministracao = 25m;
 
-    public const string SimuladorOficial = "https://habitacao.caixa.gov.br/siopiweb-web/simulaOperacaoInternet.do?method=inicializarCasoUso";
+    /// <summary>Simulador oficial da Caixa (o endereço antigo, habitacao.caixa.gov.br/siopiweb-web, responde 403).</summary>
+    public const string SimuladorOficial = "https://simuladorhabitacao.caixa.gov.br/";
 
     public static bool Sfh(decimal valorImovel) => valorImovel <= TetoSfh;
 
