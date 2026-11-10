@@ -19,6 +19,9 @@ RUN if [ "$COM_LIBREOFFICE" = "true" ]; then \
       apt-get update && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-liberation \
       && rm -rf /var/lib/apt/lists/*; \
     fi
+# FFmpeg monta os vídeos curtos dos posts para redes sociais (Reels/TikTok/Shorts). Sem ele, os posts saem só com imagens.
+ARG COM_FFMPEG=true
+RUN if [ "$COM_FFMPEG" = "true" ]; then       apt-get update && apt-get install -y --no-install-recommends ffmpeg       && rm -rf /var/lib/apt/lists/*;     fi
 ENV ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_HTTP_PORTS=8080
 WORKDIR /app
 COPY --from=build /out ./

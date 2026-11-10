@@ -31,6 +31,7 @@ builder.Services.AddHostedService<SincronizacaoGoogleJob>();
 builder.Services.AddHostedService<RenovacaoCanaisGoogleJob>();
 builder.Services.AddHostedService<MelhoriaFotosJob>();
 builder.Services.AddHostedService<PublicacaoFotosJob>();
+builder.Services.AddHostedService<PostsRedesJob>();
 builder.Services.AddHostedService<LimiteGratuitoR2Job>();
 builder.Services.AddSingleton<RenovacaoSessao>();
 
@@ -216,6 +217,9 @@ imovel.MapGet("extrato.xlsx", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato
 // Documento da proposta: PDF padrão ou modelo Word preenchido (?modelo=<id>); e o arquivo original de um modelo (admin)
 app.MapGet("/crm/propostas/{id:guid}/documento", (Guid id, Guid? modelo, HttpContext c, DocumentosService d) => Baixar(c, u => d.GerarAsync(u, id, modelo)))
     .RequireAuthorization(Permissoes.CrmVer);
+// Peça gerada de um post para redes sociais (imagem, vídeo, música), para baixar e publicar à mão
+app.MapGet("/imoveis/posts/arquivo/{id:guid}", (Guid id, HttpContext c, Inovabens.Core.Redes.PostsService p) => Baixar(c, u => p.ArquivoAsync(u, id, c.RequestAborted)))
+    .RequireAuthorization(Permissoes.ImoveisVer);
 app.MapGet("/admin/modelos/{id:guid}/arquivo", (Guid id, HttpContext c, DocumentosService d) => Baixar(c, u => d.BaixarModeloAsync(u, id)))
     .RequireAuthorization(Permissoes.AdminConfig);
 

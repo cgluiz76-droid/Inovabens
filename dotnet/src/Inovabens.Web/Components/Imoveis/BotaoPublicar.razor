@@ -1,0 +1,32 @@
+@* Botão de publicação na Meta: desabilitado sem configuração, sem peças prontas ou se já publicado no destino. *@
+@if (Editar)
+{
+    var publicada = D.Publicacoes.FirstOrDefault(p => p.Rede == Rede && p.Status != StatusPublicacaoPost.FALHA);
+    var pronto = Rede switch
+    {
+        RedePublicacao.INSTAGRAM_FEED or RedePublicacao.FACEBOOK_FEED => D.Feed.Any() && D.Feed.All(p => p.Midia.Status is StatusMidiaPost.CONCLUIDA or StatusMidiaPost.FALHA) && D.Feed.Any(p => p.Midia.Status == StatusMidiaPost.CONCLUIDA),
+        RedePublicacao.INSTAGRAM_STORY => D.Stories.FirstOrDefault()?.Midia.Status == StatusMidiaPost.CONCLUIDA,
+        _ => D.Video?.Midia.Status == StatusMidiaPost.CONCLUIDA,
+    };
+    var motivo = !Habilitado ? "Configure a Meta em Administração → Configurações"
+        : publicada is not null ? (publicada.Status == StatusPublicacaoPost.PUBLICADA ? "Já publicado" : "Processando na Meta")
+        : !pronto ? "Aguardando as peças ficarem prontas" : null;
+    @if (publicada is { Link: { } link })
+    {
+        <a class="btn-ghost mini" href="@link" target="_blank" rel="noreferrer">✅ @Rotulo: ver ↗</a>
+    }
+    else
+    {
+        <button class="btn-primary mini" disabled="@(Ocupado || motivo is not null)" title="@motivo" @onclick="() => Publicar.InvokeAsync(Rede)">@Rotulo</button>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public PostDetalhe D { get; set; } = default!;
+    [Parameter, EditorRequired] public RedePublicacao Rede { get; set; }
+    [Parameter, EditorRequired] public string Rotulo { get; set; } = "";
+    [Parameter] public bool Habilitado { get; set; }
+    [Parameter] public bool Ocupado { get; set; }
+    [Parameter] public bool Editar { get; set; }
+    [Parameter] public EventCallback<RedePublicacao> Publicar { get; set; }
+}

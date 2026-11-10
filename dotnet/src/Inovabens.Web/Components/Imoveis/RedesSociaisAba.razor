@@ -1,0 +1,507 @@
+@* Posts do imóvel para redes sociais: textos por rede (Claude), imagens, vídeo curto (Magnific + FFmpeg) e publicação na Meta. *@
+@implements IDisposable
+@inherits ComponenteBase
+@inject PostsService Posts
+@inject IJSRuntime JS
+
+<MensagemErro Texto="@Erro" />
+@if (Sucesso is not null)
+{
+    <p class="aviso-vinculo" role="status">@Sucesso</p>
+}
+
+@if (lista is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else
+{
+    <div class="acoes-topo espaco-baixo">
+        @if (Editar && !criando)
+        {
+            <button class="btn-primary" @onclick="AbrirNovo">+ Novo post para redes sociais</button>
+        }
+    </div>
+
+    @if (criando)
+    {
+        <section class="card">
+            <h2>Novo post</h2>
+            <p class="mudo pequeno">
+                O Claude escreve um texto para cada rede (Instagram, Facebook, TikTok, LinkedIn, WhatsApp e YouTube Shorts) a partir
+                dos dados e das fotos escolhidas. As imagens saem nos formatos do feed (4:5) e do story (9:16), com a faixa de preço na capa.
+            </p>
+
+            <fieldset class="opcoes-post">
+                <legend>Foco do post</legend>
+                <label><input type="radio" name="finalidade" checked="@(form.Finalidade == FinalidadeImovel.VENDA)"
+                              @onchange="() => form.Finalidade = FinalidadeImovel.VENDA" /> Venda</label>
+                <label><input type="radio" name="finalidade" checked="@(form.Finalidade == FinalidadeImovel.LOCACAO)"
+                              @onchange="() => form.Finalidade = FinalidadeImovel.LOCACAO" /> Locação</label>
+            </fieldset>
+
+            <h3>Fotos <span class="pequeno mudo">(@form.Fotos.Count de até 10; a ordem dos cliques é a ordem do carrossel)</span></h3>
+            @if (Fotos.Count == 0)
+            {
+                <p class="aviso-passivo">Este imóvel ainda não tem fotos. Envie fotos na aba Ficha.</p>
+            }
+            <div class="fotos-post">
+                @foreach (var f in Fotos)
+                {
+                    var pos = form.Fotos.IndexOf(f.Midia.Id);
+                    <button type="button" class="foto-post @(pos >= 0 ? "marcada" : "")" @onclick="() => AlternarFoto(f.Midia.Id)"
+                            aria-pressed="@(pos >= 0 ? "true" : "false")" title="@(f.Midia.Legenda ?? f.Midia.NomeOriginal)">
+                        <img src="@(f.UrlPublica ?? f.Url)" alt="@(f.Midia.Legenda ?? "Foto do imóvel")" loading="lazy" />
+                        @if (pos >= 0)
+                        {
+                            <span class="ordem-foto">@(pos + 1)</span>
+                        }
+                    </button>
+                }
+            </div>
+
+            <div class="opcoes-post">
+                <label>
+                    <input type="checkbox" @bind="form.ExpandirComIa" />
+                    Completar as bordas das fotos com IA (Magnific): fotos horizontais ficam no formato vertical sem cortar o imóvel.
+                    <span class="mudo">Sem esta opção, a foto aparece inteira sobre um fundo desfocado (sem custo).</span>
+                </label>
+                <label>
+                    <input type="checkbox" @bind="form.ComVideo" />
+                    Gerar vídeo curto para Reels, TikTok e YouTube Shorts: fotos animadas por IA (Magnific Kling), textos na tela,
+                    música original e cartão final com o WhatsApp.
+                </label>
+                @if (form.ComVideo)
+                {
+                    <label class="campo-curto">
+                        Fotos no vídeo
+                        <select @bind="form.CenasVideo">
+                            @for (var n = 3; n <= 6; n++)
+                            {
+                                <option value="@n">@n fotos (@(n * 5 + 3) s)</option>
+                            }
+                        </select>
+                    </label>
+                }
+            </div>
+
+            @if (Pendencias.Count > 0)
+            {
+                <p class="aviso-passivo">Falta configurar: @string.Join("; ", Pendencias).</p>
+            }
+            @if (UsaMagnific)
+            {
+                var est = PostsService.Estimar(form);
+                <div class="aviso-passivo">
+                    <p>
+                        Tarefas do Magnific (cobradas em créditos da sua conta): até <b>@est.Total</b>
+                        (@(est.Expansoes > 0 ? $"até {est.Expansoes} expansões de foto, " : "")@(est.Clipes > 0 ? $"{est.Clipes} clipes de vídeo de 5 s, " : "")@(est.Musicas > 0 ? "1 música" : "")).
+                        Os clipes de vídeo são as tarefas mais caras.
+                    </p>
+                    <label><input type="checkbox" @bind="form.ConfirmoCreditos" /> Estou ciente e autorizo o uso dos créditos.</label>
+                </div>
+            }
+
+            <div class="acoes-form">
+                <button class="btn-primary" disabled="@(Ocupado || form.Fotos.Count == 0 || Pendencias.Count > 0 || (UsaMagnific && !form.ConfirmoCreditos))"
+                        @onclick="Criar">@(Ocupado ? "Gerando os textos com o Claude…" : "Gerar post")</button>
+                <button class="btn-ghost" disabled="@Ocupado" @onclick="() => criando = false">Cancelar</button>
+            </div>
+        </section>
+    }
+
+    @if (lista.Count == 0 && !criando)
+    {
+        <section class="card"><p class="vazio">Nenhum post gerado para este imóvel.</p></section>
+    }
+    else if (lista.Count > 0)
+    {
+        <div class="lista-posts">
+            @foreach (var p in lista)
+            {
+                <button type="button" class="chip @(atual?.Post.Id == p.Id ? "ativo" : "")" @onclick="() => Abrir(p.Id)">
+                    @DatasBR.DeUtc(p.CriadoEm).ToString("dd/MM/yyyy HH:mm") · @(p.Finalidade == FinalidadeImovel.LOCACAO ? "Locação" : "Venda")
+                    · @p.Prontas/@p.Pecas peças@(p.Falhas > 0 ? $" · {p.Falhas} falha(s)" : "")@(p.Publicadas > 0 ? $" · {p.Publicadas} publicação(ões)" : "")
+                </button>
+            }
+        </div>
+    }
+
+    @if (atual is { } d)
+    {
+        <section class="card">
+            <div class="cabecalho-secao">
+                <h2>Post de @(d.Post.Finalidade == FinalidadeImovel.LOCACAO ? "locação" : "venda")
+                    <span class="badge">@DatasBR.DeUtc(d.Post.CriadoEm).ToString("dd/MM/yyyy HH:mm")</span></h2>
+                <div class="acoes-topo">
+                    @if (d.EmAndamento)
+                    {
+                        <span class="badge">⏳ gerando peças…</span>
+                    }
+                    <button class="btn-ghost" disabled="@Ocupado" @onclick="() => Abrir(d.Post.Id)">Atualizar</button>
+                    @if (Editar && d.Pecas.Any(x => x.Midia.Status == StatusMidiaPost.FALHA))
+                    {
+                        <button class="btn-ghost" disabled="@Ocupado" @onclick="RefazerFalhas">Tentar de novo as falhas</button>
+                    }
+                    @if (Editar)
+                    {
+                        <button class="btn-perigo" disabled="@Ocupado" @onclick="Excluir">Excluir post</button>
+                    }
+                </div>
+            </div>
+
+            <h3>Carrossel do feed (4:5)</h3>
+            <div class="pecas-post feed">
+                @foreach (var p in d.Feed)
+                {
+                    <Peca P="p" />
+                }
+            </div>
+            <h3>Stories (9:16)</h3>
+            <div class="pecas-post story">
+                @foreach (var p in d.Stories)
+                {
+                    <Peca P="p" />
+                }
+            </div>
+
+            @if (d.Post.ComVideo)
+            {
+                <h3>Vídeo curto (Reels, TikTok, Shorts)</h3>
+                @if (d.Video is { Midia.Status: StatusMidiaPost.CONCLUIDA, Url: { } urlVideo } v)
+                {
+                    <div class="video-post">
+                        <video src="@urlVideo" controls playsinline preload="metadata"></video>
+                        <div>
+                            <a class="btn-ghost" href="imoveis/posts/arquivo/@v.Midia.Id" download>⬇ Baixar vídeo</a>
+                            @if (Editar)
+                            {
+                                <button class="btn-ghost" disabled="@Ocupado" @onclick="Remontar"
+                                        title="Monta de novo com os textos de tela atuais (sem custo)">Remontar com os textos atuais</button>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    var clipes = d.Clipes.ToList();
+                    <p class="mudo">
+                        Clipes animados: @clipes.Count(c => c.Midia.Status == StatusMidiaPost.CONCLUIDA) de @clipes.Count prontos
+                        @if (clipes.Any(c => c.Midia.Status == StatusMidiaPost.FALHA))
+                        {
+                            <span> · @clipes.Count(c => c.Midia.Status == StatusMidiaPost.FALHA) com falha</span>
+                        }
+                        · @StatusTexto(d.Video?.Midia)
+                        <br /><span class="pequeno">O Magnific leva alguns minutos por clipe; a tela se atualiza sozinha.</span>
+                    </p>
+                    @if (d.Video?.Midia.Erro is { } erroVideo)
+                    {
+                        <p class="aviso-passivo">@erroVideo</p>
+                    }
+                }
+            }
+        </section>
+
+        <section class="card">
+            <div class="cabecalho-secao">
+                <h2>Textos por rede</h2>
+                @if (Editar)
+                {
+                    <button class="btn-primary" disabled="@Ocupado" @onclick="SalvarTextos">Salvar textos</button>
+                }
+            </div>
+            <p class="mudo pequeno">Revise antes de publicar: a IA pode errar. Publicar exige confirmação e vale na hora.</p>
+
+            <div class="redes-post">
+                <div class="rede-post">
+                    <h3>📸 Instagram <span class="pequeno mudo">carrossel, story e Reels</span></h3>
+                    <textarea rows="10" @bind="textos.Instagram" disabled="@(!Editar)"></textarea>
+                    <p class="pequeno mudo">@textos.Instagram.Length/2200 caracteres</p>
+                    <div class="acoes-rede">
+                        <button class="btn-ghost mini" @onclick="() => Copiar(textos.Instagram)">Copiar</button>
+                        <BotaoPublicar D="d" Rede="RedePublicacao.INSTAGRAM_FEED" Rotulo="Publicar carrossel" Habilitado="@Posts.InstagramConfigurado" Publicar="Publicar" Ocupado="Ocupado" Editar="Editar" />
+                        <BotaoPublicar D="d" Rede="RedePublicacao.INSTAGRAM_STORY" Rotulo="Publicar story" Habilitado="@Posts.InstagramConfigurado" Publicar="Publicar" Ocupado="Ocupado" Editar="Editar" />
+                        @if (d.Post.ComVideo)
+                        {
+                            <BotaoPublicar D="d" Rede="RedePublicacao.INSTAGRAM_REELS" Rotulo="Publicar Reels" Habilitado="@Posts.InstagramConfigurado" Publicar="Publicar" Ocupado="Ocupado" Editar="Editar" />
+                        }
+                    </div>
+                </div>
+
+                <div class="rede-post">
+                    <h3>👍 Facebook <span class="pequeno mudo">página da empresa</span></h3>
+                    <textarea rows="10" @bind="textos.Facebook" disabled="@(!Editar)"></textarea>
+                    <div class="acoes-rede">
+                        <button class="btn-ghost mini" @onclick="() => Copiar(textos.Facebook)">Copiar</button>
+                        <BotaoPublicar D="d" Rede="RedePublicacao.FACEBOOK_FEED" Rotulo="Publicar fotos" Habilitado="@Posts.FacebookConfigurado" Publicar="Publicar" Ocupado="Ocupado" Editar="Editar" />
+                        @if (d.Post.ComVideo)
+                        {
+                            <BotaoPublicar D="d" Rede="RedePublicacao.FACEBOOK_VIDEO" Rotulo="Publicar vídeo" Habilitado="@Posts.FacebookConfigurado" Publicar="Publicar" Ocupado="Ocupado" Editar="Editar" />
+                        }
+                    </div>
+                </div>
+
+                <div class="rede-post">
+                    <h3>🎵 TikTok <span class="pequeno mudo">publicação manual</span></h3>
+                    <textarea rows="4" @bind="textos.Tiktok" disabled="@(!Editar)"></textarea>
+                    <div class="acoes-rede">
+                        <button class="btn-ghost mini" @onclick="() => Copiar(textos.Tiktok)">Copiar</button>
+                        @if (d.Video is { Midia.Status: StatusMidiaPost.CONCLUIDA } vt)
+                        {
+                            <a class="btn-ghost mini" href="imoveis/posts/arquivo/@vt.Midia.Id" download>⬇ Vídeo</a>
+                        }
+                        <a class="btn-ghost mini" href="https://www.tiktok.com/upload" target="_blank" rel="noreferrer">Abrir TikTok ↗</a>
+                    </div>
+                </div>
+
+                <div class="rede-post">
+                    <h3>▶️ YouTube Shorts <span class="pequeno mudo">publicação manual</span></h3>
+                    <input @bind="textos.YoutubeTitulo" maxlength="100" disabled="@(!Editar)" aria-label="Título do Shorts" />
+                    <textarea rows="4" @bind="textos.YoutubeDescricao" disabled="@(!Editar)"></textarea>
+                    <div class="acoes-rede">
+                        <button class="btn-ghost mini" @onclick="() => Copiar(textos.YoutubeTitulo + Environment.NewLine + Environment.NewLine + textos.YoutubeDescricao)">Copiar</button>
+                        <a class="btn-ghost mini" href="https://studio.youtube.com" target="_blank" rel="noreferrer">Abrir YouTube Studio ↗</a>
+                    </div>
+                </div>
+
+                <div class="rede-post">
+                    <h3>💼 LinkedIn <span class="pequeno mudo">publicação manual</span></h3>
+                    <textarea rows="7" @bind="textos.Linkedin" disabled="@(!Editar)"></textarea>
+                    <div class="acoes-rede">
+                        <button class="btn-ghost mini" @onclick="() => Copiar(textos.Linkedin)">Copiar</button>
+                        <a class="btn-ghost mini" href="https://www.linkedin.com/feed/" target="_blank" rel="noreferrer">Abrir LinkedIn ↗</a>
+                    </div>
+                </div>
+
+                <div class="rede-post">
+                    <h3>💬 WhatsApp <span class="pequeno mudo">Status e listas (manual)</span></h3>
+                    <textarea rows="6" @bind="textos.Whatsapp" disabled="@(!Editar)"></textarea>
+                    <div class="acoes-rede">
+                        <button class="btn-ghost mini" @onclick="() => Copiar(textos.Whatsapp)">Copiar</button>
+                        <a class="btn-ghost mini" href="@($"https://wa.me/?text={Uri.EscapeDataString(textos.Whatsapp)}")" target="_blank" rel="noreferrer"
+                           title="Abre o WhatsApp com o texto pronto para escolher o contato ou grupo">Abrir no WhatsApp ↗</a>
+                    </div>
+                    <p class="pequeno mudo">A API do WhatsApp não publica Status: baixe o story ou o vídeo e publique pelo celular.</p>
+                </div>
+            </div>
+
+            @if (d.Post.ComVideo)
+            {
+                <h3>Roteiro do vídeo</h3>
+                <ol class="roteiro-post">
+                    @foreach (var c in textos.Cenas)
+                    {
+                        <li>
+                            <label>Foto @c.Foto · texto na tela
+                                <input @bind="c.TextoTela" maxlength="40" disabled="@(!Editar)" />
+                            </label>
+                            <span class="pequeno mudo" title="Movimento de câmera pedido ao Magnific">🎥 @c.Movimento</span>
+                        </li>
+                    }
+                </ol>
+                <label class="campo-curto">Chamada do cartão final <input @bind="textos.TextoFinal" maxlength="40" disabled="@(!Editar)" /></label>
+                <p class="pequeno mudo">Depois de mudar os textos de tela, salve e use "Remontar com os textos atuais".</p>
+            }
+        </section>
+
+        @if (d.Publicacoes.Count > 0)
+        {
+            <section class="card">
+                <h2>Publicações</h2>
+                <table class="tabela">
+                    <thead><tr><th>Destino</th><th>Situação</th><th>Quando</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var p in d.Publicacoes)
+                        {
+                            <tr>
+                                <td>@RotuloRede(p.Rede)</td>
+                                <td>
+                                    @(p.Status switch { StatusPublicacaoPost.PUBLICADA => "✅ Publicada", StatusPublicacaoPost.AGUARDANDO => "⏳ Processando na Meta", _ => "⚠️ Falhou" })
+                                    @if (p.Erro is { } e)
+                                    {
+                                        <br /><span class="pequeno mudo">@e</span>
+                                    }
+                                </td>
+                                <td>@DatasBR.DeUtc(p.PublicadoEm ?? p.CriadoEm).ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>
+                                    @if (p.Link is { } link)
+                                    {
+                                        <a href="@link" target="_blank" rel="noreferrer">Ver ↗</a>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </section>
+        }
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
+
+    private IReadOnlyList<PostResumo>? lista;
+    private PostDetalhe? atual;
+    private TextosPost textos = new();
+    private NovoPostForm form = new();
+    private bool criando;
+    private CancellationTokenSource? acompanhamento;
+
+    private bool Editar => Usuario.Pode(Permissoes.ImoveisEditar);
+    private bool UsaMagnific => form.ExpandirComIa || form.ComVideo;
+    private IReadOnlyList<string> Pendencias => Posts.Pendencias(form.ExpandirComIa, form.ComVideo);
+
+    /// <summary>Fotos do imóvel: capa primeiro, depois na ordem da ficha.</summary>
+    private List<MidiaDetalhe> Fotos => [.. Detalhe.Midias.Where(m => m.Midia.Tipo == TipoMidia.FOTO && (m.Url ?? m.UrlPublica) is not null)
+        .OrderByDescending(m => m.Midia.Capa).ThenBy(m => m.Midia.Ordem)];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Executar(async () =>
+        {
+            lista = await Posts.ListarAsync(Usuario, Detalhe.Dados.Id);
+            if (lista.Count > 0 && atual is null) await CarregarPost(lista[0].Id);
+        });
+    }
+
+    private void AbrirNovo()
+    {
+        form = new NovoPostForm
+        {
+            Finalidade = Detalhe.Dados.Finalidade == FinalidadeImovel.LOCACAO ? FinalidadeImovel.LOCACAO : FinalidadeImovel.VENDA,
+            Fotos = [.. Fotos.Take(6).Select(f => f.Midia.Id)],
+        };
+        criando = true;
+    }
+
+    private void AlternarFoto(Guid id)
+    {
+        if (!form.Fotos.Remove(id) && form.Fotos.Count < 10) form.Fotos.Add(id);
+    }
+
+    private async Task Criar()
+    {
+        Guid novo = default;
+        if (!await Executar(async () => novo = await Posts.CriarAsync(Usuario, Detalhe.Dados.Id, form))) return;
+        criando = false;
+        Sucesso = "Post gerado. Revise os textos antes de publicar.";
+        lista = await Posts.ListarAsync(Usuario, Detalhe.Dados.Id);
+        await CarregarPost(novo);
+    }
+
+    private Task Abrir(Guid id) => Executar(() => CarregarPost(id));
+
+    private async Task CarregarPost(Guid id)
+    {
+        atual = await Posts.DetalheAsync(Usuario, id);
+        textos = atual.Textos;
+        Acompanhar();
+    }
+
+    /// <summary>Enquanto houver peça sendo gerada ou publicação na Meta, recarrega o post a cada 10 s.</summary>
+    private void Acompanhar()
+    {
+        if (atual is not { EmAndamento: true } || acompanhamento is not null) return;
+        acompanhamento = new CancellationTokenSource();
+        var ct = acompanhamento.Token;
+        _ = InvokeAsync(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+            try
+            {
+                while (atual is { EmAndamento: true } && await timer.WaitForNextTickAsync(ct))
+                {
+                    var novo = await Posts.DetalheAsync(Usuario, atual.Post.Id);
+                    atual = novo with { Textos = textos }; // não perde o que o usuário está editando
+                    StateHasChanged();
+                }
+                lista = await Posts.ListarAsync(Usuario, Detalhe.Dados.Id);
+                StateHasChanged();
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception) { /* a tela segue; o botão Atualizar recarrega */ }
+            finally { acompanhamento = null; }
+        });
+    }
+
+    private async Task SalvarTextos()
+    {
+        if (atual is null) return;
+        if (await Executar(() => Posts.SalvarTextosAsync(Usuario, atual.Post.Id, textos))) Sucesso = "Textos salvos.";
+    }
+
+    private async Task Remontar()
+    {
+        if (atual is null) return;
+        if (!await Executar(async () =>
+            {
+                await Posts.SalvarTextosAsync(Usuario, atual.Post.Id, textos);
+                await Posts.RemontarVideoAsync(Usuario, atual.Post.Id);
+            })) return;
+        Sucesso = "O vídeo será montado de novo em até 1 minuto.";
+        await CarregarPost(atual.Post.Id);
+    }
+
+    private async Task RefazerFalhas()
+    {
+        if (atual is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", "Tentar de novo as peças que falharam? Pode consumir créditos do Magnific outra vez.")) return;
+        if (await Executar(() => Posts.RefazerFalhasAsync(Usuario, atual.Post.Id))) await CarregarPost(atual.Post.Id);
+    }
+
+    private async Task Excluir()
+    {
+        if (atual is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir este post e as peças geradas? O que já foi publicado nas redes continua lá.")) return;
+        if (!await Executar(() => Posts.ExcluirAsync(Usuario, atual.Post.Id))) return;
+        atual = null;
+        lista = await Posts.ListarAsync(Usuario, Detalhe.Dados.Id);
+        if (lista.Count > 0) await CarregarPost(lista[0].Id);
+    }
+
+    private async Task Publicar(RedePublicacao rede)
+    {
+        if (atual is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"Publicar agora em {RotuloRede(rede)}? A publicação fica visível ao público. Os textos serão salvos antes.")) return;
+        PostRedesPublicacao? pub = null;
+        if (!await Executar(async () =>
+            {
+                await Posts.SalvarTextosAsync(Usuario, atual.Post.Id, textos);
+                pub = await Posts.PublicarAsync(Usuario, atual.Post.Id, rede);
+            })) return;
+        if (pub!.Status == StatusPublicacaoPost.FALHA) Erro = $"A Meta recusou: {pub.Erro}";
+        else Sucesso = pub.Status == StatusPublicacaoPost.PUBLICADA ? "Publicado." : "Enviado à Meta; a publicação sai assim que o processamento terminar.";
+        await CarregarPost(atual.Post.Id);
+    }
+
+    private async Task Copiar(string texto)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", texto);
+            Sucesso = "Texto copiado.";
+        }
+        catch (JSException) { Erro = "Não foi possível copiar; selecione o texto e use Ctrl+C."; }
+    }
+
+    internal static string RotuloRede(RedePublicacao r) => r switch
+    {
+        RedePublicacao.INSTAGRAM_FEED => "Instagram (carrossel)",
+        RedePublicacao.INSTAGRAM_STORY => "Instagram (story)",
+        RedePublicacao.INSTAGRAM_REELS => "Instagram (Reels)",
+        RedePublicacao.FACEBOOK_FEED => "Facebook (fotos)",
+        _ => "Facebook (vídeo)",
+    };
+
+    internal static string StatusTexto(PostRedesMidia? m) => m?.Status switch
+    {
+        StatusMidiaPost.CONCLUIDA => "pronto",
+        StatusMidiaPost.FALHA => "falhou",
+        StatusMidiaPost.PROCESSANDO => "processando",
+        StatusMidiaPost.PENDENTE => "na fila",
+        _ => "—",
+    };
+
+    public void Dispose() => acompanhamento?.Cancel();
+}

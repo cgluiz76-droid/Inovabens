@@ -8,6 +8,17 @@ public enum SituacaoTarefaMagnific { EmAndamento, Concluida, Falhou }
 
 public sealed record TarefaMagnific(string Id, SituacaoTarefaMagnific Situacao, string? UrlResultado);
 
+/// <summary>Rotas de um modelo do Magnific: criar a tarefa e consultar (a consulta do Kling não leva o "-pro").</summary>
+public sealed record ServicoMagnific(string Criar, string Consultar)
+{
+    /// <summary>Flux Pro Expand: completa as bordas da foto (formatos 4:5 e 9:16 sem cortar o imóvel). Saída de até ~1,6 MP.</summary>
+    public static readonly ServicoMagnific Expandir = new("image-expand/flux-pro", "image-expand/flux-pro");
+    /// <summary>Kling 2.6 Pro: anima a foto num clipe de 5 ou 10 s, no formato da imagem enviada.</summary>
+    public static readonly ServicoMagnific Animar = new("image-to-video/kling-v2-6-pro", "image-to-video/kling-v2-6");
+    /// <summary>Lyria 3: trilha instrumental original (sem direitos de terceiros).</summary>
+    public static readonly ServicoMagnific Musica = new("music-generation/lyria-3", "music-generation/lyria-3");
+}
+
 /// <summary>O Magnific recusou o pedido (4xx): não adianta repetir com a mesma foto.</summary>
 public sealed class MagnificRecusouException(string mensagem) : Exception(mensagem);
 
@@ -17,7 +28,8 @@ public sealed class MagnificRecusouException(string mensagem) : Exception(mensag
 /// </summary>
 public sealed class MagnificCliente(HttpClient http, InovabensOpcoes op)
 {
-    public const string Endpoint = "https://api.magnific.com/v1/ai/image-upscaler-precision-v2";
+    public const string Base = "https://api.magnific.com/v1/ai/";
+    public const string Endpoint = Base + "image-upscaler-precision-v2";
     private const long TamanhoMaximoResultado = 100 * 1024 * 1024;
 
     public bool Configurado => op.Integracoes.MagnificApiKey is not null;
@@ -38,6 +50,20 @@ public sealed class MagnificCliente(HttpClient http, InovabensOpcoes op)
     public async Task<TarefaMagnific> ConsultarAsync(string tarefaId, CancellationToken ct = default)
     {
         using var req = Requisicao(HttpMethod.Get, $"{Endpoint}/{Uri.EscapeDataString(tarefaId)}");
+        return await Enviar(req, ct);
+    }
+
+    /// <summary>Cria uma tarefa em qualquer modelo do Magnific (ex.: <see cref="ServicoMagnific.Expandir"/>).</summary>
+    public async Task<TarefaMagnific> CriarTarefaAsync(ServicoMagnific servico, object corpo, CancellationToken ct = default)
+    {
+        using var req = Requisicao(HttpMethod.Post, Base + servico.Criar);
+        req.Content = JsonContent.Create(corpo);
+        return await Enviar(req, ct);
+    }
+
+    public async Task<TarefaMagnific> ConsultarTarefaAsync(ServicoMagnific servico, string tarefaId, CancellationToken ct = default)
+    {
+        using var req = Requisicao(HttpMethod.Get, $"{Base}{servico.Consultar}/{Uri.EscapeDataString(tarefaId)}");
         return await Enviar(req, ct);
     }
 

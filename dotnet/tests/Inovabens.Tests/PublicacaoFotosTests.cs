@@ -32,6 +32,9 @@ public sealed class ArmazenamentoPublicoMemoria : IArmazenamentoPublico
 
     public string? Url(string? chave) => chave is null ? null : $"https://fotos.exemplo/{chave}";
 
+    public Task<byte[]?> BaixarAsync(string chave, CancellationToken ct = default) =>
+        Task.FromResult(Arquivos.TryGetValue(chave, out var a) ? a.Dados : null);
+
     public IEnumerable<string> Com(string? prefixo) => prefixo is null ? [] : Arquivos.Keys.Where(k => k.StartsWith(prefixo + "-"));
 }
 

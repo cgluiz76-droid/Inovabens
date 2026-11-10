@@ -58,6 +58,9 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<PropostaItem> PropostaItens => Set<PropostaItem>();
     public DbSet<ModeloDocumento> ModelosDocumento => Set<ModeloDocumento>();
     public DbSet<LeadImovelInteresse> LeadImoveisInteresse => Set<LeadImovelInteresse>();
+    public DbSet<PostRedes> PostsRedes => Set<PostRedes>();
+    public DbSet<PostRedesMidia> PostsRedesMidias => Set<PostRedesMidia>();
+    public DbSet<PostRedesPublicacao> PostsRedesPublicacoes => Set<PostRedesPublicacao>();
 
     /// <summary>Configura o Npgsql: conexão e tipos enum do PostgreSQL (rótulos iguais aos nomes C#).</summary>
     public static void ConfigurarNpgsql(DbContextOptionsBuilder o, string conexao) =>
@@ -131,6 +134,18 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             e.HasMany(x => x.Envolvidos).WithOne().HasForeignKey(x => x.ImovelId);
         });
         mb.Entity<ImovelMidia>().Property(x => x.MelhoriaStatus).HasConversion<string>();
+        mb.Entity<PostRedes>().Property(x => x.Textos).HasColumnType("jsonb");
+        mb.Entity<PostRedesMidia>(e =>
+        {
+            e.Property(x => x.Tipo).HasConversion<string>();
+            e.Property(x => x.Status).HasConversion<string>();
+            e.Property(x => x.Etapa).HasConversion<string>();
+        });
+        mb.Entity<PostRedesPublicacao>(e =>
+        {
+            e.Property(x => x.Rede).HasConversion<string>();
+            e.Property(x => x.Status).HasConversion<string>();
+        });
         mb.Entity<ImovelProprietario>().HasOne(x => x.Pessoa).WithMany().HasForeignKey(x => x.PessoaId);
         mb.Entity<ImovelEnvolvido>().HasOne(x => x.Pessoa).WithMany().HasForeignKey(x => x.PessoaId);
         mb.Entity<Regularizacao>().HasOne(x => x.Profissional).WithMany().HasForeignKey(x => x.ProfissionalId);

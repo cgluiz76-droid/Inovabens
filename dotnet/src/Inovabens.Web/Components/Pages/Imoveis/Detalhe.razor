@@ -67,6 +67,7 @@ else
         {
             <button class="aba @(aba == Aba.Interessados ? "ativa" : "")" @onclick="() => aba = Aba.Interessados">Interessados</button>
         }
+        <button class="aba @(aba == Aba.Redes ? "ativa" : "")" @onclick="() => aba = Aba.Redes">Redes sociais</button>
     </div>
 
     @if (aba == Aba.Ficha)
@@ -102,6 +103,10 @@ else
     {
         <InteressadosAba ImovelId="Id" />
     }
+    else if (aba == Aba.Redes)
+    {
+        <RedesSociaisAba Detalhe="detalhe" />
+    }
     else
     {
         <RegularizacoesAba ImovelId="Id" Editar="Editar" />
@@ -109,7 +114,7 @@ else
 }
 
 @code {
-    private enum Aba { Ficha, Financeiro, Regularizacao, Memorandos, Agenda, Interessados }
+    private enum Aba { Ficha, Financeiro, Regularizacao, Memorandos, Agenda, Interessados, Redes }
 
     [Parameter] public Guid Id { get; set; }
 

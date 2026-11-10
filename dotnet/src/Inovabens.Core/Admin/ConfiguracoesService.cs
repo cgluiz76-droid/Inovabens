@@ -4,6 +4,7 @@ using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Imoveis;
+using Inovabens.Core.Redes;
 using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
 using P = Inovabens.Core.Dominio.Permissoes;
@@ -27,7 +28,8 @@ public sealed record AdministradorPrincipal(Guid Id, string Nome, string Email);
 /// </summary>
 public sealed partial class ConfiguracoesService(
     IDbContextFactory<InovabensDb> fabrica, InovabensOpcoes op, AuditService audit,
-    IArmazenamento armazenamento, IArmazenamentoPublico publico, MagnificCliente magnific)
+    IArmazenamento armazenamento, IArmazenamentoPublico publico, MagnificCliente magnific,
+    IGeradorTextosPost claude, MetaPublicador meta)
 {
     /// <summary>Chave interna (fora do catálogo): usuário que é o administrador principal.</summary>
     internal const string ChaveAdministrador = "sistema.admin_usuario_id";
@@ -129,6 +131,11 @@ public sealed partial class ConfiguracoesService(
                     if (!magnific.Configurado) throw Falta("Informe a chave da API.");
                     await magnific.TestarAsync(ct);
                     return "Chave do Magnific aceita.";
+                case CatalogoConfiguracoes.Claude:
+                    if (claude is not ClaudeTextosPost c || !c.Configurado) throw Falta("Informe a chave da API.");
+                    return await c.TestarAsync(ct);
+                case CatalogoConfiguracoes.Meta:
+                    return await meta.TestarAsync(ct);
                 case CatalogoConfiguracoes.GoogleMaps:
                     if (i.GoogleMapsApiKey is not { } chave) return "Sem chave: a localização usa o OpenStreetMap.";
                     using (var doc = JsonDocument.Parse(await Http.GetStringAsync(
@@ -152,7 +159,7 @@ public sealed partial class ConfiguracoesService(
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or Google.GoogleApiException
                                       or Amazon.S3.AmazonS3Exception or Amazon.Runtime.AmazonServiceException
-                                      or MagnificRecusouException or JsonException)
+                                      or MagnificRecusouException or JsonException or MetaRecusouException or ServicoIndisponivelException)
         {
             throw new RegraNegocioException(grupo, "Falha na conexão: " + (e.Message.Length > 300 ? e.Message[..300] : e.Message));
         }

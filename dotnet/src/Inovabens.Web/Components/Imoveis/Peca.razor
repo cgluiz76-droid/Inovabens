@@ -1,0 +1,22 @@
+@* Uma imagem gerada para o post (feed ou story), com o estado e o download. *@
+<figure class="peca-post">
+    @if (P.Midia.Status == StatusMidiaPost.CONCLUIDA && P.Url is { } url)
+    {
+        <a href="@url" target="_blank" rel="noreferrer"><img src="@url" alt="Imagem @(P.Midia.Ordem + 1) do post" loading="lazy" /></a>
+        <figcaption><a href="imoveis/posts/arquivo/@P.Midia.Id" download>⬇ Baixar</a></figcaption>
+    }
+    else
+    {
+        <div class="peca-status @(P.Midia.Status == StatusMidiaPost.FALHA ? "falha" : "")" title="@P.Midia.Erro">
+            @(P.Midia.Status == StatusMidiaPost.FALHA ? "⚠️ Falhou" : P.Midia.Etapa == EtapaMidiaPost.EXPANDIR ? "⏳ Magnific completando as bordas…" : "⏳ Gerando…")
+        </div>
+        @if (P.Midia.Erro is { } e)
+        {
+            <figcaption class="pequeno mudo">@e</figcaption>
+        }
+    }
+</figure>
+
+@code {
+    [Parameter, EditorRequired] public PecaPost P { get; set; } = default!;
+}

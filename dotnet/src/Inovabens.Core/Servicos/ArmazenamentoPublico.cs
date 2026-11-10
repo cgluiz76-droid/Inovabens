@@ -18,6 +18,9 @@ public interface IArmazenamentoPublico
     /// <summary>Falhas só são registradas no log.</summary>
     Task RemoverAsync(string chave);
 
+    /// <summary>Conteúdo do arquivo, ou null se não existir.</summary>
+    Task<byte[]?> BaixarAsync(string chave, CancellationToken ct = default);
+
     /// <summary>URL pública do arquivo, ou null enquanto o endereço público (R2_URL_PUBLICA) não estiver configurado.</summary>
     string? Url(string? chave);
 }
@@ -117,6 +120,22 @@ public sealed class R2ArmazenamentoPublico : IArmazenamentoPublico, IDisposable
         // a chave muda quando a foto muda: o navegador e a CDN podem guardar para sempre
         req.Headers.CacheControl = "public, max-age=31536000, immutable";
         await s3.PutObjectAsync(req, ct);
+    }
+
+    public async Task<byte[]?> BaixarAsync(string chave, CancellationToken ct = default)
+    {
+        var s3 = S3 ?? throw new InvalidOperationException("Armazenamento público desabilitado.");
+        try
+        {
+            using var resp = await s3.GetObjectAsync(Bucket, chave, ct);
+            using var destino = new MemoryStream();
+            await resp.ResponseStream.CopyToAsync(destino, ct);
+            return destino.ToArray();
+        }
+        catch (AmazonS3Exception e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
     }
 
     public async Task RemoverAsync(string chave)

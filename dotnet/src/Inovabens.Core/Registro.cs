@@ -8,6 +8,7 @@ using Inovabens.Core.Imoveis;
 using Inovabens.Core.Memorandos;
 using Inovabens.Core.Painel;
 using Inovabens.Core.Pessoas;
+using Inovabens.Core.Redes;
 using Inovabens.Core.Relatorios;
 using Inovabens.Core.Servicos;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,6 +40,10 @@ public static class Registro
         services.AddSingleton<CepService>();
         services.AddSingleton(sp => new MagnificCliente(new HttpClient { Timeout = TimeSpan.FromMinutes(2) }, op));
         services.AddScoped<MelhoriaFotosService>();
+        services.AddSingleton<IGeradorTextosPost, ClaudeTextosPost>();
+        services.AddSingleton<MontagemVideo>();
+        services.AddSingleton(sp => new MetaPublicador(new HttpClient { Timeout = TimeSpan.FromMinutes(2) }, op));
+        services.AddScoped<PostsService>();
         services.AddScoped<AquisicaoService>();
         services.AddScoped<DespesasService>();
         services.AddScoped<ReceitasService>();

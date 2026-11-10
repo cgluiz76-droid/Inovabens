@@ -4,6 +4,7 @@ using Inovabens.Core.Comum;
 using Inovabens.Core.Crm;
 using Inovabens.Core.Financeiro;
 using Inovabens.Core.Imoveis;
+using Inovabens.Core.Redes;
 using Inovabens.Core.Servicos;
 
 namespace Inovabens.Web.Jobs;
@@ -142,6 +143,23 @@ public sealed class MelhoriaFotosJob(IServiceScopeFactory e, InovabensOpcoes o, 
     {
         var n = await sp.GetRequiredService<MelhoriaFotosService>().ProcessarAsync(ct);
         if (n > 0) Log.LogInformation("Magnific: {Qtd} foto(s) melhorada(s)", n);
+    }
+}
+
+/// <summary>
+/// A cada minuto: avança as peças dos posts para redes sociais (tarefas do Magnific, imagens, montagem do vídeo) e
+/// publica no Instagram os contêineres já processados pela Meta. Só com o R2 configurado.
+/// </summary>
+public sealed class PostsRedesJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<PostsRedesJob> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "posts para redes sociais";
+    protected override bool Habilitada => Opcoes.Integracoes.R2Configurado;
+    protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 1);
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<PostsService>().ProcessarAsync(ct);
+        if (n > 0) Log.LogInformation("Posts: {Qtd} peça(s) pronta(s)", n);
     }
 }
 

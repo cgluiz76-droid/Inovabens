@@ -567,3 +567,39 @@ pre.json { background: #f8f9fc; border: 1px solid var(--borda); border-radius: v
 .tabela .col-capa { width: 76px; padding-right: 0; }
 .miniatura-imovel { display: block; width: 64px; height: 48px; object-fit: cover; border-radius: var(--raio-p); background: #eef1f7; border: 1px solid var(--borda); }
 
+
+/* Posts para redes sociais (aba Redes sociais do imóvel) */
+.opcoes-post { display: flex; flex-direction: column; gap: .5rem; margin: .75rem 0; border: 0; padding: 0; }
+fieldset.opcoes-post { flex-direction: row; gap: 1.25rem; }
+.opcoes-post legend { font-weight: 600; margin-bottom: .35rem; }
+.opcoes-post .mudo { display: block; font-size: .8rem; margin-left: 1.5rem; }
+.campo-curto { display: flex; flex-direction: column; gap: .25rem; max-width: 22rem; }
+.fotos-post { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .6rem; margin: .5rem 0 1rem; }
+.foto-post { position: relative; padding: 0; border: 2px solid transparent; border-radius: var(--raio-p); overflow: hidden; cursor: pointer; background: var(--superficie); aspect-ratio: 4 / 3; }
+.foto-post img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .55; transition: opacity .15s; }
+.foto-post.marcada { border-color: var(--marinho); }
+.foto-post.marcada img, .foto-post:hover img { opacity: 1; }
+.ordem-foto { position: absolute; top: .35rem; left: .35rem; background: var(--marinho); color: #fff; border-radius: 999px; min-width: 1.6rem; height: 1.6rem; display: grid; place-items: center; font-weight: 700; font-size: .85rem; }
+.lista-posts { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.cabecalho-secao { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.pecas-post { display: grid; gap: .75rem; margin-bottom: 1rem; }
+.pecas-post.feed { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.pecas-post.story { grid-template-columns: repeat(auto-fill, minmax(120px, 160px)); }
+.peca-post { margin: 0; }
+.peca-post img { width: 100%; display: block; border-radius: var(--raio-p); border: 1px solid var(--borda); }
+.feed .peca-post img, .feed .peca-status { aspect-ratio: 4 / 5; }
+.story .peca-post img, .story .peca-status { aspect-ratio: 9 / 16; }
+.peca-post figcaption { font-size: .8rem; margin-top: .25rem; }
+.peca-status { display: grid; place-items: center; text-align: center; padding: .5rem; border: 1px dashed var(--borda-forte); border-radius: var(--raio-p); font-size: .8rem; color: var(--texto-suave, #626a85); }
+.peca-status.falha { border-color: var(--alerta); color: var(--alerta); }
+.video-post { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+.video-post video { width: 240px; aspect-ratio: 9 / 16; background: #000; border-radius: var(--raio-p); }
+.video-post > div { display: flex; flex-direction: column; gap: .5rem; }
+.redes-post { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.rede-post { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: .75rem; display: flex; flex-direction: column; gap: .4rem; }
+.rede-post h3 { margin: 0; font-size: 1rem; }
+.rede-post textarea, .rede-post input { width: 100%; font-family: inherit; }
+.acoes-rede { display: flex; flex-wrap: wrap; gap: .4rem; }
+.roteiro-post { display: flex; flex-direction: column; gap: .5rem; padding-left: 1.25rem; }
+.roteiro-post label { display: flex; flex-direction: column; gap: .2rem; }
+@media (max-width: 800px) { .redes-post { grid-template-columns: 1fr; } }

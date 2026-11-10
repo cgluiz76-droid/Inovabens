@@ -18,7 +18,8 @@ public sealed record GrupoConfiguracao(string Codigo, string Titulo, string Desc
 public static class CatalogoConfiguracoes
 {
     public const string GoogleDrive = "google_drive", R2 = "r2", Magnific = "magnific", GoogleAgenda = "google_agenda",
-        GoogleMaps = "google_maps", Site = "site", Imobibrasil = "imobibrasil", Whatsapp = "whatsapp";
+        GoogleMaps = "google_maps", Site = "site", Imobibrasil = "imobibrasil", Whatsapp = "whatsapp",
+        Claude = "claude", Meta = "meta";
 
     /// <summary>Portais que recebem os anúncios (código, nome). Cada um ganha o grupo "portal_{código}".</summary>
     public static readonly IReadOnlyList<(string Codigo, string Nome)> Portais =
@@ -39,6 +40,13 @@ public static class CatalogoConfiguracoes
             "Cópia em WebP das fotos marcadas como públicas, servida ao site e aos portais.", Testavel: true),
         new(Magnific, "Magnific (melhoria de fotos)",
             "Com a chave, toda foto enviada é ampliada e melhorada automaticamente. A API cobra créditos à parte.", Testavel: true),
+        new(Claude, "Claude (textos dos posts para redes sociais)",
+            "IA da Anthropic que escreve as legendas de cada rede social e o roteiro dos vídeos curtos, a partir dos dados e das " +
+            "fotos do imóvel. Chave criada em console.anthropic.com → API Keys. A API cobra por uso (centavos por post).", Testavel: true),
+        new(Meta, "Meta (publicar no Facebook e no Instagram)",
+            "Publica os posts na página do Facebook e no perfil comercial do Instagram ligado a ela. No app da Meta (o mesmo do " +
+            "WhatsApp), gere um token de acesso da página com as permissões pages_manage_posts, pages_read_engagement, " +
+            "instagram_basic e instagram_content_publish. As imagens e vídeos vão pelo endereço público do R2.", Testavel: true),
         new(GoogleAgenda, "Google Calendar (agenda)",
             "Credenciais OAuth do Google Cloud. Cada usuário conecta a própria agenda em Agenda → Conectar Google Calendar."),
         new(GoogleMaps, "Google Maps (localização pelo endereço)",
@@ -73,6 +81,16 @@ public static class CatalogoConfiguracoes
             Variavel: "R2_ALERTA_GB", Tipo: TipoCampoConfig.Numero, Padrao: "8"),
 
         new("magnific.api_key", Magnific, "Chave da API", Secreto: true, Variavel: "MAGNIFIC_API_KEY"),
+
+        new("claude.api_key", Claude, "Chave da API", Secreto: true, Variavel: "ANTHROPIC_API_KEY"),
+        new("claude.modelo", Claude, "Modelo", "Padrão: claude-opus-5-5.", Variavel: "CLAUDE_MODELO", Padrao: "claude-opus-5-5"),
+
+        new("meta.page_id", Meta, "ID da página do Facebook", Variavel: "META_PAGE_ID"),
+        new("meta.instagram_id", Meta, "ID da conta do Instagram (comercial)",
+            "Graph API: GET /{id-da-página}?fields=instagram_business_account.", Variavel: "META_INSTAGRAM_ID"),
+        new("meta.page_token", Meta, "Token de acesso da página", "Use um token de longa duração (não expira).",
+            Secreto: true, Variavel: "META_PAGE_TOKEN"),
+        new("meta.versao", Meta, "Versão da Graph API", Variavel: "META_GRAPH_VERSAO", Padrao: "v23.0"),
 
         new("google_agenda.client_id", GoogleAgenda, "Client ID", Variavel: "GOOGLE_CLIENT_ID"),
         new("google_agenda.client_secret", GoogleAgenda, "Client secret", Secreto: true, Variavel: "GOOGLE_CLIENT_SECRET"),
@@ -170,6 +188,15 @@ public sealed class Integracoes(IReadOnlyDictionary<string, string> valores)
 
     public string? MagnificApiKey => this["magnific.api_key"];
     public string? GoogleMapsApiKey => this["google_maps.api_key"];
+
+    public string? ClaudeApiKey => this["claude.api_key"];
+    public string ClaudeModelo => this["claude.modelo"] ?? "claude-opus-5-5";
+
+    public string? MetaPageId => this["meta.page_id"];
+    public string? MetaInstagramId => this["meta.instagram_id"];
+    public string? MetaPageToken => this["meta.page_token"];
+    public string MetaVersao => this["meta.versao"] ?? "v23.0";
+    public bool MetaConfigurado => MetaPageToken is not null && (MetaPageId is not null || MetaInstagramId is not null);
 
     public string? GoogleClientId => this["google_agenda.client_id"];
     public string? GoogleClientSecret => this["google_agenda.client_secret"];
