@@ -1,0 +1,264 @@
+@page "/atividades"
+@attribute [Authorize(Policy = Permissoes.AgendaVer)]
+@inherits ComponenteBase
+@inject CrmService Crm
+@inject AgendaService Agenda
+
+<PageTitle>Minhas atividades · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>@(todas ? "Atividades da equipe" : "Minhas atividades")</h1>
+    <div class="acoes-topo">
+        @if (!Usuario.EscopoProprio)
+        {
+            <label class="pequeno"><input type="checkbox" checked="@todas" @onchange="TrocarEscopo" /> Mostrar de toda a equipe</label>
+        }
+        <a class="btn-ghost" href="crm">CRM</a>
+        <a class="btn-ghost" href="agenda">Agenda</a>
+    </div>
+</div>
+
+<MensagemErro Texto="@Erro" />
+
+@if (itens is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else if (itens.Count == 0)
+{
+    <section class="card"><p class="vazio">Nenhuma atividade pendente nos próximos 30 dias. 🎉</p></section>
+}
+else
+{
+    @foreach (var (titulo, grupo, classe) in Grupos())
+    {
+        @if (grupo.Count > 0)
+        {
+            <section class="card grupo-atividades @classe">
+                <h2>@titulo <span class="badge">@grupo.Count</span></h2>
+                <ul class="lista-atividades">
+                    @foreach (var a in grupo)
+                    {
+                        <li class="atividade" @key="a.Id">
+                            <div class="atividade-quando">
+                                <strong>@Hora(a)</strong>
+                                <span class="pequeno mudo">@Dia(a)</span>
+                            </div>
+                            <div class="atividade-corpo">
+                                <p class="forte">@ProximoPassoCampos.Icone(a.Tipo) @a.Titulo</p>
+                                <p class="pequeno mudo">
+                                    @if (a.LeadId is { } lid)
+                                    {
+                                        <a href="crm?lead=@lid">👤 @a.LeadNome</a>
+                                    }
+                                    @if (a.ImovelId is { } im)
+                                    {
+                                        <span> · </span><a href="imoveis/@im">🏠 @a.ImovelCodigo</a>
+                                    }
+                                    @if (todas)
+                                    {
+                                        <span> · resp. @a.ResponsavelNome</span>
+                                    }
+                                </p>
+                                @if (a.Descricao is { } d)
+                                {
+                                    <p class="pequeno">@d</p>
+                                }
+                            </div>
+                            <div class="atividade-acoes">
+                                @if (LinkWhatsapp(a.Whatsapp) is { } wa)
+                                {
+                                    <a class="btn-ghost mini" href="@wa" target="_blank" rel="noopener" title="Abrir conversa no WhatsApp">💬 WhatsApp</a>
+                                }
+                                @if (a.Telefone is { } tel)
+                                {
+                                    <a class="btn-ghost mini" href="tel:@Digitos(tel)" title="Ligar">📞 Ligar</a>
+                                }
+                                @if (PodeConcluir(a))
+                                {
+                                    <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => Concluir(a)">✔ Concluir</button>
+                                }
+                                @if (Usuario.Pode(Permissoes.AgendaEditar))
+                                {
+                                    <details class="menu-cartao">
+                                        <summary class="btn-ghost mini">⏰ Adiar</summary>
+                                        <div class="menu-cartao-itens">
+                                            <button class="btn-ghost mini" @onclick="() => Adiar(a, TimeSpan.FromHours(1))">+1 hora</button>
+                                            <button class="btn-ghost mini" @onclick="() => AdiarPara(a, DatasBR.Agora().Date.AddDays(1).AddHours(9))">Amanhã 9h</button>
+                                            <button class="btn-ghost mini" @onclick="() => Adiar(a, TimeSpan.FromDays(7))">+1 semana</button>
+                                            <button class="btn-ghost mini" @onclick="() => AbrirReagendar(a)">Outra data…</button>
+                                        </div>
+                                    </details>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+    }
+}
+
+@if (conclusao is not null)
+{
+    <Modal Titulo="@($"Concluir: {conclusao.Value.Atividade.Titulo}")" AoFechar="() => conclusao = null">
+        <p class="pequeno mudo">👤 @conclusao.Value.Atividade.LeadNome · registre o resultado e o próximo passo.</p>
+        <EditForm Model="conclusao.Value.Form" OnValidSubmit="ConfirmarConclusao" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="linha-form">
+                <InputSelect class="input w-tipo" @bind-Value="conclusao.Value.Form.Canal" aria-label="Canal">
+                    @foreach (var c in Enum.GetValues<CanalInteracao>())
+                    {
+                        <option value="@c">@Texto.Rotulo(c)</option>
+                    }
+                </InputSelect>
+                <InputText class="input w-desc" placeholder="Resultado: o que aconteceu?" @bind-Value="conclusao.Value.Form.Resumo" />
+            </div>
+            <ValidationMessage For="() => conclusao.Value.Form.Resumo" />
+            <ProximoPassoCampos Form="conclusao.Value.Form" />
+            <MensagemErro Texto="@erroModal" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Concluir</button>
+                <button type="button" class="btn-ghost" @onclick="() => conclusao = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (reagendar is not null)
+{
+    <Modal Titulo="Reagendar" AoFechar="() => reagendar = null">
+        <p class="pequeno mudo">@reagendar.Titulo</p>
+        <label class="campo">
+            <span>Nova data e hora</span>
+            <input type="datetime-local" class="input" @bind="novaData" />
+        </label>
+        <MensagemErro Texto="@erroModal" />
+        <div class="acoes">
+            <button class="btn-primary" disabled="@Ocupado" @onclick="ConfirmarReagendar">Salvar</button>
+            <button class="btn-ghost" @onclick="() => reagendar = null">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<AtividadeItem>? itens;
+    private bool todas;
+    private string? erroModal;
+    private (AtividadeItem Atividade, InteracaoForm Form)? conclusao;
+    private AtividadeItem? reagendar;
+    private DateTime novaData;
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () => itens = await Crm.AtividadesAsync(Usuario, todas));
+
+    private Task TrocarEscopo(ChangeEventArgs e)
+    {
+        todas = e.Value is true;
+        itens = null;
+        return Carregar();
+    }
+
+    private IEnumerable<(string, List<AtividadeItem>, string)> Grupos()
+    {
+        yield return ("Atrasadas", [.. itens!.Where(a => a.Situacao == SituacaoProximoPasso.Atrasado)], "atrasadas");
+        yield return ("Hoje", [.. itens!.Where(a => a.Situacao == SituacaoProximoPasso.Hoje)], "hoje");
+        yield return ("Próximos dias", [.. itens!.Where(a => a.Situacao == SituacaoProximoPasso.Agendado)], "proximas");
+    }
+
+    private static string Hora(AtividadeItem a) => DatasBR.DeUtc(a.InicioEm).ToString("HH:mm");
+
+    private static string Dia(AtividadeItem a)
+    {
+        var d = DateOnly.FromDateTime(DatasBR.DeUtc(a.InicioEm));
+        var hoje = DatasBR.Hoje();
+        if (d == hoje) return "hoje";
+        if (d == hoje.AddDays(1)) return "amanhã";
+        if (d == hoje.AddDays(-1)) return "ontem";
+        return d.ToString("ddd dd/MM", Texto.PtBr);
+    }
+
+    private static string Digitos(string s) => new([.. s.Where(char.IsDigit)]);
+
+    /// <summary>wa.me exige o número com o código do país (55 para números brasileiros de 10 ou 11 dígitos).</summary>
+    public static string? LinkWhatsapp(string? telefone)
+    {
+        if (telefone is null) return null;
+        var d = Digitos(telefone);
+        if (d.Length is 10 or 11) d = "55" + d;
+        return d.Length >= 12 ? $"https://wa.me/{d}" : null;
+    }
+
+    private bool PodeConcluir(AtividadeItem a) =>
+        a.LeadId is not null ? Usuario.Pode(Permissoes.CrmEditar) : Usuario.Pode(Permissoes.AgendaEditar);
+
+    private static CanalInteracao CanalDe(TipoCompromisso t) => t switch
+    {
+        TipoCompromisso.LIGACAO => CanalInteracao.TELEFONE,
+        TipoCompromisso.MENSAGEM => CanalInteracao.WHATSAPP,
+        TipoCompromisso.VISITA => CanalInteracao.VISITA,
+        _ => CanalInteracao.OUTRO,
+    };
+
+    private async Task Concluir(AtividadeItem a)
+    {
+        erroModal = null;
+        if (a.LeadId is null)
+        {
+            if (await Executar(() => Agenda.ConcluirAsync(Usuario, a.Id))) await Carregar();
+            return;
+        }
+        conclusao = (a, new InteracaoForm { Canal = CanalDe(a.Tipo), ConcluirCompromissoId = a.Id });
+    }
+
+    private async Task ConfirmarConclusao()
+    {
+        var (a, f) = conclusao!.Value;
+        erroModal = null;
+        if (!await Executar(() => Crm.CriarInteracaoAsync(Usuario, a.LeadId!.Value, f)))
+        {
+            erroModal = Erro;
+            Erro = null;
+            return;
+        }
+        conclusao = null;
+        await Carregar();
+    }
+
+    private Task Adiar(AtividadeItem a, TimeSpan quanto)
+    {
+        // atrasada: conta a partir de agora; futura: a partir do horário marcado
+        var base_ = a.InicioEm < DateTime.UtcNow ? DateTime.UtcNow : a.InicioEm;
+        return AdiarPara(a, DatasBR.DeUtc(base_ + quanto));
+    }
+
+    private async Task AdiarPara(AtividadeItem a, DateTime inicioBR)
+    {
+        var duracao = a.FimEm - a.InicioEm;
+        if (await Executar(() => Agenda.ReagendarAsync(Usuario, a.Id, inicioBR, inicioBR + duracao))) await Carregar();
+    }
+
+    private void AbrirReagendar(AtividadeItem a)
+    {
+        erroModal = null;
+        reagendar = a;
+        novaData = DatasBR.DeUtc(a.InicioEm < DateTime.UtcNow ? DateTime.UtcNow.AddHours(1) : a.InicioEm);
+        novaData = novaData.AddSeconds(-novaData.Second).AddMilliseconds(-novaData.Millisecond);
+    }
+
+    private async Task ConfirmarReagendar()
+    {
+        var a = reagendar!;
+        var duracao = a.FimEm - a.InicioEm;
+        erroModal = null;
+        if (!await Executar(() => Agenda.ReagendarAsync(Usuario, a.Id, novaData, novaData + duracao)))
+        {
+            erroModal = Erro;
+            Erro = null;
+            return;
+        }
+        reagendar = null;
+        await Carregar();
+    }
+}

@@ -336,7 +336,7 @@ public class ModulosIntegracaoTests
         Assert.Contains(hist, h => h.EstagioAnterior == "Proposta" && h.EstagioNovo == perdido.Nome);
 
         // interações, imóveis de interesse e edição
-        await crm.CriarInteracaoAsync(a.Corretor, id, new InteracaoForm { Canal = CanalInteracao.TELEFONE, Resumo = "Ligou pedindo fotos" });
+        await crm.CriarInteracaoAsync(a.Corretor, id, new InteracaoForm { Canal = CanalInteracao.TELEFONE, Resumo = "Ligou pedindo fotos", Pular = true, MotivoPular = "Lead já perdido" });
         var inter = Assert.Single(await crm.InteracoesAsync(a.Corretor, id));
         Assert.Equal("Carla Corretora", inter.UsuarioNome);
         var im = await NovoImovel(a, a.Corretor, $"Interesse {sufixo}");

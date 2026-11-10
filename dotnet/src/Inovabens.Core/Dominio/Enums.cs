@@ -33,7 +33,7 @@ public enum Uf { AC, AL, AP, AM, BA, CE, DF, ES, GO, MA, MT, MS, MG, PA, PB, PR,
 
 public enum TipoMemorando { MEMORANDO, ACAO_ESTRATEGICA, ACAO_OPERACIONAL }
 
-public enum TipoCompromisso { TAREFA, REUNIAO, VISITA }
+public enum TipoCompromisso { TAREFA, REUNIAO, VISITA, LIGACAO, MENSAGEM }
 
 public enum StatusCompromisso { PENDENTE, CONCLUIDO, CANCELADO }
 
@@ -45,4 +45,4 @@ public enum Funil { VENDA, LOCACAO }
 
 public enum TipoEstagio { ABERTO, GANHO, PERDIDO }
 
-public enum CanalInteracao { TELEFONE, WHATSAPP, EMAIL, VISITA }
+public enum CanalInteracao { TELEFONE, WHATSAPP, EMAIL, VISITA, OUTRO }

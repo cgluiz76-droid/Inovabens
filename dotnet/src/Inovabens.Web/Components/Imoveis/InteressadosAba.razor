@@ -1,0 +1,81 @@
+@* Leads interessados no imóvel (marcados como interesse ou sugeridos pelo WhatsApp), de todos os funis. *@
+@inherits ComponenteBase
+@inject CrmService Crm
+
+<div class="acoes-topo espaco-baixo">
+    <a class="btn-ghost" href="crm?imovel=@ImovelId">Ver no funil</a>
+    @if (Usuario.Pode(Permissoes.CrmCriar))
+    {
+        <a class="btn-primary" href="crm?novo=1&imovel=@ImovelId">+ Lead para este imóvel</a>
+    }
+</div>
+
+<MensagemErro Texto="@Erro" />
+@if (itens is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else if (itens.Count == 0)
+{
+    <section class="card"><p class="vazio">Nenhum lead interessado neste imóvel.</p></section>
+}
+else
+{
+    <div class="resumo-estagios">
+        @foreach (var g in itens.GroupBy(i => (i.Estagio, i.EstagioCor)))
+        {
+            <span class="chip-estagio" style="border-color:@(g.Key.EstagioCor ?? "#64748b")">@g.Key.Estagio <b>@g.Count()</b></span>
+        }
+    </div>
+    <section class="card">
+        <h2>Interessados <span class="badge">@itens.Count</span></h2>
+        <div class="tabela-rolagem">
+            <table class="tabela">
+                <thead>
+                    <tr><th>Lead</th><th>Funil</th><th>Estágio</th><th>Próximo passo</th><th>Responsável</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var i in itens)
+                    {
+                        <tr>
+                            <td>
+                                <a href="crm?lead=@i.LeadId">@i.PessoaNome</a>
+                                @if (i.SoSugerido)
+                                {
+                                    <span class="badge" title="Imóvel citado na mensagem do WhatsApp, ainda não vinculado">📲 sugerido</span>
+                                }
+                                <br /><span class="pequeno mudo">@i.Telefone</span>
+                            </td>
+                            <td>@(i.Finalidade == FinalidadeLead.COMPRA ? "Venda" : "Locação")</td>
+                            <td><span class="chip-estagio" style="border-color:@(i.EstagioCor ?? "#64748b")">@i.Estagio</span></td>
+                            <td>
+                                @if (i.EstagioTipo == TipoEstagio.PERDIDO)
+                                {
+                                    <span class="mudo">—</span>
+                                }
+                                else if (i.ProximaAcaoEm is { } p)
+                                {
+                                    <span class="situacao situacao-@i.Situacao.ToString().ToLowerInvariant()">@Texto.DataHora(p)</span>
+                                    <span class="pequeno"> @(i.ProximoTitulo ?? "Próxima ação")</span>
+                                }
+                                else
+                                {
+                                    <span class="situacao situacao-nenhum">Sem próximo passo</span>
+                                }
+                            </td>
+                            <td>@(i.ResponsavelNome ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private IReadOnlyList<InteressadoImovel>? itens;
+
+    protected override Task OnParametersSetAsync() => Executar(async () => itens = await Crm.InteressadosAsync(Usuario, ImovelId));
+}

@@ -37,6 +37,7 @@ internal static class Navegacao
     }
 
     public static ILocator Botao(this IPage p, string nome) => p.GetByRole(AriaRole.Button, new() { Name = nome, Exact = true });
+    public static ILocator Botao(this ILocator l, string nome) => l.GetByRole(AriaRole.Button, new() { Name = nome, Exact = true });
 
     /// <summary>Administrador cadastra um usuário pela tela de Administração.</summary>
     public static async Task CriarUsuarioAsync(this IPage admin, string nome, string email, string senha, string perfil)

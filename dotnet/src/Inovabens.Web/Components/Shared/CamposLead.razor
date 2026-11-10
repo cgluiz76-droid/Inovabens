@@ -24,10 +24,6 @@
         <InputNumber class="input" step="0.01" @bind-Value="Form.OrcamentoMax" />
         <ValidationMessage For="() => Form.OrcamentoMax" />
     </label>
-    <label class="campo">
-        <span>Próxima ação</span>
-        <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="Form.ProximaAcaoEm" />
-    </label>
     @if (Responsaveis is not null)
     {
         <label class="campo">

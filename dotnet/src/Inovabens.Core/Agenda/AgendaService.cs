@@ -10,7 +10,8 @@ using P = Inovabens.Core.Dominio.Permissoes;
 namespace Inovabens.Core.Agenda;
 
 public sealed record CompromissoDetalhe(
-    Compromisso Dados, string ImovelCodigo, string ImovelTitulo, string ResponsavelNome, IReadOnlyList<string> Participantes)
+    Compromisso Dados, string? ImovelCodigo, string? ImovelTitulo, string ResponsavelNome, IReadOnlyList<string> Participantes,
+    string? LeadNome = null)
 {
     /// <summary>Pendente e já terminou: "não cumprido" (gera alerta pelo job).</summary>
     public bool Vencido => Dados.Status == StatusCompromisso.PENDENTE && Dados.FimEm < DateTime.UtcNow;
@@ -75,18 +76,23 @@ public sealed class CompromissoForm : IValidatableObject
 public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditService audit, GoogleService google)
 {
     private static IQueryable<Compromisso> Visiveis(InovabensDb db, UsuarioAtual u) =>
-        db.Compromissos.AsNoTracking().Where(c => c.ExcluidoEm == null && c.Imovel!.ExcluidoEm == null).VisiveisPara(u);
+        db.Compromissos.AsNoTracking().Where(c => c.ExcluidoEm == null && (c.ImovelId == null || c.Imovel!.ExcluidoEm == null)).VisiveisPara(u);
 
     private static async Task<List<CompromissoDetalhe>> Detalhar(InovabensDb db, IQueryable<Compromisso> q)
     {
         var linhas = await q.OrderBy(c => c.InicioEm)
-            .Select(c => new { c, c.Imovel!.Codigo, ImovelTitulo = c.Imovel.Titulo, Resp = c.Responsavel!.Nome })
+            .Select(c => new
+            {
+                c, Codigo = c.Imovel != null ? c.Imovel.Codigo : null, ImovelTitulo = c.Imovel != null ? c.Imovel.Titulo : null,
+                Resp = c.Responsavel!.Nome,
+                LeadNome = db.Leads.Where(l => l.Id == c.LeadId).Select(l => l.Pessoa!.NomeRazao).FirstOrDefault(),
+            })
             .ToListAsync();
         var ids = linhas.Select(l => l.c.Id).ToList();
         var parts = await db.CompromissoParticipantes.AsNoTracking().Where(p => ids.Contains(p.CompromissoId) && p.Email != null)
             .Select(p => new { p.CompromissoId, p.Email }).ToListAsync();
         return [.. linhas.Select(l => new CompromissoDetalhe(l.c, l.Codigo, l.ImovelTitulo, l.Resp,
-            [.. parts.Where(p => p.CompromissoId == l.c.Id).Select(p => p.Email!)]))];
+            [.. parts.Where(p => p.CompromissoId == l.c.Id).Select(p => p.Email!)], l.LeadNome))];
     }
 
     public async Task<IReadOnlyList<CompromissoDetalhe>> ListarAsync(UsuarioAtual u, FiltroAgenda f)
@@ -179,6 +185,21 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
     }
 
     public Task ConcluirAsync(UsuarioAtual u, Guid id) => MudarStatusAsync(u, id, StatusCompromisso.CONCLUIDO);
+
+    /// <summary>Novo horário (reagendar ou adiar uma atividade): volta a PENDENTE.</summary>
+    public async Task ReagendarAsync(UsuarioAtual u, Guid id, DateTime inicioBR, DateTime fimBR)
+    {
+        u.Exigir(P.AgendaEditar);
+        if (fimBR < inicioBR) throw new RegraNegocioException("Fim", "O término deve ser depois do início");
+        await Alterar(u, id, "ATUALIZAR", (_, c) =>
+        {
+            c.InicioEm = Utc(inicioBR);
+            c.FimEm = Utc(fimBR);
+            c.Status = StatusCompromisso.PENDENTE;
+            c.ConcluidoEm = null;
+            return Task.CompletedTask;
+        });
+    }
 
     /// <summary>Novo horário a partir de um alerta de "não cumprido": volta a PENDENTE e o alerta é encerrado.</summary>
     public async Task ReagendarPorAlertaAsync(UsuarioAtual u, Guid alertaId, DateTime inicioBR, DateTime fimBR)

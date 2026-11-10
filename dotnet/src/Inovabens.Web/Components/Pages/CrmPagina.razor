@@ -10,16 +10,42 @@
 
 <div class="titulo">
     <h1>CRM</h1>
-    @if (Usuario.Pode(Permissoes.CrmCriar))
-    {
-        <button class="btn-primary" @onclick="NovoLead">+ Novo lead</button>
-    }
+    <div class="acoes-topo">
+        @if (Usuario.Pode(Permissoes.AgendaVer))
+        {
+            <a class="btn-ghost" href="atividades">📋 Minhas atividades</a>
+        }
+        @if (Usuario.Pode(Permissoes.CrmCriar))
+        {
+            <button class="btn-primary" @onclick="() => NovoLead()">+ Novo lead</button>
+        }
+    </div>
 </div>
 
-<div class="abas">
-    <button class="aba @(funil == Funil.VENDA ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.VENDA)">Funil de vendas</button>
-    <button class="aba @(funil == Funil.LOCACAO ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.LOCACAO)">Funil de locação</button>
+<div class="barra-crm">
+    <div class="abas">
+        <button class="aba @(funil == Funil.VENDA ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.VENDA)">Funil de vendas</button>
+        <button class="aba @(funil == Funil.LOCACAO ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.LOCACAO)">Funil de locação</button>
+    </div>
+    <label class="filtro-imovel">
+        <span class="pequeno mudo">Imóvel</span>
+        <select class="input" aria-label="Filtrar por imóvel" value="@(imovelFiltro?.ToString() ?? "")" @onchange="FiltrarImovel">
+            <option value="">Todos os imóveis</option>
+            @foreach (var i in OpcoesFiltro)
+            {
+                <option value="@i.Id">@i.Nome</option>
+            }
+        </select>
+    </label>
 </div>
+
+@if (imovelFiltro is { } fi)
+{
+    <p class="filtro-ativo">
+        Mostrando só os leads do imóvel <a href="imoveis/@fi">@(OpcoesFiltro.FirstOrDefault(o => o.Id == fi)?.Nome ?? "selecionado")</a>
+        <button class="btn-ghost mini" @onclick="() => AplicarFiltro(null)">✕ Limpar filtro</button>
+    </p>
+}
 
 <MensagemErro Texto="@Erro" />
 
@@ -38,46 +64,76 @@ else
                     <strong>@col.Estagio.Nome</strong>
                     <span class="badge">@col.Leads.Count</span>
                 </div>
+                @if (col.ValorTotal > 0)
+                {
+                    <p class="coluna-valor" title="Soma do valor anunciado dos imóveis de interesse">@Texto.MoedaCompacta(col.ValorTotal)</p>
+                }
                 @foreach (var l in col.Leads)
                 {
+                    var perdido = col.Estagio.Tipo == TipoEstagio.PERDIDO;
                     <div class="cartao-lead @(l.VincularImovel ? "vincular" : "") @(arrastando?.Id == l.Id ? "arrastando" : "")" @key="(l.Id, versao)"
                          draggable="@(PodeMover ? "true" : "false")" @ondragstart="() => arrastando = l" @ondragend="FimArraste"
                          @ondrop="() => Soltar(col.Estagio, l)" @ondrop:stopPropagation>
+                        <div class="cartao-topo">
+                            @if (!perdido)
+                            {
+                                <span class="situacao situacao-@l.Situacao.ToString().ToLowerInvariant()" title="@TituloSituacao(l)">@RotuloSituacao(l.Situacao)</span>
+                            }
+                            <span class="pequeno mudo" title="Dias neste estágio">⏳ @l.DiasNaFase d</span>
+                        </div>
                         <button class="link-cartao" @onclick="() => Abrir(l.Id)">
                             <span class="forte">@l.PessoaNome</span>
                             <span class="pequeno mudo">@(l.Telefone ?? l.Email ?? "")</span>
                         </button>
-                        <p class="pequeno">
-                            @if (l.OrcamentoMax is { } o)
-                            {
-                                <span>até @Texto.Moeda(o)</span>
-                            }
-                            @if (l.Origem is not null)
-                            {
-                                <span class="mudo"> · @l.Origem</span>
-                            }
-                        </p>
+                        @if (l.ImovelCodigo is not null || l.Valor is not null)
+                        {
+                            <p class="pequeno">
+                                @if (l.ImovelCodigo is { } cod)
+                                {
+                                    <span>🏠 @cod@(l.OutrosImoveis > 0 ? $" +{l.OutrosImoveis}" : "")</span>
+                                }
+                                @if (l.Valor is { } v)
+                                {
+                                    <span class="valor-lead"> · @Texto.MoedaCompacta(v)</span>
+                                }
+                            </p>
+                        }
+                        else if (l.OrcamentoMax is { } o)
+                        {
+                            <p class="pequeno">até @Texto.Moeda(o)</p>
+                        }
                         @if (l.VincularImovel)
                         {
                             <p class="pequeno aviso-vinculo">📲 Vincular imóvel@(l.ImovelSugerido is { } sug ? $" · sugerido {sug}" : "")</p>
                         }
-                        @if (l.ProximaAcaoEm is { } p)
+                        @if (!perdido && l.ProximaAcaoEm is { } p)
                         {
-                            <p class="pequeno @(p < DateTime.UtcNow ? "texto-erro" : "mudo")">Próxima ação: @Texto.DataHora(p)</p>
+                            <p class="pequeno proximo-cartao">➜ @(l.ProximoTitulo ?? "Próxima ação") · @Texto.DataHora(p)</p>
                         }
-                        @if (l.ResponsavelNome is not null)
-                        {
-                            <p class="pequeno mudo">👤 @l.ResponsavelNome</p>
-                        }
-                        @if (Usuario.Pode(Permissoes.CrmEditar))
-                        {
-                            <select class="input mini" value="@col.Estagio.Id" @onchange="e => Mover(l, e.Value?.ToString())" aria-label="Mover para">
-                                @foreach (var e in colunas)
-                                {
-                                    <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
-                                }
-                            </select>
-                        }
+                        <div class="cartao-rodape">
+                            <span class="pequeno mudo">@(l.ResponsavelNome is null ? "" : $"👤 {l.ResponsavelNome}")@(l.Origem is null ? "" : $" · {l.Origem}")</span>
+                            @if (PodeMover)
+                            {
+                                <span class="cartao-botoes">
+                                    @if (!perdido)
+                                    {
+                                        <button class="btn-icone" title="Agendar atividade" aria-label="Agendar atividade" @onclick="() => AbrirAgendar(l)">+</button>
+                                    }
+                                    <details class="menu-cartao">
+                                        <summary class="btn-icone" title="Mais ações" aria-label="Mais ações">⋯</summary>
+                                        <div class="menu-cartao-itens">
+                                            <label class="pequeno">Mover para</label>
+                                            <select class="input mini" value="@col.Estagio.Id" @onchange="e => Mover(l, e.Value?.ToString())" aria-label="Mover para">
+                                                @foreach (var e in colunas)
+                                                {
+                                                    <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    </details>
+                                </span>
+                            }
+                        </div>
                     </div>
                 }
             </div>
@@ -93,11 +149,53 @@ else
             <span>Por que o negócio foi perdido? *</span>
             <textarea class="input" rows="3" @bind="motivo"></textarea>
         </label>
+        <p class="pequeno mudo">As atividades pendentes deste lead serão canceladas na agenda.</p>
         <MensagemErro Texto="@erroModal" />
         <div class="acoes">
             <button class="btn-primary" disabled="@Ocupado" @onclick="ConfirmarPerda">Confirmar</button>
             <button class="btn-ghost" @onclick="() => perda = null">Cancelar</button>
         </div>
+    </Modal>
+}
+
+@if (movimento is not null)
+{
+    <Modal Titulo="@($"Mover para {movimento.Destino.Nome}")" AoFechar="() => movimento = null">
+        <p class="pequeno mudo">@movimento.Lead.PessoaNome · qual é o próximo passo?</p>
+        @if (movimento.Lead.ProximoTitulo is { } atual && movimento.Lead.ProximaAcaoEm is { } quando)
+        {
+            <div class="checks">
+                <label><input type="radio" name="manter" checked="@movimento.Manter" @onchange="() => movimento.Manter = true" /> Manter o já agendado: <b>@atual</b> · @Texto.DataHora(quando)</label>
+                <label><input type="radio" name="manter" checked="@(!movimento.Manter)" @onchange="() => movimento.Manter = false" /> Definir outro passo</label>
+            </div>
+        }
+        <EditForm Model="movimento.Proximo" OnValidSubmit="ConfirmarMovimento" class="formulario">
+            <DataAnnotationsValidator />
+            @if (!movimento.Manter)
+            {
+                <ProximoPassoCampos Form="movimento.Proximo" />
+            }
+            <MensagemErro Texto="@erroModal" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Mover</button>
+                <button type="button" class="btn-ghost" @onclick="() => movimento = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (agendar is not null)
+{
+    <Modal Titulo="@($"Agendar atividade · {agendar.Value.Lead.PessoaNome}")" AoFechar="() => agendar = null">
+        <EditForm Model="agendar.Value.Form" OnValidSubmit="ConfirmarAgendar" class="formulario">
+            <DataAnnotationsValidator />
+            <ProximoPassoCampos Form="agendar.Value.Form" PermitePular="false" />
+            <MensagemErro Texto="@erroModal" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Agendar</button>
+                <button type="button" class="btn-ghost" @onclick="() => agendar = null">Cancelar</button>
+            </div>
+        </EditForm>
     </Modal>
 }
 
@@ -182,6 +280,82 @@ else
             </div>
         }
 
+        <h3>Atividades pendentes</h3>
+        @if (pendentes is { Count: > 0 })
+        {
+            <ul class="lista-simples">
+                @foreach (var c in pendentes)
+                {
+                    var sit = LeadCartao.SituacaoDe(c.InicioEm);
+                    <li>
+                        <span class="situacao situacao-@sit.ToString().ToLowerInvariant()">@RotuloSituacao(sit)</span>
+                        @ProximoPassoCampos.Icone(c.Tipo) @c.Titulo <span class="pequeno mudo">· @Texto.DataHora(c.InicioEm)</span>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="vazio">Nenhuma atividade pendente.</p>
+        }
+
+        @if (Usuario.Pode(Permissoes.CrmEditar) && detalhe.Estagio.Tipo != TipoEstagio.PERDIDO)
+        {
+            <h3>Registrar ação</h3>
+            <EditForm Model="interacao" OnValidSubmit="RegistrarInteracao" class="formulario registrar-acao">
+                <DataAnnotationsValidator />
+                <div class="linha-form">
+                    <InputSelect class="input w-tipo" @bind-Value="interacao.Canal" aria-label="Canal">
+                        @foreach (var c in Enum.GetValues<CanalInteracao>())
+                        {
+                            <option value="@c">@Texto.Rotulo(c)</option>
+                        }
+                    </InputSelect>
+                    <InputText class="input w-desc" placeholder="O que aconteceu? (resumo do contato ou resultado da atividade)" @bind-Value="interacao.Resumo" />
+                </div>
+                <ValidationMessage For="() => interacao.Resumo" />
+                @if (pendentes is { Count: > 0 })
+                {
+                    <label class="campo">
+                        <span>Esta ação conclui a atividade</span>
+                        <InputSelect class="input" @bind-Value="interacao.ConcluirCompromissoId">
+                            <option value="">Nenhuma</option>
+                            @foreach (var c in pendentes)
+                            {
+                                <option value="@c.Id">@c.Titulo · @Texto.DataHora(c.InicioEm)</option>
+                            }
+                        </InputSelect>
+                    </label>
+                }
+                <ProximoPassoCampos Form="interacao" Imoveis="imoveisDoLead" />
+                <div class="acoes">
+                    <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar</button>
+                </div>
+            </EditForm>
+        }
+
+        <h3>Interações</h3>
+        @if (interacoes is { Count: > 0 })
+        {
+            <ul class="lista-simples">
+                @foreach (var i in interacoes)
+                {
+                    <li>
+                        <span class="badge">@Texto.Rotulo(i.Dados.Canal)</span> @i.Dados.Resumo
+                        <span class="pequeno mudo">· @(i.UsuarioNome ?? (i.Dados.Canal == CanalInteracao.WHATSAPP ? "automático" : "—")) · @Texto.DataHora(i.Dados.CriadoEm)</span>
+                        @if (i.Dados.MotivoSemProximo is { } sem)
+                        {
+                            <br /><span class="pequeno mudo">Sem próximo passo: @sem</span>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="vazio">Nenhuma interação registrada.</p>
+        }
+
         <h3>Dados do lead</h3>
         <EditForm Model="edicao" OnValidSubmit="SalvarLead" class="formulario">
             <DataAnnotationsValidator />
@@ -214,41 +388,6 @@ else
             </ul>
         }
 
-        <h3>Interações</h3>
-        @if (Usuario.Pode(Permissoes.CrmEditar))
-        {
-            <EditForm Model="interacao" OnValidSubmit="RegistrarInteracao">
-                <DataAnnotationsValidator />
-                <div class="linha-form">
-                    <InputSelect class="input w-tipo" @bind-Value="interacao.Canal">
-                        @foreach (var c in Enum.GetValues<CanalInteracao>())
-                        {
-                            <option value="@c">@Texto.Rotulo(c)</option>
-                        }
-                    </InputSelect>
-                    <InputText class="input w-desc" placeholder="Resumo do contato" @bind-Value="interacao.Resumo" />
-                    <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar</button>
-                </div>
-                <ValidationMessage For="() => interacao.Resumo" />
-            </EditForm>
-        }
-        @if (interacoes is { Count: > 0 })
-        {
-            <ul class="lista-simples">
-                @foreach (var i in interacoes)
-                {
-                    <li>
-                        <span class="badge">@Texto.Rotulo(i.Dados.Canal)</span> @i.Dados.Resumo
-                        <span class="pequeno mudo">· @(i.UsuarioNome ?? (i.Dados.Canal == CanalInteracao.WHATSAPP ? "automático" : "—")) · @Texto.DataHora(i.Dados.CriadoEm)</span>
-                    </li>
-                }
-            </ul>
-        }
-        else
-        {
-            <p class="vazio">Nenhuma interação registrada.</p>
-        }
-
         <h3>Histórico de estágios</h3>
         @if (historico is { Count: > 0 })
         {
@@ -270,11 +409,25 @@ else
     private IReadOnlyList<ColunaFunil>? colunas;
     private IReadOnlyList<Opcao> pessoas = [];
     private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<Opcao> imoveisFiltro = [];
     private IReadOnlyList<Opcao>? responsaveis;
     private string? erroModal;
+    private Guid? imovelFiltro;
 
     private (LeadCartao Lead, FunilEstagio Estagio)? perda;
     private string motivo = "";
+
+    private sealed class Movimento(LeadCartao lead, FunilEstagio destino, int? ordem)
+    {
+        public LeadCartao Lead { get; } = lead;
+        public FunilEstagio Destino { get; } = destino;
+        public int? Ordem { get; } = ordem;
+        public bool Manter { get; set; } = lead.ProximoTitulo is not null && lead.ProximaAcaoEm > DateTime.UtcNow;
+        public ProximoPassoForm Proximo { get; } = Novo(destino.Tipo == TipoEstagio.GANHO ? TipoCompromisso.TAREFA : TipoCompromisso.LIGACAO);
+    }
+    private Movimento? movimento;
+
+    private (LeadCartao Lead, ProximoPassoForm Form)? agendar;
 
     private LeadForm? novo;
     private bool contatoNovo = true;
@@ -282,21 +435,38 @@ else
     private LeadDetalhe? detalhe;
     private LeadForm? edicao;
     private IReadOnlyList<Opcao> opcoesInteresse = [];
+    private IReadOnlyList<Opcao> imoveisDoLead = [];
     private IReadOnlyList<InteracaoDetalhe>? interacoes;
     private IReadOnlyList<HistoricoEstagio>? historico;
+    private IReadOnlyList<Compromisso>? pendentes;
     private InteracaoForm interacao = new();
+
+    /// <summary>O imóvel filtrado continua na lista mesmo se vendido/arquivado (veio da ficha dele).</summary>
+    private IReadOnlyList<Opcao> OpcoesFiltro => imoveisFiltro;
+
+    private static ProximoPassoForm Novo(TipoCompromisso tipo)
+    {
+        var f = new ProximoPassoForm();
+        f.Limpar(tipo);
+        return f;
+    }
 
     protected override async Task OnInitializedAsync()
     {
+        var consulta = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (consulta.TryGetValue("imovel", out var im) && Guid.TryParse(im, out var imovelId)) imovelFiltro = imovelId;
+        if (consulta.TryGetValue("funil", out var fu) && Enum.TryParse<Funil>(fu, true, out var f)) funil = f;
         await Executar(async () =>
         {
             pessoas = await Opcoes.PessoasAsync(Usuario);
             imoveis = await Opcoes.ImoveisParaInteresseAsync(Usuario);
+            imoveisFiltro = imoveis;
+            if (imovelFiltro is { } id && imoveis.All(o => o.Id != id))
+                imoveisFiltro = [new Opcao(id, "Imóvel selecionado"), .. imoveis];
             if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
         });
         await Carregar();
         // vindo do alerta "novo lead" (crm?lead=<id>): abre o lead no funil dele
-        var consulta = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
         if (consulta.TryGetValue("lead", out var lid) && Guid.TryParse(lid, out var leadId))
         {
             await Abrir(leadId);
@@ -306,6 +476,16 @@ else
                 await Carregar();
             }
         }
+        // vindo da ficha do imóvel (crm?novo=1&imovel=<id>): novo lead já interessado no imóvel
+        if (consulta.ContainsKey("novo") && Usuario.Pode(Permissoes.CrmCriar)) NovoLead(imovelFiltro);
+    }
+
+    private Task FiltrarImovel(ChangeEventArgs e) => AplicarFiltro(Guid.TryParse(e.Value?.ToString(), out var id) ? id : null);
+
+    private Task AplicarFiltro(Guid? id)
+    {
+        imovelFiltro = id;
+        return Carregar();
     }
 
     private async Task VincularSugerido(Guid imovelId)
@@ -322,9 +502,21 @@ else
 
     private Task Carregar() => Executar(async () =>
     {
-        colunas = await Servico.PipelineAsync(Usuario, funil);
+        colunas = await Servico.PipelineAsync(Usuario, funil, imovelFiltro);
         versao++;
     });
+
+    private static string RotuloSituacao(SituacaoProximoPasso s) => s switch
+    {
+        SituacaoProximoPasso.Atrasado => "Atrasado",
+        SituacaoProximoPasso.Hoje => "Hoje",
+        SituacaoProximoPasso.Agendado => "Agendado",
+        _ => "Sem próximo passo",
+    };
+
+    private static string TituloSituacao(LeadCartao l) => l.ProximaAcaoEm is { } p
+        ? $"{l.ProximoTitulo ?? "Próxima ação"} · {Texto.DataHora(p)}"
+        : "Nenhuma atividade agendada para este lead";
 
     /* ---- arrastar e soltar: o cartão vai para a coluna (ou para antes do cartão) onde for solto ---- */
 
@@ -345,14 +537,49 @@ else
         if (l is null || !PodeMover || sobre?.Id == l.Id) return;
         var origem = colunas!.First(c => c.Leads.Any(x => x.Id == l.Id)).Estagio;
         if (origem.Id == destino.Id && sobre is null) return; // solto na própria coluna, fora de outro cartão
-        if (destino.Tipo == TipoEstagio.PERDIDO && origem.Id != destino.Id)
+        await PedirMovimento(l, origem, destino, sobre?.Ordem);
+    }
+
+    /// <summary>Mesma coluna: só reordena. Perdido: pede o motivo. Demais: pede o próximo passo.</summary>
+    private async Task PedirMovimento(LeadCartao l, FunilEstagio origem, FunilEstagio destino, int? ordem)
+    {
+        erroModal = null;
+        if (origem.Id == destino.Id)
         {
-            erroModal = null;
+            if (await Executar(() => Servico.MoverAsync(Usuario, l.Id, destino.Id, ordem: ordem))) await Carregar();
+            return;
+        }
+        if (destino.Tipo == TipoEstagio.PERDIDO)
+        {
             motivo = "";
             perda = (l, destino);
             return;
         }
-        if (await Executar(() => Servico.MoverAsync(Usuario, l.Id, destino.Id, ordem: sobre?.Ordem))) await Carregar();
+        movimento = new Movimento(l, destino, ordem);
+    }
+
+    private async Task ConfirmarMovimento()
+    {
+        var m = movimento!;
+        await Executar(() => Servico.MoverAsync(Usuario, m.Lead.Id, m.Destino.Id, ordem: m.Ordem, proximo: m.Manter ? null : m.Proximo), noModal: true);
+        if (erroModal is not null) return;
+        movimento = null;
+        await Carregar();
+    }
+
+    private void AbrirAgendar(LeadCartao l)
+    {
+        erroModal = null;
+        agendar = (l, Novo(TipoCompromisso.LIGACAO));
+    }
+
+    private async Task ConfirmarAgendar()
+    {
+        var (l, f) = agendar!.Value;
+        await Executar(() => Servico.AgendarAsync(Usuario, l.Id, f), noModal: true);
+        if (erroModal is not null) return;
+        agendar = null;
+        await Carregar();
     }
 
     private Task TrocarFunil(Funil f)
@@ -365,16 +592,10 @@ else
     private async Task Mover(LeadCartao l, string? estagioId)
     {
         if (!Guid.TryParse(estagioId, out var id)) return;
+        var origem = colunas!.First(c => c.Leads.Any(x => x.Id == l.Id)).Estagio;
         var destino = colunas!.Select(c => c.Estagio).First(e => e.Id == id);
-        if (destino.Tipo == TipoEstagio.PERDIDO)
-        {
-            erroModal = null;
-            motivo = "";
-            perda = (l, destino);
-            await Carregar(); // volta o select para o estágio atual até confirmar
-            return;
-        }
-        if (await Executar(() => Servico.MoverAsync(Usuario, l.Id, id))) await Carregar();
+        await Carregar(); // volta o select para o estágio atual até confirmar
+        await PedirMovimento(l, origem, destino, null);
     }
 
     private async Task ConfirmarPerda()
@@ -390,11 +611,15 @@ else
         await Carregar();
     }
 
-    private void NovoLead()
+    private void NovoLead(Guid? imovelId = null)
     {
         erroModal = null;
         contatoNovo = true;
-        novo = new LeadForm { Finalidade = funil == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO, ImoveisInteresse = [] };
+        novo = new LeadForm
+        {
+            Finalidade = funil == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO,
+            ImoveisInteresse = imovelId is { } i && imoveis.Any(o => o.Id == i) ? [i] : [],
+        };
     }
 
     private async Task CriarLead()
@@ -423,6 +648,7 @@ else
             detalhe = await Servico.ObterAsync(Usuario, id);
             interacoes = await Servico.InteracoesAsync(Usuario, id);
             historico = await Servico.HistoricoAsync(Usuario, id);
+            pendentes = await Servico.PendentesDoLeadAsync(Usuario, id);
         });
         if (detalhe is null) return;
         var d = detalhe.Dados;
@@ -432,6 +658,7 @@ else
             OrcamentoMax = d.OrcamentoMax, ProximaAcaoEm = d.ProximaAcaoEm is { } p ? DatasBR.DeUtc(p) : null, PessoaId = d.PessoaId,
             Observacoes = d.Observacoes, ImoveisInteresse = [.. detalhe.ImoveisInteresse.Select(i => i.Id)],
         };
+        imoveisDoLead = [.. detalhe.ImoveisInteresse.Select(i => new Opcao(i.Id, $"{i.Codigo} · {i.Titulo}"))];
         // os já marcados continuam na lista mesmo se vendidos/arquivados depois, para poder desmarcar
         opcoesInteresse = [.. imoveis, .. detalhe.ImoveisInteresse.Where(i => imoveis.All(o => o.Id != i.Id))
             .Select(i => new Opcao(i.Id, $"{i.Codigo} · {i.Titulo} ({Texto.Rotulo(i.Situacao)})"))];
@@ -475,7 +702,9 @@ else
         var id = detalhe!.Dados.Id;
         await Executar(() => Servico.CriarInteracaoAsync(Usuario, id, interacao), noModal: true);
         if (erroModal is not null) return;
-        interacao = new InteracaoForm { Canal = interacao.Canal };
-        interacoes = await Servico.InteracoesAsync(Usuario, id);
+        var canal = interacao.Canal;
+        await Abrir(id);
+        interacao.Canal = canal;
+        await Carregar();
     }
 }

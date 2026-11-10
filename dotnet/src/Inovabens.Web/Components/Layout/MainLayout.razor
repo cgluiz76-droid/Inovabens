@@ -32,6 +32,10 @@
             {
                 <NavLink class="nav-item" href="agenda"><Icone Nome="agenda" />Agenda</NavLink>
             }
+            @if (usuario?.Pode(Permissoes.AgendaVer) == true)
+            {
+                <NavLink class="nav-item" href="atividades"><Icone Nome="atividades" />Atividades</NavLink>
+            }
             @if (usuario is not null && Pages.AdminPagina.PodeAlgo(usuario))
             {
                 <NavLink class="nav-item" href="admin"><Icone Nome="admin" />Administração</NavLink>

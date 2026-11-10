@@ -83,7 +83,14 @@ else
                         <li class="@(c.Vencido ? "vencido" : "")">
                             <span class="forte">@Texto.DataHora(c.Dados.InicioEm)</span>
                             · @Texto.Rotulo(c.Dados.Tipo): @c.Dados.Titulo
-                            <a class="pequeno" href="imoveis/@c.Dados.ImovelId">@c.ImovelCodigo</a>
+                            @if (c.Dados.ImovelId is { } im)
+                            {
+                                <a class="pequeno" href="imoveis/@im">@c.ImovelCodigo</a>
+                            }
+                            else if (c.Dados.LeadId is { } ld)
+                            {
+                                <a class="pequeno" href="crm?lead=@ld">👤 @c.LeadNome</a>
+                            }
                             <span class="pequeno mudo">· @c.ResponsavelNome</span>
                         </li>
                     }

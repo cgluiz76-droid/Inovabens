@@ -48,7 +48,16 @@ else
                         </td>
                         @if (MostrarImovel)
                         {
-                            <td><a href="imoveis/@c.Dados.ImovelId" title="@c.ImovelTitulo">@c.ImovelCodigo</a></td>
+                            <td>
+                                @if (c.Dados.ImovelId is { } im)
+                                {
+                                    <a href="imoveis/@im" title="@c.ImovelTitulo">@c.ImovelCodigo</a>
+                                }
+                                else if (c.Dados.LeadId is { } ld)
+                                {
+                                    <a href="crm?lead=@ld">👤 @c.LeadNome</a>
+                                }
+                            </td>
                         }
                         <td>@c.ResponsavelNome</td>
                         <td>

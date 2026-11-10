@@ -1,0 +1,110 @@
+@* Próximo passo de uma ação no CRM: atividade com data (vai para a agenda) ou o motivo de não agendar.
+   Precisa estar dentro de um EditForm cujo modelo seja o próprio Form (ou herde dele). *@
+<fieldset class="proximo-passo">
+    <legend>Próximo passo</legend>
+    @if (PermitePular)
+    {
+        <div class="checks">
+            <label><input type="radio" name="@nome" checked="@(!Form.Pular)" @onchange="() => Form.Pular = false" /> Agendar</label>
+            <label><input type="radio" name="@nome" checked="@Form.Pular" @onchange="() => Form.Pular = true" /> Não agendar agora</label>
+        </div>
+    }
+    @if (Form.Pular)
+    {
+        <label class="campo">
+            <span>Por que não agendar? *</span>
+            <InputText class="input" placeholder="Ex.: cliente pediu para retornar quando vender o imóvel dele" @bind-Value="Form.MotivoPular" />
+            <ValidationMessage For="() => Form.MotivoPular" />
+        </label>
+    }
+    else
+    {
+        <div class="tipos-atividade" role="group" aria-label="Tipo da atividade">
+            @foreach (var t in Tipos)
+            {
+                <button type="button" class="chip @(Form.Tipo == t ? "ativo" : "")" @onclick="() => Form.Tipo = t">@Icone(t) @Texto.Rotulo(t)</button>
+            }
+        </div>
+        <div class="grade-4">
+            <label class="campo col-2">
+                <span>O que fazer *</span>
+                <InputText class="input" placeholder="@Sugestao" @bind-Value="Form.Titulo" />
+                <ValidationMessage For="() => Form.Titulo" />
+            </label>
+            <label class="campo">
+                <span>Quando *</span>
+                <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="Form.Inicio" />
+                <ValidationMessage For="() => Form.Inicio" />
+            </label>
+            <label class="campo">
+                <span>Duração</span>
+                <InputSelect class="input" @bind-Value="Form.DuracaoMin">
+                    @foreach (var d in Duracoes)
+                    {
+                        <option value="@d">@(d < 60 ? $"{d} min" : $"{d / 60} h{(d % 60 > 0 ? $" {d % 60}" : "")}")</option>
+                    }
+                </InputSelect>
+            </label>
+        </div>
+        <div class="atalhos-data">
+            <span class="pequeno mudo">Atalhos:</span>
+            <button type="button" class="btn-ghost mini" @onclick="() => Em(0, 2)">Daqui a 2 h</button>
+            <button type="button" class="btn-ghost mini" @onclick="() => Em(1)">Amanhã 9h</button>
+            <button type="button" class="btn-ghost mini" @onclick="() => Em(3)">Em 3 dias</button>
+            <button type="button" class="btn-ghost mini" @onclick="() => Em(7)">Em 1 semana</button>
+        </div>
+        @if (Imoveis is { Count: > 1 })
+        {
+            <label class="campo">
+                <span>Imóvel</span>
+                <InputSelect class="input" @bind-Value="Form.ImovelId">
+                    <option value="">Nenhum em especial</option>
+                    @foreach (var i in Imoveis)
+                    {
+                        <option value="@i.Id">@i.Nome</option>
+                    }
+                </InputSelect>
+            </label>
+        }
+    }
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired] public ProximoPassoForm Form { get; set; } = default!;
+    [Parameter] public bool PermitePular { get; set; } = true;
+    /// <summary>Imóveis de interesse do lead (com mais de um, pergunta a qual a atividade se refere).</summary>
+    [Parameter] public IReadOnlyList<Opcao>? Imoveis { get; set; }
+
+    private readonly string nome = "pp" + Guid.NewGuid().ToString("N")[..8];
+
+    private static readonly TipoCompromisso[] Tipos =
+        [TipoCompromisso.LIGACAO, TipoCompromisso.MENSAGEM, TipoCompromisso.VISITA, TipoCompromisso.REUNIAO, TipoCompromisso.TAREFA];
+
+    private static readonly int[] Duracoes = [15, 30, 60, 90, 120, 240];
+
+    public static string Icone(TipoCompromisso t) => t switch
+    {
+        TipoCompromisso.LIGACAO => "📞",
+        TipoCompromisso.MENSAGEM => "💬",
+        TipoCompromisso.VISITA => "🏠",
+        TipoCompromisso.REUNIAO => "🤝",
+        _ => "✔️",
+    };
+
+    private string Sugestao => Form.Tipo switch
+    {
+        TipoCompromisso.LIGACAO => "Ex.: ligar para saber o que achou do imóvel",
+        TipoCompromisso.MENSAGEM => "Ex.: enviar fotos e planta pelo WhatsApp",
+        TipoCompromisso.VISITA => "Ex.: visita ao imóvel com o cliente",
+        TipoCompromisso.REUNIAO => "Ex.: reunião para apresentar a proposta",
+        _ => "Ex.: preparar a documentação",
+    };
+
+    private void Em(int dias, int horas = 0)
+    {
+        var agora = DatasBR.Agora();
+        Form.Inicio = horas > 0
+            ? new DateTime(agora.Year, agora.Month, agora.Day, agora.Hour, 0, 0).AddHours(horas)
+            : agora.Date.AddDays(dias).AddHours(9);
+    }
+}

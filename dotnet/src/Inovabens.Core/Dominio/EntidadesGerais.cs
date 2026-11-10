@@ -84,12 +84,15 @@ public class Memorando
 
 /* ------------------------------- Agenda ------------------------------- */
 
-/// <summary>Compromisso (tarefa, reunião, visita) — sempre ligado a um imóvel. CHECK no banco: fim_em &gt;= inicio_em.</summary>
+/// <summary>
+/// Compromisso (tarefa, reunião, visita, ligação, mensagem) ligado a um imóvel, a um lead ou aos dois.
+/// CHECK no banco: fim_em &gt;= inicio_em e imovel_id ou lead_id preenchido.
+/// </summary>
 [Table("compromissos")]
 public class Compromisso
 {
     public Guid Id { get; set; }
-    public Guid ImovelId { get; set; }
+    public Guid? ImovelId { get; set; }
     public Guid? LeadId { get; set; }
     public TipoCompromisso Tipo { get; set; } = TipoCompromisso.TAREFA;
     public string Titulo { get; set; } = "";
@@ -220,6 +223,12 @@ public class LeadInteracao
     public Guid? UsuarioId { get; set; }
     public CanalInteracao Canal { get; set; }
     public string Resumo { get; set; } = "";
+    /// <summary>Próximo passo agendado nesta ação (compromisso na agenda).</summary>
+    public Guid? ProximoCompromissoId { get; set; }
+    /// <summary>Motivo informado para não agendar o próximo passo.</summary>
+    public string? MotivoSemProximo { get; set; }
+    /// <summary>Atividade da agenda concluída por esta ação (o resumo é o resultado).</summary>
+    public Guid? CompromissoConcluidoId { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 

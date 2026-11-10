@@ -49,10 +49,13 @@ public static partial class MapeamentoGoogle
     private const string Fuso = "America/Sao_Paulo";
     public const string PropriedadeId = "inovabens_compromisso_id";
 
-    public static object ParaEvento(Compromisso c, string imovelCodigo, IReadOnlyCollection<string> emails) => new
+    public static object ParaEvento(Compromisso c, string? imovelCodigo, IReadOnlyCollection<string> emails, string? leadNome = null) => new
     {
         summary = c.Titulo,
-        description = string.Join("\n\n", new[] { c.Descricao, $"Imóvel {imovelCodigo} (#{imovelCodigo})" }.Where(x => !string.IsNullOrWhiteSpace(x))),
+        description = string.Join("\n\n", new[]
+        {
+            c.Descricao, imovelCodigo is null ? null : $"Imóvel {imovelCodigo} (#{imovelCodigo})", leadNome is null ? null : $"Cliente: {leadNome}",
+        }.Where(x => !string.IsNullOrWhiteSpace(x))),
         location = c.Local,
         start = new { dateTime = DateTime.SpecifyKind(c.InicioEm, DateTimeKind.Utc).ToString("o"), timeZone = Fuso },
         end = new { dateTime = DateTime.SpecifyKind(c.FimEm, DateTimeKind.Utc).ToString("o"), timeZone = Fuso },
@@ -243,7 +246,10 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
         }
         var emails = await db.CompromissoParticipantes.Where(p => p.CompromissoId == compromissoId && p.Email != null)
             .Select(p => p.Email!).ToListAsync();
-        var corpo = MapeamentoGoogle.ParaEvento(c, c.Imovel!.Codigo, emails);
+        var leadNome = c.LeadId is { } lid
+            ? await db.Leads.Where(l => l.Id == lid).Select(l => l.Pessoa!.NomeRazao).FirstOrDefaultAsync()
+            : null;
+        var corpo = MapeamentoGoogle.ParaEvento(c, c.Imovel?.Codigo, emails, leadNome);
         var res = c.GoogleEventId is { } ev
             ? await ChamarAsync<EventoGoogle>(conta, HttpMethod.Put, $"/events/{Uri.EscapeDataString(ev)}", corpo)
             : await ChamarAsync<EventoGoogle>(conta, HttpMethod.Post, "/events", corpo);

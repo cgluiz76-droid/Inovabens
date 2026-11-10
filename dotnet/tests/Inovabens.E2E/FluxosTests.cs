@@ -93,9 +93,9 @@ public class FluxosTests(Aplicacao app)
         // busca parcial, sem acento: "goncalves" acha "Gonçalves"; a outra casa não aparece
         var busca = p.GetByRole(AriaRole.Combobox, new() { Name = "Imóveis de interesse" });
         await busca.PressSequentiallyAsync($"goncalves {s}");
-        var opcao = p.GetByRole(AriaRole.Option).Filter(new() { HasText = $"Apartamento Gonçalves {s}" });
+        var opcao = p.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Option).Filter(new() { HasText = $"Apartamento Gonçalves {s}" });
         await Expect(opcao).ToBeVisibleAsync();
-        await Expect(p.GetByRole(AriaRole.Option).Filter(new() { HasText = $"Casa Outra {s}" })).ToHaveCountAsync(0);
+        await Expect(p.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Option).Filter(new() { HasText = $"Casa Outra {s}" })).ToHaveCountAsync(0);
         await busca.PressAsync("Enter"); // escolhe a destacada sem enviar o formulário
         await Expect(p.GetByRole(AriaRole.Button, new() { Name = $"Remover", Exact = false })).ToHaveCountAsync(1);
         await Expect(busca).ToHaveValueAsync("");
@@ -127,17 +127,94 @@ public class FluxosTests(Aplicacao app)
         ILocator Cartao(string n) => p.Locator(".cartao-lead").Filter(new() { HasText = $"Arraste {n} {s}" });
         await Expect(colunas.First.Locator(".cartao-lead").Filter(new() { HasText = $"Arraste Um {s}" })).ToHaveCountAsync(1);
 
+        // mudar de estágio pede o próximo passo (vai para a agenda)
+        async Task InformarProximoPasso()
+        {
+            var dlg = p.GetByRole(AriaRole.Dialog);
+            await dlg.GetByLabel("O que fazer *").FillAsync("Ligar para saber a opinião");
+            await dlg.GetByRole(AriaRole.Button, new() { Name = "Mover", Exact = true }).ClickAsync();
+            await Expect(dlg).ToHaveCountAsync(0);
+        }
+
         // "Um" vai da 1ª para a 2ª coluna
         await Cartao("Um").DragToAsync(colunas.Nth(1));
+        await InformarProximoPasso();
         await Expect(colunas.Nth(1).Locator(".cartao-lead").Filter(new() { HasText = $"Arraste Um {s}" })).ToHaveCountAsync(1);
         await Expect(colunas.First.Locator(".cartao-lead").Filter(new() { HasText = $"Arraste Um {s}" })).ToHaveCountAsync(0);
 
         // "Dois" solto sobre "Um": fica antes dele na 2ª coluna
         await Cartao("Dois").DragToAsync(Cartao("Um"));
+        await InformarProximoPasso();
         var nomes = colunas.Nth(1).Locator(".cartao-lead .forte");
         await Expect(nomes.Filter(new() { HasText = s })).ToHaveTextAsync([$"Arraste Dois {s}", $"Arraste Um {s}"]);
-        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } arquivo)
-            await p.Locator(".kanban").ScreenshotAsync(new() { Path = arquivo });
+        await Expect(Cartao("Um").Locator(".situacao")).ToHaveTextAsync("Agendado");
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta)
+            await p.Locator(".kanban").ScreenshotAsync(new() { Path = Path.Combine(pasta, "arrastar.png") });
+    }
+
+    [Fact]
+    public async Task Crm_acao_com_proximo_passo_minhas_atividades_e_interessados_do_imovel()
+    {
+        var s = Navegacao.Sufixo();
+        var p = await app.NovaPaginaAsync();
+        await p.EntrarAsync(AdminEmail, SenhaPadrao);
+        var imovel = await p.CriarImovelAsync($"Casa Interessados {s}");
+
+        // ficha do imóvel → Interessados → novo lead já com o imóvel de interesse
+        await p.GotoAsync($"/imoveis/{imovel}");
+        await p.Interativa();
+        await p.Botao("Interessados").ClickAsync();
+        await Expect(p.GetByText("Nenhum lead interessado neste imóvel.")).ToBeVisibleAsync();
+        await p.GetByRole(AriaRole.Link, new() { Name = "+ Lead para este imóvel" }).ClickAsync();
+        await p.Interativa();
+        var dlg = p.GetByRole(AriaRole.Dialog);
+        await dlg.GetByLabel("Nome *").FillAsync($"Cliente Passo {s}");
+        await Expect(dlg.GetByRole(AriaRole.Button, new() { Name = "Remover", Exact = false })).ToHaveCountAsync(1);
+        await p.Botao("Criar lead").ClickAsync();
+        await Expect(dlg).ToHaveCountAsync(0);
+
+        // o funil está filtrado pelo imóvel; o cartão novo não tem próximo passo
+        var cartao = p.Locator(".cartao-lead").Filter(new() { HasText = $"Cliente Passo {s}" });
+        await Expect(p.Locator(".cartao-lead")).ToHaveCountAsync(1);
+        await Expect(cartao.Locator(".situacao")).ToHaveTextAsync("Sem próximo passo");
+
+        // registrar ação: sem o próximo passo não grava; com ele, vai para a agenda
+        await cartao.Locator(".link-cartao").ClickAsync();
+        await dlg.GetByPlaceholder("O que aconteceu?", new() { Exact = false }).FillAsync("Primeiro contato por telefone");
+        await dlg.Botao("Registrar").ClickAsync();
+        await Expect(dlg.GetByText("Informe o próximo passo")).ToBeVisibleAsync();
+        await dlg.GetByRole(AriaRole.Button, new() { Name = "Visita", Exact = false }).ClickAsync();
+        await dlg.GetByLabel("O que fazer *").FillAsync($"Visita guiada {s}");
+        await dlg.Botao("Registrar").ClickAsync();
+        await Expect(dlg.Locator("li").Filter(new() { HasText = $"Visita guiada {s}" })).ToBeVisibleAsync(); // em "Atividades pendentes"
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta)
+            await dlg.ScreenshotAsync(new() { Path = Path.Combine(pasta, "lead.png") });
+        await dlg.GetByRole(AriaRole.Button, new() { Name = "Fechar", Exact = false }).First.ClickAsync();
+        await Expect(cartao.Locator(".situacao")).ToHaveTextAsync("Agendado");
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta2)
+            await p.Locator(".kanban").ScreenshotAsync(new() { Path = Path.Combine(pasta2, "funil.png") });
+
+        // minhas atividades: concluir pede o resultado e o próximo passo (aqui pulado com motivo)
+        await p.GotoAsync("/atividades");
+        await p.Interativa();
+        var item = p.Locator(".atividade").Filter(new() { HasText = $"Visita guiada {s}" });
+        await Expect(item).ToHaveCountAsync(1);
+        if (Environment.GetEnvironmentVariable("E2E_CAPTURA_CRM") is { } pasta3)
+            await p.ScreenshotAsync(new() { Path = Path.Combine(pasta3, "atividades.png"), FullPage = true });
+        await item.GetByRole(AriaRole.Button, new() { Name = "✔ Concluir" }).ClickAsync();
+        await dlg.GetByPlaceholder("Resultado", new() { Exact = false }).FillAsync("Cliente gostou, vai pensar");
+        await dlg.GetByLabel("Não agendar agora").CheckAsync();
+        await dlg.GetByLabel("Por que não agendar? *").FillAsync("Cliente vai conversar com a família");
+        await dlg.Botao("Concluir").ClickAsync();
+        await Expect(dlg).ToHaveCountAsync(0);
+        await Expect(item).ToHaveCountAsync(0);
+
+        // a ficha do imóvel lista o interessado
+        await p.GotoAsync($"/imoveis/{imovel}");
+        await p.Interativa();
+        await p.Botao("Interessados").ClickAsync();
+        await Expect(p.GetByRole(AriaRole.Link, new() { Name = $"Cliente Passo {s}" })).ToBeVisibleAsync();
+        await Expect(p.GetByText("Sem próximo passo")).ToBeVisibleAsync();
     }
 
     /// <summary>Consulta o ViaCEP de verdade (precisa de internet).</summary>

@@ -20,7 +20,7 @@ public static class Texto
         ["captacao"] = "captação", ["aquisicao"] = "aquisição", ["regularizacao"] = "regularização", ["locacao"] = "locação",
         ["negociacao"] = "negociação", ["documentacao"] = "documentação", ["retificacao"] = "retificação", ["area"] = "área",
         ["nao"] = "não", ["concluido"] = "concluído", ["concluida"] = "concluída", ["reuniao"] = "reunião", ["acao"] = "ação",
-        ["estrategica"] = "estratégica", ["email"] = "e-mail",
+        ["estrategica"] = "estratégica", ["email"] = "e-mail", ["ligacao"] = "ligação",
     };
 
     /// <summary>EM_AQUISICAO -> "Em aquisição" (mesma regra do rotulo() da interface web).</summary>
@@ -40,6 +40,14 @@ public static class Texto
     public static string LikeLiteral(string s) => s.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
 
     public static string Moeda(decimal? v) => v is null ? "—" : v.Value.ToString("C", PtBr);
+
+    /// <summary>Valor resumido para cartões: R$ 950, R$ 480 mil, R$ 1,25 mi.</summary>
+    public static string MoedaCompacta(decimal v) => Math.Abs(v) switch
+    {
+        >= 1_000_000 => $"R$ {(v / 1_000_000m).ToString("0.##", PtBr)} mi",
+        >= 1_000 => $"R$ {(v / 1_000m).ToString("0.#", PtBr)} mil",
+        _ => v.ToString("C0", PtBr),
+    };
 
     public static string Data(DateOnly? d) => d is null ? "—" : d.Value.ToString("dd/MM/yyyy", PtBr);
 

@@ -63,6 +63,10 @@ else
         {
             <button class="aba @(aba == Aba.Agenda ? "ativa" : "")" @onclick="() => aba = Aba.Agenda">Agenda</button>
         }
+        @if (Usuario.Pode(Permissoes.CrmVer))
+        {
+            <button class="aba @(aba == Aba.Interessados ? "ativa" : "")" @onclick="() => aba = Aba.Interessados">Interessados</button>
+        }
     </div>
 
     @if (aba == Aba.Ficha)
@@ -94,6 +98,10 @@ else
     {
         <AgendaImovelAba ImovelId="Id" />
     }
+    else if (aba == Aba.Interessados)
+    {
+        <InteressadosAba ImovelId="Id" />
+    }
     else
     {
         <RegularizacoesAba ImovelId="Id" Editar="Editar" />
@@ -101,7 +109,7 @@ else
 }
 
 @code {
-    private enum Aba { Ficha, Financeiro, Regularizacao, Memorandos, Agenda }
+    private enum Aba { Ficha, Financeiro, Regularizacao, Memorandos, Agenda, Interessados }
 
     [Parameter] public Guid Id { get; set; }
 
