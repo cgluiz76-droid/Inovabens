@@ -46,7 +46,7 @@
                         <a class="btn btn-linha" href="site/imovel/@Im.Id">Ver o imóvel</a>
                     </div>
                 </div>
-            @if (Simulador is { } sim)
+            @if (Simulador is { } sim && Caixa is { } cx)
             {
                 <div class="bloco" id="simulador">
                     <h2>Simule o financiamento</h2>
@@ -72,36 +72,48 @@
                         <label>Idade do comprador mais velho <small class="mudo">(opcional)</small>
                             <input id="simIdade" type="number" min="18" max="80" inputmode="numeric" placeholder="ex.: 35" />
                         </label>
-                        <label>Juros nominais ao ano (+ TR)
-                            <input id="simTaxa" type="number" min="0" max="30" step="0.01" inputmode="decimal" value="@Num(sim.TaxaNominalAnual * 100, "0.00")" />
+                        <label>Renda familiar bruta (R$) <small class="mudo">(opcional)</small>
+                            <input id="simRenda" type="text" inputmode="numeric" autocomplete="off" placeholder="ex.: 8.000,00" />
                         </label>
                     </form>
-                    <div class="sim-resultado" aria-live="polite">
-                        <div><small>Valor financiado</small><b class="num" id="rFinanciado">@Brl(sim.ValorFinanciado)</b></div>
-                        <div class="destaque"><small id="rPrimeiraRotulo">1ª parcela</small><b class="num" id="rPrimeira">@Brl(sim.PrimeiraParcela)</b></div>
-                        <div id="rUltimaCaixa"><small>Última parcela</small><b class="num" id="rUltima">@Brl(sim.UltimaParcela)</b></div>
-                        <div><small>Renda familiar mínima</small><b class="num" id="rRenda">@Brl(sim.RendaMinima)</b></div>
-                        <div><small>Total de juros</small><b class="num" id="rJuros">@Brl(sim.TotalJuros)</b></div>
-                        <div><small>Taxa efetiva</small><b class="num" id="rEfetiva">@Pct(sim.TaxaEfetivaAnual) a.a.</b></div>
+
+                    <div class="sim-detalhe" id="simDetalhe" aria-live="polite">
+                        <div class="sim-detalhe-cab">
+                            <span class="banco-logo" id="dLogo"><img src="@cx.Banco.Logo" alt="@cx.Banco.Nome" /></span>
+                            <div>
+                                <b id="dNome">@cx.Banco.Nome</b>
+                                <small class="mudo" id="dTaxa">Taxa média de @Pct(cx.TaxaAno) ao ano + TR (Banco Central, @Mes(cx.Competencia))</small>
+                            </div>
+                        </div>
+                        <div class="sim-resultado">
+                            <div><small>Valor financiado</small><b class="num" id="rFinanciado">@Brl(sim.ValorFinanciado)</b></div>
+                            <div class="destaque"><small id="rPrimeiraRotulo">1ª parcela</small><b class="num" id="rPrimeira">@Brl(sim.PrimeiraParcela)</b></div>
+                            <div id="rUltimaCaixa"><small>Última parcela</small><b class="num" id="rUltima">@Brl(sim.UltimaParcela)</b></div>
+                            <div><small>Renda familiar mínima</small><b class="num" id="rRenda">@Brl(sim.RendaMinima)</b></div>
+                            <div><small>Total de juros</small><b class="num" id="rJuros">@Brl(sim.TotalJuros)</b></div>
+                            <div><small>Taxa efetiva</small><b class="num" id="rEfetiva">@Pct(sim.TaxaEfetivaAnual) a.a.</b></div>
+                        </div>
+                        <ul class="sim-notas" id="simNotas"></ul>
+                        <a class="btn btn-linha" id="dLink" href="@cx.Banco.LinkSimulacao" target="_blank" rel="noopener">Simular no site da Caixa ↗</a>
                     </div>
-                    <ul class="sim-notas" id="simNotas">
-                        @foreach (var n in NotasSimulador) { <li>@n</li> }
-                    </ul>
+
+                    <h3 class="sim-sub">Compare os bancos <small class="mudo">do menor para o maior valor de parcela</small></h3>
+                    <div class="sim-bancos" id="simBancos" role="radiogroup" aria-label="Bancos"></div>
+                    <div class="sim-mcmv" id="simMcmv" hidden></div>
+
                     <div class="sim-letras mudo">
                         <p>
-                            Cálculo com os parâmetros do crédito imobiliário da Caixa Econômica Federal (SBPE, conferidos em @FinanciamentoCaixa.ConferidoEm):
-                            financia até @Pct(FinanciamentoCaixa.CotaSac) do valor no SAC e até @Pct(FinanciamentoCaixa.CotaPrice) na Price;
-                            prazo de até @FinanciamentoCaixa.PrazoMaximo meses; idade mais prazo até 80 anos e 6 meses;
-                            parcela de até @Pct(FinanciamentoCaixa.ComprometimentoRenda) da renda bruta familiar;
-                            juros mensais iguais à taxa nominal anual dividida por 12.
-                            Imóveis de até @Brl0(FinanciamentoCaixa.TetoSfh) entram no SFH (de @Pct(FinanciamentoCaixa.TaxaSfhMinima) a @Pct(FinanciamentoCaixa.TaxaSfhBalcao) ao ano + TR);
-                            acima disso, no SFI (de @Pct(FinanciamentoCaixa.TaxaSfiMinima) a @Pct(FinanciamentoCaixa.TaxaSfiBalcao) ao ano + TR).
+                            Comparativo independente: as taxas são as médias que cada banco praticou no mês (Banco Central, financiamento
+                            imobiliário com taxas de mercado + TR), não uma oferta do banco. A sua taxa depende do relacionamento com o banco
+                            e da análise de crédito. As regras usadas são as gerais do mercado: financia até @Pct(FinanciamentoCaixa.CotaSac) do valor
+                            no SAC e até @Pct(FinanciamentoCaixa.CotaPrice) na Price; prazo de até @FinanciamentoCaixa.PrazoMaximo meses;
+                            idade mais prazo até 80 anos e 6 meses; parcela de até @Pct(FinanciamentoCaixa.ComprometimentoRenda) da renda bruta familiar.
                         </p>
                         <p>
                             Não entram na conta: a TR (atualiza o saldo todo mês), os seguros obrigatórios MIP e DFI (variam com a idade e o valor do imóvel),
-                            a taxa de administração de @Brl(FinanciamentoCaixa.TarifaAdministracao) por mês, ITBI, registro em cartório e avaliação do imóvel.
+                            tarifas de administração, ITBI, registro em cartório e avaliação do imóvel. Minha Casa, Minha Vida: regras e taxas
+                            conferidas em @ComparadorFinanciamento.McmvConferidoEm; subsídios das faixas 1 e 2 não entram na simulação.
                         </p>
-                        <a href="@FinanciamentoCaixa.SimuladorOficial" target="_blank" rel="noopener">Fazer a simulação oficial no site da Caixa ↗</a>
                     </div>
                     <script id="sim-dados" type="application/json">@((MarkupString)ParametrosSimulador)</script>
                 </div>
@@ -353,6 +365,8 @@
     [Parameter] public string? LinkImobibrasil { get; set; }
     /// <summary>Página só do simulador de financiamento (site/imovel/{id}/simulador), aberta em nova aba pelo botão da ficha.</summary>
     [Parameter] public bool SoSimulador { get; set; }
+    /// <summary>Taxas dos bancos do comparativo (só na página do simulador).</summary>
+    [Parameter] public IReadOnlyList<TaxaBanco>? Taxas { get; set; }
 
     private sealed record FotoSite(string Src, string? Legenda);
     private sealed record Paragrafo(string? Texto, IReadOnlyList<string>? Itens);
@@ -400,11 +414,11 @@
     private string LinkWhatsapp => $"https://wa.me/{SiteMoldura.Whatsapp}?text=" + Uri.EscapeDataString(MensagemWhatsapp);
     private string LinkLista => $"site/imoveis?finalidade={(Locacao ? "locacao" : "venda")}";
 
-    /* ---------------- simulador de financiamento (parâmetros em FinanciamentoCaixa) ---------------- */
+    /* ------- simulador de financiamento (regras em FinanciamentoCaixa, bancos e MCMV em ComparadorFinanciamento) ------- */
 
-    /// <summary>Primeira simulação, feita no servidor (SAC, entrada mínima, prazo máximo); o script recalcula ao mudar os campos.</summary>
+    /// <summary>Primeira simulação, feita no servidor com a taxa da Caixa (SAC, 20% de entrada, prazo máximo); o script recalcula ao mudar os campos.</summary>
     private SimulacaoFinanciamento? Simulador;
-    private List<string> NotasSimulador = [];
+    private TaxaBanco? Caixa;
     private string ParametrosSimulador = "{}";
 
     private static string Brl(decimal v) => v.ToString("C2", Br);
@@ -413,20 +427,7 @@
     private static string Pct(decimal v) => (v * 100).ToString("0.##", Br) + "%";
     private static string Num(decimal v, string formato = "0") => v.ToString(formato, CultureInfo.InvariantCulture);
     private static string PrazoTexto(int meses) => $"{meses / 12} anos{(meses % 12 > 0 ? $" e {meses % 12} meses" : "")} ({meses} meses)";
-
-    /// <summary>Avisos que dependem do valor do imóvel (o script mostra os mesmos ao recalcular).</summary>
-    private static List<string> Notas(decimal valor)
-    {
-        List<string> n = [];
-        if (!FinanciamentoCaixa.Sfh(valor))
-            n.Add($"Imóvel acima de {Brl0(FinanciamentoCaixa.TetoSfh)}: financiamento pelo SFI, com juros a partir de {Pct(FinanciamentoCaixa.TaxaSfiMinima)} ao ano + TR.");
-        else
-            n.Add($"Taxa de balcão da Caixa no SFH; clientes com relacionamento (conta, salário, débito automático) podem ter a partir de {Pct(FinanciamentoCaixa.TaxaSfhMinima)} ao ano + TR.");
-        if (valor <= FinanciamentoCaixa.TetoLinhasSociais)
-            n.Add("Conforme a renda e o uso do FGTS, o imóvel pode se enquadrar no Minha Casa, Minha Vida ou no Pró-Cotista, com juros menores.");
-        return n;
-    }
-
+    private static string Mes(DateOnly? d) => d is { } m ? m.ToString("MMM'/'yyyy", Br).Replace(".", "") : "mês de referência";
 
     protected override void OnParametersSet()
     {
@@ -487,20 +488,32 @@
         if (Im.ValorIptu is { } iptu) Custos.Add($"IPTU {iptu.ToString("C0", Br)}");
 
         Simulador = null;
-        if (!Locacao && Im.PrecoVenda is { } venda and > 0)
+        // a ficha (sem as taxas gravadas) usa as de referência só para decidir se mostra o botão do simulador
+        var taxas = Taxas is { Count: > 0 } ? Taxas : ComparadorFinanciamento.TaxasDeReferencia();
+        Caixa = taxas.FirstOrDefault(t => t.Banco.Codigo == "caixa");
+        if (!Locacao && Im.PrecoVenda is { } venda and > 0 && Caixa is { } cx)
         {
-            Simulador = FinanciamentoCaixa.Simular(venda, FinanciamentoCaixa.EntradaPadraoDe(venda), FinanciamentoCaixa.PrazoMaximo, FinanciamentoCaixa.TaxaPadrao(venda), sac: true);
-            NotasSimulador = Notas(venda);
+            Simulador = FinanciamentoCaixa.Simular(venda, FinanciamentoCaixa.EntradaPadraoDe(venda), FinanciamentoCaixa.PrazoMaximo,
+                ComparadorFinanciamento.NominalDeEfetiva(cx.TaxaAno), sac: true);
             ParametrosSimulador = System.Text.Json.JsonSerializer.Serialize(new
             {
                 cotaSac = FinanciamentoCaixa.CotaSac, cotaPrice = FinanciamentoCaixa.CotaPrice,
                 entradaPadrao = FinanciamentoCaixa.EntradaPadrao,
                 prazoMax = FinanciamentoCaixa.PrazoMaximo, idadeMaxMeses = FinanciamentoCaixa.IdadeMaximaMeses,
-                comprometimento = FinanciamentoCaixa.ComprometimentoRenda, tetoSfh = FinanciamentoCaixa.TetoSfh,
-                tetoSociais = FinanciamentoCaixa.TetoLinhasSociais,
-                taxaSfh = FinanciamentoCaixa.TaxaSfhBalcao, taxaSfhMin = FinanciamentoCaixa.TaxaSfhMinima,
-                taxaSfi = FinanciamentoCaixa.TaxaSfiBalcao, taxaSfiMin = FinanciamentoCaixa.TaxaSfiMinima,
-            });
+                comprometimento = FinanciamentoCaixa.ComprometimentoRenda,
+                padrao = "caixa",
+                bancos = taxas.Select(t => new
+                {
+                    codigo = t.Banco.Codigo, nome = t.Banco.Nome, sigla = t.Banco.Sigla, cor = t.Banco.Cor, corTexto = t.Banco.CorTexto,
+                    link = t.Banco.LinkSimulacao, cooperativa = t.Banco.Cooperativa, logo = t.Banco.Logo,
+                    taxaAno = t.TaxaAno, nominal = ComparadorFinanciamento.NominalDeEfetiva(t.TaxaAno), mes = Mes(t.Competencia),
+                }),
+                mcmv = new
+                {
+                    link = ComparadorFinanciamento.McmvLink, logo = ComparadorFinanciamento.McmvLogo,
+                    faixas = ComparadorFinanciamento.FaixasMcmv.Select(f => new { numero = f.Numero, renda = f.RendaMaxima, teto = f.TetoImovel, min = f.TaxaMinima, max = f.TaxaMaxima }),
+                },
+            }).Replace("<", "\\u003c"); // dentro de <script>: nunca fecha a tag
         }
 
         Selos = [];

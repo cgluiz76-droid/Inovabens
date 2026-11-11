@@ -50,6 +50,9 @@ public static class Registro
         services.AddScoped<ComprovantesService>();
         services.AddScoped<ExtratoService>();
         services.AddScoped<IndicesService>();
+        services.AddScoped(s => new TaxasFinanciamentoService(
+            s.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<InovabensDb>>(),
+            s.GetRequiredService<Microsoft.Extensions.Logging.ILogger<TaxasFinanciamentoService>>()));
         services.AddScoped<RetornoService>();
         services.AddScoped<PessoasService>();
         services.AddScoped<MemorandosService>();

@@ -225,3 +225,30 @@ button { font: inherit; color: inherit; }
 .sim-notas { margin: 0; padding-left: 18px; font-size: .86rem; display: grid; gap: 4px; }
 .sim-letras { font-size: .78rem; display: grid; gap: 6px; }
 .sim-letras p { margin: 0; }
+
+/* comparativo dos bancos (logos oficiais em wwwroot/bancos, num selo branco) */
+.sim-sub { font-size: 1rem; margin: 22px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.sim-sub small { font-weight: 500; font-size: .8rem; }
+.sim-bancos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 10px; }
+@media (max-width: 720px) { .sim-bancos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.banco-cartao { position: relative; display: grid; gap: 8px; justify-items: start; text-align: left; font: inherit; color: var(--texto);
+    background: var(--sup); border: 1px solid var(--borda); border-radius: 12px; padding: 12px; cursor: pointer; }
+.banco-cartao:hover:not(:disabled) { border-color: var(--acento); }
+.banco-cartao[aria-checked=true] { border-color: var(--acento); box-shadow: inset 0 0 0 2px var(--acento); }
+.banco-cartao:disabled { cursor: default; opacity: .85; }
+.banco-logo { display: inline-grid; place-items: center; width: 112px; height: 40px; padding: 5px 10px; border-radius: 8px;
+    background: #fff; border: 1px solid var(--borda); box-sizing: border-box; }
+.banco-logo img { width: 100%; height: 100%; min-height: 0; object-fit: contain; display: block; }
+.banco-logo.mcmv { width: 64px; height: 64px; padding: 4px; }
+.banco-info { display: grid; gap: 1px; }
+.banco-info b { font-family: var(--f-titulo); color: var(--titulo); font-size: 1rem; }
+.banco-info small { color: var(--mudo); font-size: .76rem; }
+.banco-selo { position: absolute; top: -9px; right: 10px; background: var(--acento); color: #fff; font-size: .68rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px; }
+.sim-mcmv { margin-top: 10px; }
+.sim-mcmv .banco-cartao { grid-template-columns: auto 1fr; align-items: center; width: 100%; border-style: dashed; }
+.sim-mcmv .mcmv-chamada { color: #1B7F3B; font-weight: 700; }
+.sim-detalhe { margin-top: 16px; border: 1px solid var(--borda); border-radius: 14px; padding: 14px; display: grid; gap: 12px; background: var(--sup-2); }
+.sim-detalhe-cab { display: flex; gap: 12px; align-items: center; }
+.sim-detalhe-cab > div { display: grid; }
+.sim-detalhe .btn { justify-self: start; }

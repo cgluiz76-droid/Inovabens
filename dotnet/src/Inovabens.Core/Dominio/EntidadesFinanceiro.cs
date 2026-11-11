@@ -140,6 +140,18 @@ public class ComprovanteFinanceiro
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>Taxa média (fração: 0,1205 = 12,05%) de financiamento imobiliário de um banco no mês, do Banco Central.</summary>
+[Table("taxas_financiamento")]
+public class TaxaFinanciamento
+{
+    public string Cnpj8 { get; set; } = "";
+    public DateOnly Competencia { get; set; }
+    public string Instituicao { get; set; } = "";
+    public decimal TaxaMes { get; set; }
+    public decimal TaxaAno { get; set; }
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>Variação mensal (%) de um índice econômico (IPCA, INCC, IGP-M, Selic). Competência = dia 1.</summary>
 [Table("indices_serie")]
 public class IndiceSerie

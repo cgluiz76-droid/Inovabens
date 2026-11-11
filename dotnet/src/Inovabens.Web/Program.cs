@@ -24,6 +24,7 @@ var builder = WebApplication.CreateBuilder(args);
 var opcoes = InovabensOpcoes.De(builder.Configuration, builder.Environment.IsProduction());
 builder.Services.AddInovabensCore(opcoes);
 builder.Services.AddHostedService<SincronizacaoIndicesJob>();
+builder.Services.AddHostedService<TaxasFinanciamentoJob>();
 builder.Services.AddHostedService<AlertasCompromissosJob>();
 builder.Services.AddHostedService<ExpiracaoPropostasJob>();
 builder.Services.AddHostedService<RotinaFinanceiraDiariaJob>();
@@ -192,15 +193,15 @@ imovel.MapGet("ficha-financeira.xlsx", (Guid id, CodigoIndice? indice, HttpConte
 
 // Pré-visualização do site público (páginas próprias, abertas em outra aba pelo botão "Ver no site"):
 // /site (início), /site/imoveis?finalidade=venda|locacao (busca) e /site/imovel/{id} (ficha). Logo e menu ligam as três.
-Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s) => PaginaImovelSite(id, c, s, false);
-async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, bool soSimulador)
+Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s) => PaginaImovelSite(id, c, s, null);
+async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, TaxasFinanciamentoService? taxas)
 {
     try
     {
         var d = await s.DetalheAsync(UsuarioAtual.De(c.User)!, id);
         var linkAtual = d.Dados.ImobibrasilId is { } ib ? $"https://www.inovabens.com.br/imovel/{ib}" : null;
         return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
-            new { Detalhe = d, LinkImobibrasil = linkAtual, SoSimulador = soSimulador });
+            new { Detalhe = d, LinkImobibrasil = linkAtual, SoSimulador = taxas is not null, Taxas = taxas is null ? null : await taxas.AtuaisAsync(c.RequestAborted) });
     }
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
@@ -225,7 +226,7 @@ app.MapGet("/admin/modelos/{id:guid}/arquivo", (Guid id, HttpContext c, Document
 
 var site = app.MapGroup("/site").RequireAuthorization(Permissoes.ImoveisVer);
 site.MapGet("imovel/{id:guid}", FichaSite);
-site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s) => PaginaImovelSite(id, c, s, true));
+site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s, TaxasFinanciamentoService t) => PaginaImovelSite(id, c, s, t));
 site.MapGet("", async (HttpContext c, ImoveisService s) =>
 {
     var u = UsuarioAtual.De(c.User)!;

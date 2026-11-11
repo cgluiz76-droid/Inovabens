@@ -39,6 +39,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Receita> Receitas => Set<Receita>();
     public DbSet<ComprovanteFinanceiro> ComprovantesFinanceiros => Set<ComprovanteFinanceiro>();
     public DbSet<IndiceSerie> IndicesSerie => Set<IndiceSerie>();
+    public DbSet<TaxaFinanciamento> TaxasFinanciamento => Set<TaxaFinanciamento>();
     public DbSet<WhatsappMensagem> WhatsappMensagens => Set<WhatsappMensagem>();
     public DbSet<Alerta> Alertas => Set<Alerta>();
 
@@ -173,6 +174,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         mb.Entity<Pessoa>().HasMany(x => x.Papeis).WithOne().HasForeignKey(x => x.PessoaId);
         mb.Entity<PessoaPapel>().HasKey(x => new { x.PessoaId, x.Papel });
         mb.Entity<PerfilPessoa>().HasKey(x => x.Codigo);
+        mb.Entity<TaxaFinanciamento>().HasKey(x => new { x.Cnpj8, x.Competencia });
         mb.Entity<Memorando>().HasOne(x => x.Autor).WithMany().HasForeignKey(x => x.AutorId);
         mb.Entity<Compromisso>(e =>
         {

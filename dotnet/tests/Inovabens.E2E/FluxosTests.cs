@@ -411,14 +411,42 @@ public class FluxosTests(Aplicacao app)
         await Expect(aba.GetByRole(AriaRole.Heading, new() { Name = titulo, Level = 1 })).ToBeVisibleAsync();
         await aba.CloseAsync();
 
-        // página do simulador: SAC com 20% de entrada, 420 meses, 11,49% a.a. nominal (Caixa, balcão)
+        // página do simulador: abre na Caixa, SAC com 20% de entrada, 420 meses e a taxa média do Banco Central
+        // (sem a série gravada, a de referência: 12,05% efetiva ao ano = 11,43% nominal)
         await p.GotoAsync($"/site/imovel/{id}/simulador");
         await Expect(p.GetByRole(AriaRole.Heading, new() { Name = "Simule o financiamento" })).ToBeVisibleAsync();
         await Expect(p.GetByText("Isto é uma simulação.")).ToBeVisibleAsync();
         await Expect(p.GetByText("depende de análise de crédito e aprovação da instituição financeira", new() { Exact = false })).ToBeVisibleAsync();
-        await Expect(p.Locator("#rPrimeira")).ToHaveTextAsync("R$ 4.782,38");
+        await Expect(p.Locator("#dNome")).ToHaveTextAsync("Caixa Econômica Federal");
+        await Expect(p.Locator("#rPrimeira")).ToHaveTextAsync("R$ 4.762,91");
         await Expect(p.Locator("#rFinanciado")).ToHaveTextAsync("R$ 400.000,00");
-        // Price: a Caixa financia até 70%, então a entrada sobe para 30% e a parcela fica fixa
+        await Expect(p.Locator("#dLink")).ToHaveAttributeAsync("href", "https://simuladorhabitacao.caixa.gov.br/");
+
+        // comparativo: 8 bancos do menor para o maior valor de parcela; o primeiro leva o selo
+        var cartoes = p.Locator("#simBancos .banco-cartao");
+        await Expect(cartoes).ToHaveCountAsync(8);
+        await Expect(cartoes.First).ToContainTextAsync("Menor parcela");
+        await Expect(cartoes.First.Locator("img")).ToHaveAttributeAsync("alt", "Sicoob");
+        await Expect(cartoes.Last.Locator("img")).ToHaveAttributeAsync("alt", "Banco do Brasil");
+        await Expect(p.Locator("#simBancos [aria-checked=true] img")).ToHaveAttributeAsync("alt", "Caixa Econômica Federal");
+        // logos oficiais carregados (wwwroot/bancos)
+        Assert.True(await p.Locator("#simBancos img").EvaluateAllAsync<bool>("imgs => imgs.every(i => i.complete && i.naturalWidth > 0)"));
+        // outro banco: troca o detalhe e o botão de simulação oficial
+        await cartoes.First.ClickAsync();
+        await Expect(p.Locator("#dNome")).ToHaveTextAsync("Sicoob");
+        await Expect(p.Locator("#rPrimeira")).ToHaveTextAsync("R$ 4.382,55");
+        await Expect(p.Locator("#dLink")).ToHaveTextAsync("Simular no site do Sicoob ↗");
+        await Expect(p.Locator("#simNotas")).ToContainTextAsync("Cooperativa de crédito");
+        // Minha Casa, Minha Vida: imóvel de R$ 500 mil cabe na faixa 4; a renda define a faixa
+        await Expect(p.Locator("#simMcmv")).ToContainTextAsync("Faixa 4");
+        await p.Locator("#simMcmv .banco-cartao").ClickAsync();
+        await Expect(p.Locator("#dNome")).ToHaveTextAsync("Minha Casa, Minha Vida");
+        await p.Locator("#simRenda").FillAsync("900000"); // R$ 9.000,00: faixa 3, que vai só até R$ 400 mil
+        await Expect(p.Locator("#simMcmv")).ToContainTextAsync("o imóvel pode custar até");
+        await Expect(p.Locator("#dNome")).ToHaveTextAsync("Caixa Econômica Federal");
+        await p.Locator("#simRenda").FillAsync("");
+
+        // Price: os bancos financiam até 70%, então a entrada sobe para 30% e a parcela fica fixa
         await p.GetByText("Price", new() { Exact = true }).ClickAsync();
         await Expect(p.Locator("#rPrimeiraRotulo")).ToHaveTextAsync("Parcela fixa");
         await Expect(p.Locator("#rFinanciado")).ToHaveTextAsync("R$ 350.000,00");
