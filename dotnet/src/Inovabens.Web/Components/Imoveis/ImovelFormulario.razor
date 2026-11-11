@@ -151,6 +151,36 @@
         <InputTextArea class="input" rows="3" @bind-Value="Form.DescricaoInterna" />
     </label>
 
+    <fieldset class="campo">
+        <span>Projeto (acompanhamento da engenharia)</span>
+        <div class="grade-4">
+            <label class="campo">
+                <span>Status</span>
+                <InputSelect class="input" @bind-Value="Form.ProjetoStatus">
+                    <option value="">—</option>
+                    @foreach (var s in ComAtual(RegrasImovel.ProjetoStatus, Form.ProjetoStatus))
+                    {
+                        <option value="@s">@s</option>
+                    }
+                </InputSelect>
+            </label>
+            <label class="campo col-2">
+                <span>Etapa da estratégia</span>
+                <InputSelect class="input" @bind-Value="Form.ProjetoEtapa">
+                    <option value="">—</option>
+                    @foreach (var s in ComAtual(RegrasImovel.ProjetoEtapas, Form.ProjetoEtapa))
+                    {
+                        <option value="@s">@s</option>
+                    }
+                </InputSelect>
+            </label>
+            <label class="campo">
+                <span>Previsão de entrega</span>
+                <InputDate class="input" @bind-Value="Form.ProjetoPrevisaoEntrega" />
+            </label>
+        </div>
+    </fieldset>
+
     <div class="checks">
         <label><InputCheckbox @bind-Value="Form.DivulgarSite" /> Divulgar no site</label>
         <label><InputCheckbox @bind-Value="Form.EnderecoPublico" /> Endereço público</label>
@@ -165,6 +195,10 @@
     [Parameter, EditorRequired] public ImovelForm Form { get; set; } = default!;
     [Parameter, EditorRequired] public Func<ImovelForm, Task> AoSalvar { get; set; } = default!;
     [Parameter] public string RotuloBotao { get; set; } = "Salvar";
+
+    // mantém na lista um valor gravado que não está mais entre as opções (não some ao editar)
+    private static IEnumerable<string> ComAtual(IReadOnlyList<string> lista, string? atual) =>
+        atual is null || lista.Contains(atual) ? lista : lista.Append(atual);
 
     private IReadOnlyList<Opcao> corretores = [];
     private IReadOnlyList<string> tipos = [];

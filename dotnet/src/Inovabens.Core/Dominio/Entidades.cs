@@ -63,6 +63,11 @@ public class Imovel
     public decimal? ValorIptu { get; set; }
     /// <summary>Vídeo do anúncio no YouTube.</summary>
     public string? VideoUrl { get; set; }
+    /// <summary>Acompanhamento do projeto (engenharia), como era no Notion: Não iniciada, Em andamento, Concluído.</summary>
+    public string? ProjetoStatus { get; set; }
+    /// <summary>Etapa da estratégia (Aguardando início, Desenvolvimento técnico, ... Vitrine).</summary>
+    public string? ProjetoEtapa { get; set; }
+    public DateOnly? ProjetoPrevisaoEntrega { get; set; }
     public bool DivulgarSite { get; set; }
     public Guid? CorretorResponsavelId { get; set; }
     /// <summary>Nome da pasta principal do imóvel no Google Drive ("Nome para Drive do Empreendimento").</summary>

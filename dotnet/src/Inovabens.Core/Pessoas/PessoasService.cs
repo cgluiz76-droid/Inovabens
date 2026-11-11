@@ -41,6 +41,12 @@ public sealed class PessoaForm : IValidatableObject
     public DateTime? LgpdConsentimentoEm { get; set; }
     public List<PapelEntrada> Papeis { get; set; } = [];
 
+    /// <summary>
+    /// Imóveis a que a pessoa está ligada (imovel_envolvidos). Null = não mexe nos vínculos (quem não usa o campo,
+    /// como o CRM, não apaga o que já existe).
+    /// </summary>
+    public List<Guid>? Imoveis { get; set; }
+
     /// <summary>CPF/CNPJ sem máscara (como grava a versão Node); o CNPJ alfanumérico mantém as letras.</summary>
     public string? DocumentoDigitos => Formatos.DocumentoSemMascara(CpfCnpj);
 
@@ -140,6 +146,7 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
         form.AplicarEm(p);
         p.Papeis = form.PapeisPara(p.Id);
         db.Pessoas.Add(p);
+        await SincronizarImoveis(db, u, p, form);
         audit.Registrar(db, u.Id, "pessoas", p.Id, "CRIAR", depois: p);
         await db.SaveChangesAsync();
         return p.Id;
@@ -155,6 +162,7 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
         var antes = p.Copia();
         form.AplicarEm(p);
         SincronizarPapeis(db, p, form.PapeisPara(p.Id));
+        await SincronizarImoveis(db, u, p, form);
         audit.Registrar(db, u.Id, "pessoas", id, "ATUALIZAR", antes, p);
         await db.SaveChangesAsync();
     }
@@ -165,6 +173,49 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
         if (codigos.Count == 0) return;
         var existentes = await db.PerfisPessoa.CountAsync(x => codigos.Contains(x.Codigo));
         if (existentes != codigos.Count) throw new RegraNegocioException("Papeis", "Perfil de pessoa inválido.");
+    }
+
+    /// <summary>Imóveis ligados à pessoa (para o campo de seleção do cadastro).</summary>
+    public async Task<List<Guid>> ImoveisDaPessoaAsync(UsuarioAtual u, Guid pessoaId)
+    {
+        u.Exigir(P.PessoasVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        return await db.ImovelEnvolvidos.Where(e => e.PessoaId == pessoaId).Select(e => e.ImovelId).Distinct().ToListAsync();
+    }
+
+    /// <summary>Códigos dos imóveis de cada pessoa da lista (coluna "Imóveis").</summary>
+    public async Task<Dictionary<Guid, List<string>>> CodigosImoveisAsync(UsuarioAtual u, IReadOnlyCollection<Guid> pessoas)
+    {
+        u.Exigir(P.PessoasVer);
+        if (pessoas.Count == 0) return [];
+        await using var db = await fabrica.CreateDbContextAsync();
+        var pares = await db.ImovelEnvolvidos.Where(e => pessoas.Contains(e.PessoaId))
+            .Join(db.Imoveis.Where(i => i.ExcluidoEm == null), e => e.ImovelId, i => i.Id, (e, i) => new { e.PessoaId, i.Codigo })
+            .Distinct().ToListAsync();
+        return pares.GroupBy(x => x.PessoaId).ToDictionary(g => g.Key, g => g.Select(x => x.Codigo).Order().ToList());
+    }
+
+    /// <summary>
+    /// Grava os imóveis marcados: cria o vínculo (com o primeiro perfil da pessoa e a especialidade como observação) e
+    /// remove os desmarcados. Imóveis que o usuário não enxerga (corretor) ficam como estão.
+    /// </summary>
+    private static async Task SincronizarImoveis(InovabensDb db, UsuarioAtual u, Pessoa p, PessoaForm form)
+    {
+        if (form.Imoveis is null) return;
+        var marcados = form.Imoveis.Distinct().ToList();
+        var visiveis = await db.Imoveis.Where(i => i.ExcluidoEm == null).VisiveisPara(u).Select(i => i.Id).ToListAsync();
+        if (marcados.Except(visiveis).Any()) throw new RegraNegocioException("Imoveis", "Imóvel inválido.");
+
+        var atuais = p.Id == Guid.Empty ? [] : await db.ImovelEnvolvidos.Where(e => e.PessoaId == p.Id).ToListAsync();
+        db.ImovelEnvolvidos.RemoveRange(atuais.Where(e => visiveis.Contains(e.ImovelId) && !marcados.Contains(e.ImovelId)));
+        var novos = marcados.Where(id => atuais.All(e => e.ImovelId != id)).ToList();
+        if (novos.Count == 0) return;
+
+        var codigos = p.Papeis.Select(x => x.Papel).ToList();
+        var papel = await db.PerfisPessoa.Where(x => codigos.Contains(x.Codigo)).OrderBy(x => x.Ordem).Select(x => x.Codigo).FirstOrDefaultAsync()
+            ?? throw new RegraNegocioException("Imoveis", "Marque um perfil da pessoa para ligá-la a imóveis.");
+        var obs = p.Papeis.First(x => x.Papel == papel).Especialidade;
+        db.ImovelEnvolvidos.AddRange(novos.Select(id => new ImovelEnvolvido { ImovelId = id, PessoaId = p.Id, Papel = papel, Observacao = obs }));
     }
 
     /// <summary>Atualiza a lista de papéis no lugar (chave composta pessoa+papel não pode ser apagada e recriada no mesmo SaveChanges).</summary>

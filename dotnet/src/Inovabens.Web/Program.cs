@@ -133,6 +133,54 @@ if (args.Contains("importar-imobibrasil"))
     return;
 }
 
+// `dotnet Inovabens.Web.dll importar-notion [--usuario=email] [--simular] [--token-arquivo=caminho] [--mapear="PROJETO=REF"]...`
+// traz o workspace do Notion (só leitura lá). Token da integração em NOTION_TOKEN ou no arquivo. --simular desfaz tudo no fim.
+if (args.Contains("importar-notion"))
+{
+    string? Arg(string nome) => args.FirstOrDefault(a => a.StartsWith($"--{nome}=", StringComparison.Ordinal))?[(nome.Length + 3)..];
+    var token = Environment.GetEnvironmentVariable("NOTION_TOKEN");
+    if (Arg("token-arquivo") is { } arq) token = (await File.ReadAllTextAsync(arq)).Trim();
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        Console.Error.WriteLine("Informe o token da integração do Notion em NOTION_TOKEN ou --token-arquivo=caminho.");
+        Environment.ExitCode = 1;
+        return;
+    }
+    var mapear = args.Where(a => a.StartsWith("--mapear=", StringComparison.Ordinal)).Select(a => a[9..].Split('=', 2))
+        .Where(p => p.Length == 2).ToDictionary(p => p[0], p => p[1]);
+    using var escopo = app.Services.CreateScope();
+    var sp = escopo.ServiceProvider;
+    var fabricaDb = sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<InovabensDb>>();
+    Guid usuarioId;
+    await using (var db = await fabricaDb.CreateDbContextAsync())
+    {
+        var email = Arg("usuario");
+        usuarioId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            db.Usuarios.Where(x => x.Ativo && x.ExcluidoEm == null && (email == null ? x.Perfil!.Nome == "Administrador" : x.Email == email))
+                .OrderBy(x => x.CriadoEm).Select(x => x.Id));
+    }
+    var usuario = usuarioId == Guid.Empty ? null : await sp.GetRequiredService<AuthService>().RecarregarAsync(usuarioId);
+    if (usuario is null)
+    {
+        Console.Error.WriteLine("Usuário não encontrado (informe --usuario=email de um usuário ativo).");
+        Environment.ExitCode = 1;
+        return;
+    }
+    var simular = args.Contains("--simular");
+    var r = await sp.GetRequiredService<Inovabens.Core.Notion.ImportacaoNotionService>().ImportarAsync(usuario,
+        new Inovabens.Core.Notion.NotionCliente(token), simular, mapear, Console.WriteLine);
+    Console.WriteLine();
+    Console.WriteLine(simular ? "=== SIMULAÇÃO (nada foi gravado) ===" : "=== IMPORTAÇÃO CONCLUÍDA ===");
+    foreach (var d in r.Detalhes) Console.WriteLine("  " + d);
+    Console.WriteLine();
+    Console.WriteLine("Totais:");
+    foreach (var (k, v) in r.Contagem) Console.WriteLine($"  {k}: {v}");
+    Console.WriteLine();
+    Console.WriteLine($"Pendências ({r.Pendencias.Count}):");
+    foreach (var p in r.Pendencias.Distinct()) Console.WriteLine("  - " + p);
+    return;
+}
+
 app.UseForwardedHeaders();
 app.UseRateLimiter(); // depois do UseForwardedHeaders: limita pelo IP real do cliente
 

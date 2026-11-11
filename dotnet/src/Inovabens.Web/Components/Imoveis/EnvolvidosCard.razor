@@ -1,0 +1,32 @@
+@* Pessoas ligadas ao imóvel (equipe, parceiros, prestadores, terceiros...). O vínculo é feito no cadastro da pessoa. *@
+
+<section class="card">
+    <h2>Envolvidos</h2>
+    <p class="pequeno mudo">Pessoas ligadas a este imóvel. Para incluir ou tirar alguém, use o campo "Imóveis vinculados" no cadastro de <a href="pessoas">Pessoas</a>.</p>
+    @if (Detalhe.Envolvidos.Count == 0)
+    {
+        <p class="pequeno mudo">Nenhum envolvido.</p>
+    }
+    else
+    {
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Nome</th><th>Perfil</th><th>Atributo / observação</th></tr></thead>
+                <tbody>
+                    @foreach (var e in Detalhe.Envolvidos.OrderBy(e => e.PapelNome).ThenBy(e => e.PessoaNome))
+                    {
+                        <tr>
+                            <td>@e.PessoaNome</td>
+                            <td><span class="badge">@e.PapelNome</span></td>
+                            <td class="pequeno">@(e.Observacao ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
+}

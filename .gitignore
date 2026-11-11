@@ -20,3 +20,6 @@ google-drive*.json
 
 # token do Fly.io (nunca commitar)
 Fly.md
+
+# token da integração do Notion (só leitura)
+NotionToken.txt

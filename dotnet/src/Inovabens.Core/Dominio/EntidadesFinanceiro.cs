@@ -140,6 +140,18 @@ public class ComprovanteFinanceiro
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>Item do Notion já importado (página, linha de tabela, arquivo) e o registro que ele virou no sistema.</summary>
+[Table("notion_importacoes")]
+public class NotionImportacao
+{
+    public string NotionId { get; set; } = "";
+    /// <summary>PESSOA, IMOVEL, MEMORANDO, COMPROMISSO, ARQUIVO, ENVOLVIDO.</summary>
+    public string Tipo { get; set; } = "";
+    public Guid EntidadeId { get; set; }
+    public DateTime? EditadoNotionEm { get; set; }
+    public DateTime ImportadoEm { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>Taxa média (fração: 0,1205 = 12,05%) de financiamento imobiliário de um banco no mês, do Banco Central.</summary>
 [Table("taxas_financiamento")]
 public class TaxaFinanciamento

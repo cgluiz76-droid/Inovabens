@@ -124,6 +124,11 @@ public sealed class ImovelForm : IValidatableObject
     public decimal? ValorIptu { get; set; }
     [StringLength(300)] public string? VideoUrl { get; set; }
 
+    /// <summary>Acompanhamento do projeto (engenharia), opções em <see cref="RegrasImovel.ProjetoStatus"/>.</summary>
+    [StringLength(30)] public string? ProjetoStatus { get; set; }
+    [StringLength(40)] public string? ProjetoEtapa { get; set; }
+    public DateOnly? ProjetoPrevisaoEntrega { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {
         if (Texto.Limpo(VideoUrl) is { } v && RegrasImovel.IdYoutube(v) is null)
@@ -178,6 +183,7 @@ public sealed class ImovelForm : IValidatableObject
         Zona = i.Zona, Regiao = i.Regiao, PontoReferencia = i.PontoReferencia, Pavimento = i.Pavimento,
         AnoConstrucao = i.AnoConstrucao, Salas = i.Salas, AceitaPermuta = i.AceitaPermuta, EmCondominio = i.EmCondominio,
         ValorCondominio = i.ValorCondominio, ValorIptu = i.ValorIptu, VideoUrl = i.VideoUrl,
+        ProjetoStatus = i.ProjetoStatus, ProjetoEtapa = i.ProjetoEtapa, ProjetoPrevisaoEntrega = i.ProjetoPrevisaoEntrega,
     };
 
     /// <summary>Copia para a entidade normalizando: texto vazio vira null, UF em maiúsculas.</summary>
@@ -201,6 +207,8 @@ public sealed class ImovelForm : IValidatableObject
         i.Pavimento = Texto.Limpo(Pavimento); i.AnoConstrucao = AnoConstrucao; i.Salas = Salas;
         i.AceitaPermuta = AceitaPermuta; i.EmCondominio = EmCondominio; i.ValorCondominio = ValorCondominio; i.ValorIptu = ValorIptu;
         i.VideoUrl = Texto.Limpo(VideoUrl);
+        i.ProjetoStatus = Texto.Limpo(ProjetoStatus); i.ProjetoEtapa = Texto.Limpo(ProjetoEtapa);
+        i.ProjetoPrevisaoEntrega = ProjetoPrevisaoEntrega;
     }
 }
 

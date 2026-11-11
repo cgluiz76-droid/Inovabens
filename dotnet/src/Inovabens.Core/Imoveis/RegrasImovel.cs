@@ -9,6 +9,16 @@ public sealed record ArquivoArmazenado(string Extensao, string ContentType, bool
 /// <summary>Regras de negócio puras do módulo (sem banco), fáceis de testar.</summary>
 public static class RegrasImovel
 {
+    /// <summary>Status do projeto (como no Notion).</summary>
+    public static readonly IReadOnlyList<string> ProjetoStatus = ["Não iniciada", "Em andamento", "Concluído"];
+
+    /// <summary>Etapas da estratégia do projeto (como no Notion), na ordem do processo.</summary>
+    public static readonly IReadOnlyList<string> ProjetoEtapas =
+    [
+        "Aguardando início", "Definir estratégia", "Desenvolvimento técnico", "Análise externa", "Aprovação/registro",
+        "Pendente cliente", "Vitrine", "Concluído",
+    ];
+
     private static readonly HashSet<string> Imagens = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic", "image/heif"];
     private static readonly HashSet<string> Videos = ["video/mp4", "video/webm", "video/quicktime"];
 
