@@ -112,6 +112,19 @@ public sealed class ExpiracaoPropostasJob(IServiceScopeFactory e, InovabensOpcoe
     }
 }
 
+/// <summary>Todo dia às 07:00: leads e processos parados além do prazo da etapa avisam o responsável no sino.</summary>
+public sealed class PrazosEtapasJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<PrazosEtapasJob> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "prazos das etapas";
+    protected internal override DateTime ProximaBR(DateTime agoraBR) => Diaria(agoraBR, 7);
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        var r = await sp.GetRequiredService<PrazosService>().VerificarAsync(ct);
+        if (r.Criados + r.Resolvidos > 0) Log.LogInformation("Prazos das etapas: {Criados} alerta(s) criado(s), {Resolvidos} resolvido(s)", r.Criados, r.Resolvidos);
+    }
+}
+
 /// <summary>A cada 10 min: puxa alterações das agendas Google conectadas (complementa o webhook).</summary>
 public sealed class SincronizacaoGoogleJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<SincronizacaoGoogleJob> log) : Rotina(e, o, log)
 {

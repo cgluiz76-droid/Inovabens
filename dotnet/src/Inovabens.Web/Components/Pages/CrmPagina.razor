@@ -103,6 +103,13 @@ else
                 @RotuloSituacao(s) <b>@Contar(s)</b>
             </button>
         }
+        @if (ForaDoPrazo > 0 || soForaDoPrazo)
+        {
+            <button class="chip-situacao situacao-atrasado @(soForaDoPrazo ? "ativo" : "")" title="Parados além do prazo da etapa"
+                    @onclick="() => soForaDoPrazo = !soForaDoPrazo">
+                ⏳ Fora do prazo <b>@ForaDoPrazo</b>
+            </button>
+        }
         @if (Fila > 0 || responsavelFiltro == FiltroFila)
         {
             <button class="chip-situacao chip-fila @(responsavelFiltro == FiltroFila ? "ativo" : "")"
@@ -288,7 +295,14 @@ else
                             {
                                 <span class="situacao situacao-@l.Situacao.ToString().ToLowerInvariant()" title="@TituloSituacao(l)">@RotuloSituacao(l.Situacao)</span>
                             }
-                            <span class="pequeno mudo" title="Dias neste estágio">⏳ @l.DiasNaFase d</span>
+                            @if (col.Estagio.Estourou(l.DiasNaFase))
+                            {
+                                <span class="pequeno texto-erro forte" title="Passou do prazo da etapa (@col.Estagio.PrazoDias dias)">⏳ @l.DiasNaFase d · prazo @col.Estagio.PrazoDias</span>
+                            }
+                            else
+                            {
+                                <span class="pequeno mudo" title="Dias neste estágio">⏳ @l.DiasNaFase d</span>
+                            }
                         </div>
                         @if (abre)
                         {
@@ -384,8 +398,13 @@ else
 
     private int Fila => colunas?.SelectMany(c => c.Leads).Count(l => l.NaFila) ?? 0;
 
+    private bool soForaDoPrazo;
+
+    private int ForaDoPrazo => colunas?.Sum(c => c.Leads.Count(l => c.Estagio.Estourou(l.DiasNaFase))) ?? 0;
+
     private bool PassaSituacao(LeadCartao l, FunilEstagio e) =>
-        situacaoFiltro is not { } s || (e.Tipo != TipoEstagio.PERDIDO && l.Situacao == s);
+        (situacaoFiltro is not { } s || (e.Tipo != TipoEstagio.PERDIDO && l.Situacao == s))
+        && (!soForaDoPrazo || e.Estourou(l.DiasNaFase));
 
     /// <param name="raia">Responsável da raia; null com <paramref name="fila"/> = a raia dos sem responsável.</param>
     private IReadOnlyList<ColunaFunil> ColunasVisiveis(Guid? raia = null, bool fila = false) =>
@@ -449,7 +468,7 @@ else
         public FunilEstagio Destino { get; } = destino;
         public int? Ordem { get; } = ordem;
         public bool Manter { get; set; } = lead.ProximoTitulo is not null && lead.ProximaAcaoEm > DateTime.UtcNow;
-        public ProximoPassoForm Proximo { get; } = Novo(destino.Tipo == TipoEstagio.GANHO ? TipoCompromisso.TAREFA : TipoCompromisso.LIGACAO);
+        public ProximoPassoForm Proximo { get; } = Sugerido(destino);
     }
     private Movimento? movimento;
 
@@ -474,6 +493,14 @@ else
 
     /// <summary>O imóvel filtrado continua na lista mesmo se vendido/arquivado (veio da ficha dele).</summary>
     private IReadOnlyList<Opcao> OpcoesFiltro => imoveisFiltro;
+
+    /// <summary>Próximo passo já preenchido com a sugestão da etapa de destino (Configurações → Estágios do funil).</summary>
+    private static ProximoPassoForm Sugerido(FunilEstagio destino)
+    {
+        var f = new ProximoPassoForm();
+        f.Sugerir(destino, destino.Tipo == TipoEstagio.GANHO ? TipoCompromisso.TAREFA : TipoCompromisso.LIGACAO);
+        return f;
+    }
 
     private static ProximoPassoForm Novo(TipoCompromisso tipo)
     {

@@ -41,10 +41,12 @@ public sealed class DadosIniciais(InovabensOpcoes op, ILogger<DadosIniciais> log
             for (var i = 0; i < PadroesIniciais.EstagiosDo(funil).Count; i++)
             {
                 var e = PadroesIniciais.EstagiosDo(funil)[i];
+                var s = PadroesIniciais.SugestaoDe(funil, e.Nome);
                 await Exec(con, tx, """
-                    INSERT INTO funil_estagios (funil, nome, tipo, cor, ordem)
-                    VALUES (@f::funil, @n, @t::tipo_estagio, @c, @o) ON CONFLICT DO NOTHING
-                    """, ct, ("f", funil.ToString()), ("n", e.Nome), ("t", e.Tipo.ToString()), ("c", e.Cor), ("o", i + 1));
+                    INSERT INTO funil_estagios (funil, nome, tipo, cor, ordem, sugestao_tipo, sugestao_titulo, sugestao_dias)
+                    VALUES (@f::funil, @n, @t::tipo_estagio, @c, @o, @st::tipo_compromisso, @stt, @sd) ON CONFLICT DO NOTHING
+                    """, ct, ("f", funil.ToString()), ("n", e.Nome), ("t", e.Tipo.ToString()), ("c", e.Cor), ("o", i + 1),
+                    ("st", (object?)s?.Tipo.ToString() ?? DBNull.Value), ("stt", (object?)s?.Titulo ?? DBNull.Value), ("sd", (object?)s?.Dias ?? DBNull.Value));
             }
 
         await CriarAdministrador(con, tx, ct);

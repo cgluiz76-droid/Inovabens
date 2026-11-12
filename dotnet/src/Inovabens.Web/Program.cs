@@ -27,6 +27,7 @@ builder.Services.AddHostedService<SincronizacaoIndicesJob>();
 builder.Services.AddHostedService<TaxasFinanciamentoJob>();
 builder.Services.AddHostedService<AlertasCompromissosJob>();
 builder.Services.AddHostedService<ExpiracaoPropostasJob>();
+builder.Services.AddHostedService<PrazosEtapasJob>();
 builder.Services.AddHostedService<RotinaFinanceiraDiariaJob>();
 builder.Services.AddHostedService<SincronizacaoGoogleJob>();
 builder.Services.AddHostedService<RenovacaoCanaisGoogleJob>();

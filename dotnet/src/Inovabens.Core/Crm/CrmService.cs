@@ -154,6 +154,28 @@ public class ProximoPassoForm : IValidatableObject
     /// <summary>Sugestão: amanhã às 9 h.</summary>
     public static DateTime SugestaoInicio() => DatasBR.Agora().Date.AddDays(1).AddHours(9);
 
+    /// <summary>
+    /// Início sugerido <paramref name="dias"/> dias à frente, às 9 h (horário de Brasília). Para hoje, se já passou das 9 h,
+    /// a próxima hora cheia (depois das 18 h, amanhã às 9 h).
+    /// </summary>
+    public static DateTime InicioEmDias(int dias, DateTime? agoraBR = null)
+    {
+        var agora = agoraBR ?? DatasBR.Agora();
+        var alvo = agora.Date.AddDays(dias).AddHours(9);
+        if (alvo > agora) return alvo;
+        var proxima = agora.Date.AddHours(agora.Hour + 1);
+        return proxima.Hour <= 18 && proxima.Date == agora.Date ? proxima : agora.Date.AddDays(1).AddHours(9);
+    }
+
+    /// <summary>Próximo passo sugerido pela etapa de destino (ou o padrão: <paramref name="tipoPadrao"/> amanhã às 9 h).</summary>
+    public void Sugerir(FunilEstagio destino, TipoCompromisso tipoPadrao)
+    {
+        Limpar(destino.SugestaoTipo ?? tipoPadrao);
+        if (destino.SugestaoTitulo is not { } t) return;
+        Titulo = t;
+        Inicio = InicioEmDias(destino.SugestaoDias ?? 1);
+    }
+
     public void Limpar(TipoCompromisso tipo = TipoCompromisso.LIGACAO)
     {
         (Pular, MotivoPular, Tipo, Titulo, Inicio, DuracaoMin, ImovelId) = (false, null, tipo, null, SugestaoInicio(), 30, null);
@@ -181,6 +203,25 @@ public sealed class EstagioForm
     [RegularExpression("^#[0-9a-fA-F]{6}$", ErrorMessage = "Cor no formato #RRGGBB")] public string Cor { get; set; } = "#64748b";
     public TipoEstagio Tipo { get; set; } = TipoEstagio.ABERTO;
     public bool Ativo { get; set; } = true;
+    [Range(1, 365, ErrorMessage = "Prazo de 1 a 365 dias.")] public int? PrazoDias { get; set; }
+    public TipoCompromisso? SugestaoTipo { get; set; }
+    [StringLength(200, ErrorMessage = "No máximo 200 caracteres.")] public string? SugestaoTitulo { get; set; }
+    [Range(0, 365, ErrorMessage = "De 0 a 365 dias.")] public int? SugestaoDias { get; set; }
+
+    public static EstagioForm De(FunilEstagio e) => new()
+    {
+        Funil = e.Funil, Nome = e.Nome, Ordem = e.Ordem, Cor = e.Cor ?? "#64748b", Tipo = e.Tipo, Ativo = e.Ativo,
+        PrazoDias = e.PrazoDias, SugestaoTipo = e.SugestaoTipo, SugestaoTitulo = e.SugestaoTitulo, SugestaoDias = e.SugestaoDias,
+    };
+
+    internal void Aplicar(FunilEstagio e)
+    {
+        (e.Nome, e.Ordem, e.Cor, e.Tipo, e.Ativo) = (Nome.Trim(), Ordem, Cor, Tipo, Ativo);
+        e.PrazoDias = PrazoDias;
+        e.SugestaoTitulo = Texto.Limpo(SugestaoTitulo);
+        e.SugestaoTipo = e.SugestaoTitulo is null ? null : SugestaoTipo ?? TipoCompromisso.LIGACAO;
+        e.SugestaoDias = e.SugestaoTitulo is null ? null : SugestaoDias ?? 1;
+    }
 }
 
 /// <summary>CRM: funil de vendas/locação (port de crm.service.ts). Corretor só vê os leads pelos quais é responsável.</summary>
@@ -484,6 +525,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
             db.LeadHistoricoEstagios.Add(new LeadHistoricoEstagio { LeadId = id, EstagioAnteriorId = anterior.Id, EstagioNovoId = novo.Id, UsuarioId = u.Id });
         audit.Registrar(db, u.Id, "leads", id, "ATUALIZAR", new { estagio = anterior.Nome }, new { estagio = novo.Nome, motivo_perda = motivo });
         await db.SaveChangesAsync();
+        if (novo.Id != anterior.Id) await PrazosService.ResolverAsync(db, leadId: id);
         await tx.CommitAsync();
         foreach (var c in paraGoogle) google.Empurrar(c);
     }
@@ -764,7 +806,9 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         u.Exigir(P.AdminConfig);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
-        db.FunilEstagios.Add(new FunilEstagio { Funil = form.Funil, Nome = form.Nome.Trim(), Ordem = form.Ordem, Cor = form.Cor, Tipo = form.Tipo, Ativo = form.Ativo });
+        var e = new FunilEstagio { Funil = form.Funil };
+        form.Aplicar(e);
+        db.FunilEstagios.Add(e);
         await db.SaveChangesAsync();
     }
 
@@ -774,7 +818,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         var e = await db.FunilEstagios.SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Estágio não encontrado.");
-        (e.Nome, e.Ordem, e.Cor, e.Tipo, e.Ativo) = (form.Nome.Trim(), form.Ordem, form.Cor, form.Tipo, form.Ativo);
+        form.Aplicar(e);
         await db.SaveChangesAsync();
     }
 

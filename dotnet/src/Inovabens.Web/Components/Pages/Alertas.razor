@@ -59,6 +59,10 @@ else
                 {
                     <a class="pequeno" href="crm?lead=@lead">Abrir lead no CRM</a>
                 }
+                @if (a.FunilProcesso is { } fp && a.ImovelId is { } imp)
+                {
+                    <a class="pequeno" href="processos?funil=@fp&imovel=@imp">Abrir no funil @Funis.Nome(fp)</a>
+                }
             </div>
         }
     </div>

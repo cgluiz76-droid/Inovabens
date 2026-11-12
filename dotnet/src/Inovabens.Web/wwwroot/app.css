@@ -650,3 +650,14 @@ button.kpi { font: inherit; text-align: left; cursor: pointer; }
 .historico-processo { margin: .5rem 0; }
 .historico-processo ul { margin: .4rem 0 0; padding-left: 1.1rem; }
 .col-4 { grid-column: 1 / -1; }
+
+/* ---- Automações do CRM (prazos, sugestões, metas) ---- */
+.w-num { width: 5rem; }
+.sugestao-etapa { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; min-width: 26rem; }
+.sugestao-etapa select { width: 8rem; }
+.sugestao-etapa input:not(.w-num) { flex: 1; min-width: 10rem; }
+.grade-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+.metas-painel { margin-bottom: 1rem; }
+.meta-celula { display: flex; flex-direction: column; gap: .25rem; min-width: 7rem; }
+.meta-celula .barra-trilho { width: 100%; }
+@media (max-width: 640px) { .grade-3 { grid-template-columns: 1fr; } }

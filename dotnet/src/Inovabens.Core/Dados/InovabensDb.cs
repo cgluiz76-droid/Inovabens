@@ -56,6 +56,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadHistoricoEstagio> LeadHistoricoEstagios => Set<LeadHistoricoEstagio>();
     public DbSet<Processo> Processos => Set<Processo>();
+    public DbSet<Meta> Metas => Set<Meta>();
     public DbSet<ProcessoHistorico> ProcessoHistoricos => Set<ProcessoHistorico>();
     public DbSet<LeadInteracao> LeadInteracoes => Set<LeadInteracao>();
     public DbSet<Proposta> Propostas => Set<Proposta>();

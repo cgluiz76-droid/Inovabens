@@ -139,6 +139,7 @@ public class Alerta
     public Guid? CompromissoId { get; set; }
     public Guid? LancamentoId { get; set; }
     public Guid? LeadId { get; set; }
+    public Guid? ProcessoId { get; set; }
     public string Mensagem { get; set; } = "";
     public DateTime GeradoEm { get; set; } = DateTime.UtcNow;
     public DateTime? LidoEm { get; set; }
@@ -175,6 +176,30 @@ public class FunilEstagio
     public string? Cor { get; set; } = "#64748b";
     public TipoEstagio Tipo { get; set; } = TipoEstagio.ABERTO;
     public bool Ativo { get; set; } = true;
+    /// <summary>Dias máximos na etapa; passou disso, o responsável recebe o alerta "etapa parada". Vazio = sem prazo.</summary>
+    public int? PrazoDias { get; set; }
+    /// <summary>Próximo passo sugerido ao entrar na etapa (tipo, título e em quantos dias).</summary>
+    public TipoCompromisso? SugestaoTipo { get; set; }
+    public string? SugestaoTitulo { get; set; }
+    public int? SugestaoDias { get; set; }
+
+    /// <summary>Etapa em andamento que já passou do prazo com <paramref name="diasNaFase"/> dias.</summary>
+    public bool Estourou(int diasNaFase) => Tipo == TipoEstagio.ABERTO && PrazoDias is { } p && diasNaFase > p;
+}
+
+/// <summary>Meta mensal de um usuário (atendimentos, propostas e fechamentos).</summary>
+[Table("metas")]
+public class Meta
+{
+    public Guid Id { get; set; }
+    public Guid UsuarioId { get; set; }
+    /// <summary>Primeiro dia do mês.</summary>
+    public DateOnly Mes { get; set; }
+    public int Atendimentos { get; set; }
+    public int Propostas { get; set; }
+    public int Fechamentos { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>Cartão de um imóvel num funil de processo (Administrativo, Projetos): no máximo um aberto por funil.</summary>

@@ -74,6 +74,9 @@ else
         <button class="chip-situacao situacao-atrasado @(soVencidos ? "ativo" : "")" @onclick="() => soVencidos = !soVencidos">
             Prazo vencido <b>@todos.Count(c => c.PrazoVencido)</b>
         </button>
+        <button class="chip-situacao situacao-atrasado @(soForaDoPrazo ? "ativo" : "")" title="Parados além do prazo da etapa" @onclick="() => soForaDoPrazo = !soForaDoPrazo">
+            ⏳ Fora do prazo da etapa <b>@colunas.Sum(c => c.Cartoes.Count(x => c.Estagio.Estourou(x.DiasNaFase)))</b>
+        </button>
     </div>
     <div class="kanban">
         @foreach (var col in colunas)
@@ -85,7 +88,7 @@ else
                     <strong>@col.Estagio.Nome</strong>
                     <span class="badge">@col.Cartoes.Count</span>
                 </div>
-                @foreach (var c in col.Cartoes.Where(c => !soVencidos || (aberto && c.PrazoVencido)))
+                @foreach (var c in col.Cartoes.Where(c => (!soVencidos || (aberto && c.PrazoVencido)) && (!soForaDoPrazo || col.Estagio.Estourou(c.DiasNaFase))))
                 {
                     <div class="cartao-lead @(aberto && c.PrazoVencido ? "atrasado" : "") @(arrastando?.Id == c.Id ? "arrastando" : "")" @key="(c.Id, versao)"
                          draggable="@(PodeEditar ? "true" : "false")" @ondragstart="() => arrastando = c" @ondragend="FimArraste"
@@ -99,7 +102,14 @@ else
                             {
                                 <span></span>
                             }
-                            <span class="pequeno mudo" title="Dias nesta etapa">⏳ @c.DiasNaFase d</span>
+                            @if (col.Estagio.Estourou(c.DiasNaFase))
+                            {
+                                <span class="pequeno texto-erro forte" title="Passou do prazo da etapa (@col.Estagio.PrazoDias dias)">⏳ @c.DiasNaFase d · prazo @col.Estagio.PrazoDias</span>
+                            }
+                            else
+                            {
+                                <span class="pequeno mudo" title="Dias nesta etapa">⏳ @c.DiasNaFase d</span>
+                            }
                         </div>
                         <button class="link-cartao" @onclick="() => Editar(c)">
                             <span class="forte">🏠 @c.Codigo</span>
@@ -227,6 +237,7 @@ else
     private string responsavelFiltro = "";
     private Guid? imovelFiltro;
     private bool soVencidos;
+    private bool soForaDoPrazo;
     private int versao;
 
     private ProcessoForm? form;

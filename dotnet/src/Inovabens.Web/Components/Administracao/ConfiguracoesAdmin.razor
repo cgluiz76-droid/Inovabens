@@ -60,7 +60,7 @@
     {
         <div class="tabela-container">
             <table class="tabela">
-                <thead><tr><th>Ordem</th><th>Nome</th><th>Cor</th><th>Tipo</th><th>Ativo</th><th></th></tr></thead>
+                <thead><tr><th>Ordem</th><th>Nome</th><th>Cor</th><th>Tipo</th><th title="Dias máximos na etapa; passou disso, o responsável recebe um alerta">Prazo (dias)</th>@if (!Funis.EhProcesso(funil)) {<th title="Próximo passo já preenchido quando o lead entra na etapa">Próximo passo sugerido</th>}<th>Ativo</th><th></th></tr></thead>
                 <tbody>
                     @for (var i = 0; i < estagios.Count; i++)
                     {
@@ -81,6 +81,35 @@
                                     }
                                 </select>
                             </td>
+                            <td>
+                                @if (e.Tipo == TipoEstagio.ABERTO)
+                                {
+                                    <input class="input w-num" type="number" min="1" max="365" value="@e.PrazoDias" placeholder="—" aria-label="Prazo em dias"
+                                           @onchange="v => SalvarEstagio(e, f => f.PrazoDias = Numero(v))" />
+                                }
+                            </td>
+                            @if (!Funis.EhProcesso(funil))
+                            {
+                                <td>
+                                    @if (e.Tipo != TipoEstagio.PERDIDO)
+                                    {
+                                        <div class="sugestao-etapa">
+                                            <select class="input" value="@(e.SugestaoTipo ?? TipoCompromisso.LIGACAO)" aria-label="Tipo do próximo passo"
+                                                    @onchange="v => SalvarEstagio(e, f => f.SugestaoTipo = Enum.Parse<TipoCompromisso>(v.Value!.ToString()!))">
+                                                @foreach (var t in Enum.GetValues<TipoCompromisso>())
+                                                {
+                                                    <option value="@t">@Texto.Rotulo(t)</option>
+                                                }
+                                            </select>
+                                            <input class="input" value="@e.SugestaoTitulo" placeholder="Sem sugestão" aria-label="Título do próximo passo"
+                                                   @onchange="v => SalvarEstagio(e, f => f.SugestaoTitulo = v.Value?.ToString())" />
+                                            <label class="pequeno mudo sem-quebra">em
+                                                <input class="input w-num" type="number" min="0" max="365" value="@e.SugestaoDias" aria-label="Em quantos dias"
+                                                       @onchange="v => SalvarEstagio(e, f => f.SugestaoDias = Numero(v))" /> dia(s)</label>
+                                        </div>
+                                    }
+                                </td>
+                            }
                             <td><input type="checkbox" checked="@e.Ativo" @onchange="v => SalvarEstagio(e, f => f.Ativo = (bool)v.Value!)" /></td>
                             <td class="acoes-linha">
                                 <button class="btn-ghost mini texto-erro" disabled="@Ocupado" @onclick="() => ExcluirEstagio(e)">Excluir</button>
@@ -102,7 +131,9 @@
         </select>
         <button class="btn-primary" disabled="@Ocupado" @onclick="CriarEstagio">Adicionar</button>
     </div>
-    <p class="pequeno mudo">Ganho/Perdido encerram o lead. Estágio com leads ou histórico não pode ser excluído: desative-o.</p>
+    <p class="pequeno mudo">Ganho/Perdido encerram o lead. Estágio com leads ou histórico não pode ser excluído: desative-o.
+        Prazo: todo dia às 7 h, quem está parado na etapa além do prazo gera um alerta para o responsável.
+        Próximo passo sugerido: já vem preenchido quando o lead muda para a etapa (0 dia = hoje).</p>
 </section>
 
 <IntegracoesConfig />
@@ -148,8 +179,9 @@
 
     private static TipoEstagio TipoDe(ChangeEventArgs v) => Enum.Parse<TipoEstagio>(v.Value?.ToString() ?? nameof(TipoEstagio.ABERTO));
 
-    private static EstagioForm FormDe(FunilEstagio e) =>
-        new() { Funil = e.Funil, Nome = e.Nome, Ordem = e.Ordem, Cor = e.Cor ?? "#64748b", Tipo = e.Tipo, Ativo = e.Ativo };
+    private static EstagioForm FormDe(FunilEstagio e) => EstagioForm.De(e);
+
+    private static int? Numero(ChangeEventArgs v) => int.TryParse(v.Value?.ToString(), out var n) ? n : null;
 
     private async Task SalvarEstagio(FunilEstagio e, Action<EstagioForm> alterar)
     {

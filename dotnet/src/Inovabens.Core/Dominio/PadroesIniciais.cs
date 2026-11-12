@@ -9,6 +9,27 @@ public static class PadroesIniciais
 
     public sealed record EstagioPadrao(string Nome, TipoEstagio Tipo, string Cor);
 
+    public sealed record SugestaoPadrao(TipoCompromisso Tipo, string Titulo, int Dias);
+
+    /// <summary>Próximo passo sugerido nas etapas padrão (os mesmos da migração 0026).</summary>
+    public static SugestaoPadrao? SugestaoDe(Funil f, string etapa) => (f, etapa) switch
+    {
+        (Funil.VENDA or Funil.LOCACAO, "Novo Lead") => new(TipoCompromisso.LIGACAO, "Primeiro contato com o cliente", 0),
+        (Funil.VENDA or Funil.LOCACAO, "Contato Realizado") => new(TipoCompromisso.VISITA, "Agendar visita ao imóvel", 2),
+        (Funil.VENDA or Funil.LOCACAO, "Visita Agendada") => new(TipoCompromisso.VISITA, "Visita ao imóvel", 2),
+        (Funil.VENDA or Funil.LOCACAO, "Proposta") => new(TipoCompromisso.LIGACAO, "Retorno sobre a proposta", 2),
+        (Funil.VENDA or Funil.LOCACAO, "Negociação") => new(TipoCompromisso.LIGACAO, "Acompanhar a negociação", 2),
+        (Funil.VENDA, "Documentação/Fechamento") => new(TipoCompromisso.TAREFA, "Conferir a documentação", 3),
+        (Funil.LOCACAO, "Documentação/Fechamento") => new(TipoCompromisso.TAREFA, "Conferir a documentação e a garantia", 3),
+        (Funil.VENDA, "Concluído") => new(TipoCompromisso.TAREFA, "Pós-venda: contato com o cliente", 7),
+        (Funil.LOCACAO, "Concluído") => new(TipoCompromisso.TAREFA, "Pós-locação: contato com o inquilino", 7),
+        (Funil.CAPTACAO, "Contato") => new(TipoCompromisso.LIGACAO, "Conversar com o proprietário", 0),
+        (Funil.CAPTACAO, "Avaliação") => new(TipoCompromisso.VISITA, "Avaliar o imóvel", 2),
+        (Funil.CAPTACAO, "Documentos") => new(TipoCompromisso.TAREFA, "Receber os documentos do imóvel", 3),
+        (Funil.CAPTACAO, "Captado") => new(TipoCompromisso.TAREFA, "Cadastrar o imóvel e as fotos", 1),
+        _ => null,
+    };
+
     public static readonly IReadOnlyList<PerfilPadrao> Perfis =
     [
         new("Administrador", "Acesso total ao sistema", false, P.Todas),

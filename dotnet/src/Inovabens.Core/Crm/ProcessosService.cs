@@ -177,6 +177,7 @@ public sealed class ProcessosService(IDbContextFactory<InovabensDb> fabrica, Aud
         }
         p.AtualizadoEm = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        if (anterior != novo.Id) await PrazosService.ResolverAsync(db, processoId: id);
         await tx.CommitAsync();
     }
 

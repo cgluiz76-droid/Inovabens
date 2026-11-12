@@ -1,0 +1,165 @@
+@inherits ComponenteBase
+@inject MetasService Servico
+@inject OpcoesService Opcoes
+
+<section class="card metas-painel">
+    <div class="titulo-secao">
+        <h2>Metas do mês</h2>
+        <div class="acoes-topo">
+            <input type="month" class="input" value="@mes.ToString("yyyy-MM")" @onchange="TrocarMes" aria-label="Mês das metas" />
+            @if (PodeEditar)
+            {
+                <button class="btn-ghost" @onclick="Nova">+ Meta</button>
+            }
+        </div>
+    </div>
+    <MensagemErro Texto="@Erro" />
+    @if (linhas is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else if (linhas.Count == 0)
+    {
+        <p class="pequeno mudo">Nenhuma meta nem atividade neste mês.@(PodeEditar ? " Use \"+ Meta\" para definir as metas da equipe." : "")</p>
+    }
+    else
+    {
+        <div class="tabela-container">
+            <table class="tabela simples">
+                <thead>
+                    <tr>
+                        <th>Usuário</th>
+                        <th title="Leads distintos com ação registrada pelo usuário no mês">Atendimentos</th>
+                        <th title="Propostas registradas pelo usuário no mês">Propostas</th>
+                        <th title="Leads do usuário que chegaram a uma etapa de ganho no mês">Fechamentos</th>
+                        @if (PodeEditar) { <th></th> }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var l in linhas)
+                    {
+                        <tr>
+                            <td>@l.Nome</td>
+                            <td>@Celula(l.Atendimentos, l.MetaAtendimentos)</td>
+                            <td>@Celula(l.Propostas, l.MetaPropostas)</td>
+                            <td>@Celula(l.Fechamentos, l.MetaFechamentos)</td>
+                            @if (PodeEditar)
+                            {
+                                <td class="acoes-linha"><button class="btn-ghost mini" @onclick="() => Editar(l)">@(l.TemMeta ? "Editar" : "Definir")</button></td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (form is not null)
+{
+    <Modal Titulo="@($"Meta de {mes:MM/yyyy}")" AoFechar="() => form = null">
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <label class="campo">
+                <span>Usuário *</span>
+                <InputSelect class="input" @bind-Value="form.UsuarioId" disabled="@(editando is not null)">
+                    <option value="">Selecione…</option>
+                    @foreach (var u in usuarios)
+                    {
+                        <option value="@u.Id">@u.Nome</option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => form.UsuarioId" />
+            </label>
+            <div class="grade-3">
+                <label class="campo"><span>Atendimentos</span><InputNumber class="input" @bind-Value="form.Atendimentos" min="0" /></label>
+                <label class="campo"><span>Propostas</span><InputNumber class="input" @bind-Value="form.Propostas" min="0" /></label>
+                <label class="campo"><span>Fechamentos</span><InputNumber class="input" @bind-Value="form.Fechamentos" min="0" /></label>
+            </div>
+            <MensagemErro Texto="@erroModal" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                @if (editando?.MetaId is { } id)
+                {
+                    <button type="button" class="btn-perigo" disabled="@Ocupado" @onclick="() => Excluir(id)">Excluir meta</button>
+                }
+                <button type="button" class="btn-ghost" @onclick="() => form = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    private DateOnly mes = MetasService.MesDe(DatasBR.Hoje());
+    private IReadOnlyList<LinhaMeta>? linhas;
+    private IReadOnlyList<Opcao> usuarios = [];
+    private MetaForm? form;
+    private LinhaMeta? editando;
+    private string? erroModal;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.AdminConfig);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (PodeEditar) await Executar(async () => usuarios = await Opcoes.CorretoresAsync());
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () => linhas = await Servico.PainelAsync(Usuario, mes));
+
+    private Task TrocarMes(ChangeEventArgs e)
+    {
+        if (!DateOnly.TryParseExact($"{e.Value}-01", "yyyy-MM-dd", out var d)) return Task.CompletedTask;
+        mes = d;
+        linhas = null;
+        return Carregar();
+    }
+
+    private static RenderFragment Celula(int feito, int meta) => __builder =>
+    {
+        var pct = LinhaMeta.Pct(feito, meta);
+        <div class="meta-celula">
+            <span><b>@feito</b>@(meta > 0 ? $" / {meta}" : "")</span>
+            @if (pct is { } p)
+            {
+                <span class="barra-trilho" title="@p% da meta"><span class="barra" style="width:@(Math.Min(100, p))%;background:@(p >= 100 ? "#16a34a" : p >= 60 ? "#f59e0b" : "#dc2626")"></span></span>
+            }
+        </div>
+    };
+
+    private void Nova()
+    {
+        erroModal = null;
+        editando = null;
+        form = new MetaForm { Mes = mes };
+    }
+
+    private void Editar(LinhaMeta l)
+    {
+        erroModal = null;
+        editando = l;
+        form = new MetaForm { Mes = mes, UsuarioId = l.UsuarioId, Atendimentos = l.MetaAtendimentos, Propostas = l.MetaPropostas, Fechamentos = l.MetaFechamentos };
+    }
+
+    private async Task Salvar()
+    {
+        if (!await Executar(() => Servico.SalvarAsync(Usuario, form!)))
+        {
+            (erroModal, Erro) = (Erro, null);
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+
+    private async Task Excluir(Guid id)
+    {
+        if (!await Executar(() => Servico.ExcluirAsync(Usuario, id)))
+        {
+            (erroModal, Erro) = (Erro, null);
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+}
