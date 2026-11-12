@@ -50,8 +50,10 @@
     <div class="titulo-secao">
         <h2>Estágios do funil</h2>
         <select class="input filtro" @bind="funil" @bind:after="CarregarEstagios">
-            <option value="@Funil.VENDA">Vendas</option>
-            <option value="@Funil.LOCACAO">Locação</option>
+            @foreach (var f in Enum.GetValues<Funil>())
+            {
+                <option value="@f">@Funis.Nome(f)@(Funis.EhProcesso(f) ? " (processos do imóvel)" : "")</option>
+            }
         </select>
     </div>
     @if (estagios is not null)

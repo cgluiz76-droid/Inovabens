@@ -643,3 +643,10 @@ button.kpi { font: inherit; text-align: left; cursor: pointer; }
 .topo-grupo-imovel .badge { margin-left: auto; }
 @media (max-width: 900px) { .grade-acompanhamento { grid-template-columns: 1fr; } }
 .link-filtro { all: unset; cursor: pointer; color: var(--azul); } .link-filtro:hover { text-decoration: underline; }
+
+/* ---- Processos do imóvel ---- */
+.aba-link { text-decoration: none; color: var(--mudo); }
+.obs-processo { color: var(--texto, #334155); white-space: pre-wrap; }
+.historico-processo { margin: .5rem 0; }
+.historico-processo ul { margin: .4rem 0 0; padding-left: 1.1rem; }
+.col-4 { grid-column: 1 / -1; }

@@ -39,9 +39,51 @@ public enum StatusCompromisso { PENDENTE, CONCLUIDO, CANCELADO }
 
 public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, DESPESA_NAO_PAGA, LIMITE_GRATUITO, NOVO_LEAD, PROPOSTA_EXPIRADA }
 
-public enum FinalidadeLead { COMPRA, LOCACAO }
+/// <summary>CAPTACAO: proprietário oferecendo o imóvel (funil de captação).</summary>
+public enum FinalidadeLead { COMPRA, LOCACAO, CAPTACAO }
 
-public enum Funil { VENDA, LOCACAO }
+/// <summary>
+/// VENDA, LOCACAO e CAPTACAO são funis de leads (cartão = lead); ADMINISTRATIVO e PROJETOS são funis de processos do
+/// imóvel (cartão = imóvel). Ver <see cref="Funis"/>.
+/// </summary>
+public enum Funil { VENDA, LOCACAO, CAPTACAO, ADMINISTRATIVO, PROJETOS }
+
+/// <summary>Nomes e regras dos funis.</summary>
+public static class Funis
+{
+    public static readonly IReadOnlyList<Funil> DeLeads = [Funil.VENDA, Funil.LOCACAO, Funil.CAPTACAO];
+    public static readonly IReadOnlyList<Funil> DeProcessos = [Funil.ADMINISTRATIVO, Funil.PROJETOS];
+
+    public static bool EhProcesso(Funil f) => f is Funil.ADMINISTRATIVO or Funil.PROJETOS;
+
+    public static string Nome(Funil f) => f switch
+    {
+        Funil.VENDA => "Venda",
+        Funil.LOCACAO => "Locação",
+        Funil.CAPTACAO => "Captação",
+        Funil.ADMINISTRATIVO => "Administrativo",
+        Funil.PROJETOS => "Projetos",
+        _ => f.ToString(),
+    };
+
+    public static string Nome(FinalidadeLead f) => Nome(Do(f));
+
+    public static Funil Do(FinalidadeLead f) => f switch
+    {
+        FinalidadeLead.LOCACAO => Funil.LOCACAO,
+        FinalidadeLead.CAPTACAO => Funil.CAPTACAO,
+        _ => Funil.VENDA,
+    };
+
+    /// <summary>Finalidade dos leads de um funil de leads (funil de processo não tem leads).</summary>
+    public static FinalidadeLead FinalidadeDo(Funil f) => f switch
+    {
+        Funil.VENDA => FinalidadeLead.COMPRA,
+        Funil.LOCACAO => FinalidadeLead.LOCACAO,
+        Funil.CAPTACAO => FinalidadeLead.CAPTACAO,
+        _ => throw new ArgumentException($"O funil {Nome(f)} é de processos do imóvel, não de leads.", nameof(f)),
+    };
+}
 
 public enum TipoEstagio { ABERTO, GANHO, PERDIDO }
 

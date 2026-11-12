@@ -28,6 +28,10 @@
             {
                 <NavLink class="nav-item" href="crm"><Icone Nome="crm" />CRM</NavLink>
             }
+            @if (usuario?.Pode(Permissoes.ProcessosVer) == true)
+            {
+                <NavLink class="nav-item" href="processos"><Icone Nome="processos" />Processos</NavLink>
+            }
             @if (usuario?.Pode(Permissoes.AgendaVer) == true)
             {
                 <NavLink class="nav-item" href="agenda"><Icone Nome="agenda" />Agenda</NavLink>

@@ -177,6 +177,41 @@ public class FunilEstagio
     public bool Ativo { get; set; } = true;
 }
 
+/// <summary>Cartão de um imóvel num funil de processo (Administrativo, Projetos): no máximo um aberto por funil.</summary>
+[Table("processos")]
+public class Processo
+{
+    public Guid Id { get; set; }
+    public Funil Funil { get; set; } = Funil.ADMINISTRATIVO;
+    public Guid ImovelId { get; set; }
+    public Guid EstagioId { get; set; }
+    public Guid? ResponsavelId { get; set; }
+    public string? Observacoes { get; set; }
+    public DateOnly? Prazo { get; set; }
+    public int Ordem { get; set; }
+    public Guid? CriadoPor { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime? ExcluidoEm { get; set; }
+    [JsonIgnore] public Imovel? Imovel { get; set; }
+    [JsonIgnore] public FunilEstagio? Estagio { get; set; }
+    [JsonIgnore] public Usuario? Responsavel { get; set; }
+
+    public Processo Copia() => (Processo)MemberwiseClone();
+}
+
+[Table("processo_historico")]
+public class ProcessoHistorico
+{
+    public Guid Id { get; set; }
+    public Guid ProcessoId { get; set; }
+    public Guid? EstagioAnteriorId { get; set; }
+    public Guid EstagioNovoId { get; set; }
+    public Guid? UsuarioId { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    [JsonIgnore] public Processo? Processo { get; set; }
+}
+
 [Table("leads")]
 public class Lead
 {

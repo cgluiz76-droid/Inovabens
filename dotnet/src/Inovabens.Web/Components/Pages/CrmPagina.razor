@@ -25,8 +25,17 @@
 
 <div class="barra-crm">
     <div class="abas">
-        <button class="aba @(funil == Funil.VENDA ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.VENDA)">Funil de vendas</button>
-        <button class="aba @(funil == Funil.LOCACAO ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.LOCACAO)">Funil de locação</button>
+        @foreach (var f in Funis.DeLeads)
+        {
+            <button class="aba @(funil == f ? "ativa" : "")" @onclick="() => TrocarFunil(f)">@Funis.Nome(f)</button>
+        }
+        @if (Usuario.Pode(Permissoes.ProcessosVer))
+        {
+            @foreach (var f in Funis.DeProcessos)
+            {
+                <a class="aba aba-link" href="processos?funil=@f" title="Processos do imóvel">@Funis.Nome(f) ↗</a>
+            }
+        }
     </div>
     <div class="filtros-crm">
         <label class="filtro-imovel">
@@ -477,7 +486,11 @@ else
     {
         var consulta = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
         if (consulta.TryGetValue("imovel", out var im) && Guid.TryParse(im, out var imovelId)) imovelFiltro = imovelId;
-        if (consulta.TryGetValue("funil", out var fu) && Enum.TryParse<Funil>(fu, true, out var f)) funil = f;
+        if (consulta.TryGetValue("funil", out var fu) && Enum.TryParse<Funil>(fu, true, out var f))
+        {
+            if (Funis.EhProcesso(f)) { Nav.NavigateTo($"processos?funil={f}", replace: true); return; }
+            funil = f;
+        }
         await Executar(async () =>
         {
             pessoas = await Opcoes.PessoasAsync(Usuario);
@@ -515,7 +528,7 @@ else
     {
         if (!Usuario.EscopoProprio) return false;
         var inicial = funil;
-        foreach (var f in new[] { inicial, inicial == Funil.VENDA ? Funil.LOCACAO : Funil.VENDA })
+        foreach (var f in new[] { inicial }.Concat(Funis.DeLeads.Where(x => x != inicial)))
         {
             if (f != funil)
             {
@@ -684,7 +697,7 @@ else
         contatoNovo = true;
         novo = new LeadForm
         {
-            Finalidade = funil == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO,
+            Finalidade = Funis.FinalidadeDo(funil),
             ImoveisInteresse = imovelId is { } i && imoveis.Any(o => o.Id == i) ? [i] : [],
         };
     }

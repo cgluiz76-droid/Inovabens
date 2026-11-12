@@ -191,7 +191,8 @@ public sealed class AcompanhamentoService(IDbContextFactory<InovabensDb> fabrica
 
         // --- indicadores (sobre os leads filtrados, cada lead uma vez) ---
         var ids = filtrados.Select(x => x.Lead.Id).ToList();
-        var estagios = await db.FunilEstagios.AsNoTracking().Where(e => e.Ativo && (f.Funil == null || e.Funil == f.Funil))
+        var deLeads = Funis.DeLeads.ToList();
+        var estagios = await db.FunilEstagios.AsNoTracking().Where(e => e.Ativo && deLeads.Contains(e.Funil) && (f.Funil == null || e.Funil == f.Funil))
             .OrderBy(e => e.Funil).ThenBy(e => e.Ordem).ToListAsync();
         var historico = ids.Count == 0 ? [] : await db.LeadHistoricoEstagios.AsNoTracking().Where(h => ids.Contains(h.LeadId))
             .OrderBy(h => h.CriadoEm).Select(h => new { h.LeadId, h.EstagioNovoId, h.CriadoEm }).ToListAsync();
@@ -273,7 +274,7 @@ public sealed class AcompanhamentoService(IDbContextFactory<InovabensDb> fabrica
         ],
         a.Linhas.Select(l => new XLCellValue[]
         {
-            T(l.ImovelCodigo ?? "Sem imóvel"), T(l.ImovelTitulo), l.Pessoa, T(l.Telefone), l.Funil == Funil.VENDA ? "Venda" : "Locação", l.Estagio,
+            T(l.ImovelCodigo ?? "Sem imóvel"), T(l.ImovelTitulo), l.Pessoa, T(l.Telefone), Funis.Nome(l.Funil), l.Estagio,
             l.DiasNaEtapa, T(l.Responsavel ?? "Fila aberta"), T(l.Origem), T(l.ProximoTitulo), Dt(l.ProximoEm), l.AtividadesVencidas,
             N(l.ValorProposta), T(l.StatusProposta?.ToString()), Dt(l.CriadoEm), l.SoSugerido ? "Sim" : "",
         }));
@@ -286,7 +287,7 @@ public sealed class AcompanhamentoService(IDbContextFactory<InovabensDb> fabrica
             [("Funil", 10), ("Etapa", 22), ("Leads hoje", 11), ("Já passaram", 11), ("Conversão p/ próxima (%)", 14), ("Tempo médio (dias)", 13)],
             a.Etapas.Select(e => new XLCellValue[]
             {
-                e.Funil == Funil.VENDA ? "Venda" : "Locação", e.Nome, e.Atuais, e.Passaram, N(e.ConversaoProxima), N(e.DiasMedios),
+                Funis.Nome(e.Funil), e.Nome, e.Atuais, e.Passaram, N(e.ConversaoProxima), N(e.DiasMedios),
             }));
         RelatoriosService.Aba(wb, "Usuários",
             [("Responsável", 28), ("Abertos", 10), ("Atividades vencidas", 12), ("Sem próximo passo", 12), ("Ganhos", 10), ("Perdidos", 10)],

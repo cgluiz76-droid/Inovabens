@@ -46,4 +46,39 @@ public static class PadroesIniciais
         new("Concluído", TipoEstagio.GANHO, "#16a34a"),
         new("Perdido", TipoEstagio.PERDIDO, "#dc2626"),
     ];
+
+    /// <summary>Etapas padrão de cada funil (os de leads de compra e locação usam <see cref="Estagios"/>).</summary>
+    public static IReadOnlyList<EstagioPadrao> EstagiosDo(Funil f) => f switch
+    {
+        Funil.CAPTACAO =>
+        [
+            new("Contato", TipoEstagio.ABERTO, "#64748b"),
+            new("Avaliação", TipoEstagio.ABERTO, "#0ea5e9"),
+            new("Documentos", TipoEstagio.ABERTO, "#f59e0b"),
+            new("Captado", TipoEstagio.GANHO, "#16a34a"),
+            new("Descartado", TipoEstagio.PERDIDO, "#dc2626"),
+        ],
+        Funil.ADMINISTRATIVO =>
+        [
+            new("Matrícula e certidões", TipoEstagio.ABERTO, "#64748b"),
+            new("Regularização", TipoEstagio.ABERTO, "#0ea5e9"),
+            new("Contrato", TipoEstagio.ABERTO, "#8b5cf6"),
+            new("Cartório/Registro", TipoEstagio.ABERTO, "#f59e0b"),
+            new("Concluído", TipoEstagio.GANHO, "#16a34a"),
+            new("Cancelado", TipoEstagio.PERDIDO, "#dc2626"),
+        ],
+        Funil.PROJETOS =>
+        [
+            new("Aguardando início", TipoEstagio.ABERTO, "#64748b"),
+            new("Definir estratégia", TipoEstagio.ABERTO, "#0ea5e9"),
+            new("Desenvolvimento técnico", TipoEstagio.ABERTO, "#8b5cf6"),
+            new("Análise externa", TipoEstagio.ABERTO, "#f59e0b"),
+            new("Aprovação/registro", TipoEstagio.ABERTO, "#f97316"),
+            new("Pendente cliente", TipoEstagio.ABERTO, "#a16207"),
+            new("Vitrine", TipoEstagio.ABERTO, "#0d9488"),
+            new("Concluído", TipoEstagio.GANHO, "#16a34a"),
+            new("Cancelado", TipoEstagio.PERDIDO, "#dc2626"),
+        ],
+        _ => Estagios,
+    };
 }

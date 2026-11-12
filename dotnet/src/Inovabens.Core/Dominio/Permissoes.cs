@@ -40,6 +40,10 @@ public static class Permissoes
     /// <summary>Aceitar ou recusar propostas (só o perfil Administrador recebe por padrão).</summary>
     public const string CrmPropostasDecidir = "crm:propostas:decidir";
 
+    /// <summary>Funis de processos do imóvel (Administrativo e Projetos).</summary>
+    public const string ProcessosVer = "processos:ver";
+    public const string ProcessosEditar = "processos:editar";
+
     public static readonly IReadOnlyList<string> Todas =
     [
         UsuariosGerir, RbacGerir, AdminConfig, AuditoriaVer,
@@ -49,5 +53,6 @@ public static class Permissoes
         MemorandosVer, MemorandosCriar, MemorandosEditar, MemorandosExcluir,
         AgendaVer, AgendaCriar, AgendaEditar, AgendaExcluir,
         CrmVer, CrmCriar, CrmEditar, CrmExcluir, CrmPropostasDecidir,
+        ProcessosVer, ProcessosEditar,
     ];
 }

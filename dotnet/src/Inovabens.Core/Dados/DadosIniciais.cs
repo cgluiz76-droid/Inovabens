@@ -38,9 +38,9 @@ public sealed class DadosIniciais(InovabensOpcoes op, ILogger<DadosIniciais> log
             await Exec(con, tx, "INSERT INTO despesa_categorias (nome) VALUES (@n) ON CONFLICT DO NOTHING", ct, ("n", nome));
 
         foreach (var funil in Enum.GetValues<Funil>())
-            for (var i = 0; i < PadroesIniciais.Estagios.Count; i++)
+            for (var i = 0; i < PadroesIniciais.EstagiosDo(funil).Count; i++)
             {
-                var e = PadroesIniciais.Estagios[i];
+                var e = PadroesIniciais.EstagiosDo(funil)[i];
                 await Exec(con, tx, """
                     INSERT INTO funil_estagios (funil, nome, tipo, cor, ordem)
                     VALUES (@f::funil, @n, @t::tipo_estagio, @c, @o) ON CONFLICT DO NOTHING

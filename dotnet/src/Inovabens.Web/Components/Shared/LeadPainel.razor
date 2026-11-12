@@ -28,7 +28,7 @@
         <header class="painel-topo">
             <div class="painel-titulo">
                 <div>
-                    <p class="pequeno mudo">@(detalhe.Dados.Finalidade == FinalidadeLead.COMPRA ? "Venda" : "Locação")@(detalhe.Dados.Origem is { } o ? $" · {o}" : "")</p>
+                    <p class="pequeno mudo">@Funis.Nome(detalhe.Dados.Finalidade)@(detalhe.Dados.Origem is { } o ? $" · {o}" : "")</p>
                     <h2>@p.NomeRazao</h2>
                 </div>
                 <div class="painel-nav">
@@ -157,7 +157,10 @@
             <button type="button" role="tab" class="aba @(aba == Aba.Linha ? "ativa" : "")" aria-selected="@(aba == Aba.Linha)" @onclick="() => aba = Aba.Linha">Linha do tempo</button>
             <button type="button" role="tab" class="aba @(aba == Aba.Atividades ? "ativa" : "")" aria-selected="@(aba == Aba.Atividades)" @onclick="() => aba = Aba.Atividades">Atividades <span class="badge">@atividades.Count</span></button>
             <button type="button" role="tab" class="aba @(aba == Aba.Imoveis ? "ativa" : "")" aria-selected="@(aba == Aba.Imoveis)" @onclick="() => aba = Aba.Imoveis">Imóveis <span class="badge">@detalhe.ImoveisInteresse.Count</span></button>
-            <button type="button" role="tab" class="aba @(aba == Aba.Propostas ? "ativa" : "")" aria-selected="@(aba == Aba.Propostas)" @onclick="() => aba = Aba.Propostas">Propostas <span class="badge">@propostas.Count</span></button>
+            @if (detalhe.Dados.Finalidade != FinalidadeLead.CAPTACAO)
+            {
+                <button type="button" role="tab" class="aba @(aba == Aba.Propostas ? "ativa" : "")" aria-selected="@(aba == Aba.Propostas)" @onclick="() => aba = Aba.Propostas">Propostas <span class="badge">@propostas.Count</span></button>
+            }
             <button type="button" role="tab" class="aba @(aba == Aba.Dados ? "ativa" : "")" aria-selected="@(aba == Aba.Dados)" @onclick="() => aba = Aba.Dados">Dados</button>
         </nav>
 
@@ -240,7 +243,7 @@
                         <ul class="lista-imoveis-lead">
                             @foreach (var i in detalhe.ImoveisInteresse)
                             {
-                                var preco = detalhe.Dados.Finalidade == FinalidadeLead.COMPRA ? i.PrecoVenda : i.PrecoLocacao;
+                                var preco = detalhe.Dados.Finalidade == FinalidadeLead.LOCACAO ? i.PrecoLocacao : i.PrecoVenda;
                                 <li>
                                     <div>
                                         <a href="imoveis/@i.Id" class="forte">@i.Codigo</a> · @i.Titulo
@@ -381,7 +384,7 @@
         ?? propostas.FirstOrDefault(p => p.EmAnalise);
 
     private decimal? ValorAnunciado => detalhe!.ImoveisInteresse
-        .Select(i => detalhe.Dados.Finalidade == FinalidadeLead.COMPRA ? i.PrecoVenda : i.PrecoLocacao).Max();
+        .Select(i => detalhe.Dados.Finalidade == FinalidadeLead.LOCACAO ? i.PrecoLocacao : i.PrecoVenda).Max();
 
     private IReadOnlyList<Opcao> ImoveisDoLead => [.. detalhe!.ImoveisInteresse.Select(i => new Opcao(i.Id, $"{i.Codigo} · {i.Titulo}"))];
 

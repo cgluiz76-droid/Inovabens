@@ -195,7 +195,7 @@ public class PropostasTests : IAsyncLifetime
     [Fact]
     public async Task Estagio_de_fechamento_existe_antes_do_ganho_nos_dois_funis()
     {
-        foreach (var funil in Enum.GetValues<Funil>())
+        foreach (var funil in new[] { Funil.VENDA, Funil.LOCACAO })
         {
             var e = (await S<CrmService>().EstagiosAsync(funil)).OrderBy(x => x.Ordem).ToList();
             var fech = e.FindIndex(x => x.Nome == "Documentação/Fechamento");

@@ -26,9 +26,10 @@
             <label class="campo">
                 <span>Uso</span>
                 <select class="input" @bind="finalidade">
-                    <option value="">Venda e locação</option>
+                    <option value="">Todos os funis</option>
                     <option value="@FinalidadeLead.COMPRA">Venda</option>
                     <option value="@FinalidadeLead.LOCACAO">Locação</option>
+                    <option value="@FinalidadeLead.CAPTACAO">Captação</option>
                 </select>
             </label>
         </div>
@@ -66,7 +67,7 @@
                         <tr class="@(m.Ativo ? "" : "mudo")">
                             <td>@m.Nome @(m.Ativo ? "" : "(desativado)")</td>
                             <td>@(m.Tipo == TipoModeloDocumento.PROPOSTA ? "Proposta" : "Contrato")</td>
-                            <td>@(m.Finalidade switch { FinalidadeLead.COMPRA => "Venda", FinalidadeLead.LOCACAO => "Locação", _ => "Venda e locação" })</td>
+                            <td>@(m.Finalidade is { } fm ? Funis.Nome(fm) : "Todos")</td>
                             <td><a href="admin/modelos/@m.Id/arquivo" download>@m.NomeArquivo</a> <span class="pequeno mudo">@(m.Tamanho / 1024) KB</span></td>
                             <td>@Texto.DataHora(m.CriadoEm)</td>
                             <td>

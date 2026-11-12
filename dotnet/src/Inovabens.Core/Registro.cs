@@ -62,6 +62,7 @@ public static class Registro
         services.AddSingleton<GoogleService>(); // guarda tokens de acesso em cache e faz chamadas em segundo plano
         services.AddScoped<CrmService>();
         services.AddScoped<AcompanhamentoService>();
+        services.AddScoped<ProcessosService>();
         services.AddScoped<PropostasService>();
         services.AddScoped<DocumentosService>();
         services.AddSingleton<ConversorPdf>();

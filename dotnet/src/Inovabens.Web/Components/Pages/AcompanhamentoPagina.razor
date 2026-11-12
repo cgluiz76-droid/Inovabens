@@ -48,9 +48,11 @@
     <label class="campo">
         <span>Funil</span>
         <select class="input" value="@(filtro.Funil?.ToString() ?? "")" @onchange="DefinirFunil">
-            <option value="">Venda e locação</option>
-            <option value="@Funil.VENDA">Venda</option>
-            <option value="@Funil.LOCACAO">Locação</option>
+            <option value="">Todos os funis de leads</option>
+            @foreach (var f in Funis.DeLeads)
+            {
+                <option value="@f">@Funis.Nome(f)</option>
+            }
         </select>
     </label>
     <label class="campo">
@@ -59,7 +61,7 @@
             <option value="">Todas</option>
             @foreach (var e in estagios.Where(e => filtro.Funil is null || e.Funil == filtro.Funil))
             {
-                <option value="@e.Id">@(filtro.Funil is null ? (e.Funil == Funil.VENDA ? "Venda · " : "Locação · ") : "")@e.Nome</option>
+                <option value="@e.Id">@(filtro.Funil is null ? $"{Funis.Nome(e.Funil)} · " : "")@e.Nome</option>
             }
         </select>
     </label>
@@ -136,7 +138,7 @@ else
                     {
                         @if (filtro.Funil is null)
                         {
-                            <tr class="linha-grupo"><td colspan="5">@(g.Key == Funil.VENDA ? "Venda" : "Locação")</td></tr>
+                            <tr class="linha-grupo"><td colspan="5">@Funis.Nome(g.Key)</td></tr>
                         }
                         @foreach (var e in g)
                         {
@@ -222,7 +224,7 @@ else
                                 <br /><span class="pequeno mudo">@l.Telefone@(l.Origem is null ? "" : $" · {l.Origem}")</span>
                             </td>
                             <td>
-                                <span class="pequeno mudo">@(l.Funil == Funil.VENDA ? "Venda" : "Locação")</span><br />
+                                <span class="pequeno mudo">@Funis.Nome(l.Funil)</span><br />
                                 <span class="etiqueta-etapa" style="border-color:@(l.EstagioCor ?? "#64748b")">@l.Estagio</span>
                             </td>
                             <td>@l.DiasNaEtapa d</td>
@@ -278,7 +280,7 @@ else
         {
             imoveis = await Opcoes.ImoveisAsync(Usuario);
             if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
-            estagios = (await Crm.EstagiosAsync()).Where(e => e.Ativo).ToList();
+            estagios = (await Crm.EstagiosAsync()).Where(e => e.Ativo && !Funis.EhProcesso(e.Funil)).ToList();
             origens = await Servico.OrigensAsync(Usuario);
         });
         await Carregar();

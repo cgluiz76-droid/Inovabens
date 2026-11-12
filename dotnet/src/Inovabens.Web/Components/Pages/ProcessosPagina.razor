@@ -1,0 +1,359 @@
+@page "/processos"
+@attribute [Authorize(Policy = Permissoes.ProcessosVer)]
+@inherits ComponenteBase
+@inject ProcessosService Servico
+@inject OpcoesService Opcoes
+@inject NavigationManager Nav
+
+<PageTitle>Processos · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Processos do imóvel</h1>
+    <div class="acoes-topo">
+        @if (Usuario.Pode(Permissoes.CrmVer))
+        {
+            <a class="btn-ghost" href="crm">← CRM</a>
+        }
+        @if (PodeEditar)
+        {
+            <button class="btn-primary" @onclick="Novo">+ Imóvel no funil</button>
+        }
+    </div>
+</div>
+
+<div class="barra-crm">
+    <div class="abas">
+        @foreach (var f in Funis.DeProcessos)
+        {
+            <button class="aba @(funil == f ? "ativa" : "")" @onclick="() => TrocarFunil(f)">@Funis.Nome(f)</button>
+        }
+    </div>
+    <div class="filtros-crm">
+        <label class="filtro-imovel">
+            <span class="pequeno mudo">Responsável</span>
+            <select class="input" value="@responsavelFiltro" @onchange="FiltrarResponsavel" aria-label="Filtrar por responsável">
+                <option value="">Todos</option>
+                <option value="eu">Só os meus</option>
+                <option value="sem">Sem responsável</option>
+                @foreach (var r in responsaveis.Where(r => r.Id != Usuario.Id))
+                {
+                    <option value="@r.Id">@r.Nome</option>
+                }
+            </select>
+        </label>
+        <label class="filtro-imovel">
+            <span class="pequeno mudo">Imóvel</span>
+            <select class="input" value="@(imovelFiltro?.ToString() ?? "")" @onchange="FiltrarImovel" aria-label="Filtrar por imóvel">
+                <option value="">Todos os imóveis</option>
+                @foreach (var i in imoveis)
+                {
+                    <option value="@i.Id">@i.Nome</option>
+                }
+            </select>
+        </label>
+    </div>
+</div>
+
+<p class="pequeno mudo">
+    @(funil == Funil.PROJETOS
+        ? "Engenharia: a etapa do cartão é a \"etapa da estratégia\" do projeto e fica gravada também na ficha do imóvel."
+        : "Documentação e regularização: matrícula, certidões, contrato e registro de cada imóvel.")
+</p>
+
+<MensagemErro Texto="@Erro" />
+
+@if (colunas is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else
+{
+    var todos = colunas.Where(c => c.Estagio.Tipo == TipoEstagio.ABERTO).SelectMany(c => c.Cartoes).ToList();
+    <div class="resumo-funil">
+        <span class="chip-situacao">Em andamento <b>@todos.Count</b></span>
+        <button class="chip-situacao situacao-atrasado @(soVencidos ? "ativo" : "")" @onclick="() => soVencidos = !soVencidos">
+            Prazo vencido <b>@todos.Count(c => c.PrazoVencido)</b>
+        </button>
+    </div>
+    <div class="kanban">
+        @foreach (var col in colunas)
+        {
+            var aberto = col.Estagio.Tipo == TipoEstagio.ABERTO;
+            <div class="coluna @(arrastando is not null && colunaAlvo == col.Estagio.Id ? "alvo" : "")" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")"
+                 @ondragenter="() => colunaAlvo = col.Estagio.Id" @ondragover:preventDefault @ondrop="() => Soltar(col.Estagio, null)">
+                <div class="coluna-topo">
+                    <strong>@col.Estagio.Nome</strong>
+                    <span class="badge">@col.Cartoes.Count</span>
+                </div>
+                @foreach (var c in col.Cartoes.Where(c => !soVencidos || (aberto && c.PrazoVencido)))
+                {
+                    <div class="cartao-lead @(aberto && c.PrazoVencido ? "atrasado" : "") @(arrastando?.Id == c.Id ? "arrastando" : "")" @key="(c.Id, versao)"
+                         draggable="@(PodeEditar ? "true" : "false")" @ondragstart="() => arrastando = c" @ondragend="FimArraste"
+                         @ondrop="() => Soltar(col.Estagio, c)" @ondrop:stopPropagation>
+                        <div class="cartao-topo">
+                            @if (aberto && c.Prazo is { } pz)
+                            {
+                                <span class="situacao @(c.PrazoVencido ? "situacao-atrasado" : "situacao-agendado")" title="Prazo">📅 @pz.ToString("dd/MM/yyyy")</span>
+                            }
+                            else
+                            {
+                                <span></span>
+                            }
+                            <span class="pequeno mudo" title="Dias nesta etapa">⏳ @c.DiasNaFase d</span>
+                        </div>
+                        <button class="link-cartao" @onclick="() => Editar(c)">
+                            <span class="forte">🏠 @c.Codigo</span>
+                            <span class="pequeno mudo">@c.Titulo@(c.Cidade is null ? "" : $" · {c.Cidade}")</span>
+                        </button>
+                        @if (c.Observacoes is { } obs)
+                        {
+                            <p class="pequeno obs-processo">@(obs.Length > 120 ? obs[..120] + "…" : obs)</p>
+                        }
+                        @if (aberto && c.ProximoEm is { } p)
+                        {
+                            <p class="pequeno proximo-cartao @(c.Situacao == SituacaoProximoPasso.Atrasado ? "texto-erro" : "")">➜ @(c.ProximoTitulo ?? "Atividade") · @Texto.DataHora(p)</p>
+                        }
+                        <div class="cartao-rodape">
+                            <span class="pequeno mudo">@(c.ResponsavelNome is null ? "Sem responsável" : $"👤 {c.ResponsavelNome}")</span>
+                            <span class="cartao-botoes">
+                                <a class="btn-icone" href="imoveis/@c.ImovelId" title="Abrir a ficha do imóvel" aria-label="Abrir a ficha do imóvel">↗</a>
+                                @if (PodeEditar)
+                                {
+                                    <details class="menu-cartao">
+                                        <summary class="btn-icone" title="Mais ações" aria-label="Mais ações">⋯</summary>
+                                        <div class="menu-cartao-itens">
+                                            <label class="pequeno">Mover para</label>
+                                            <select class="input mini" value="@col.Estagio.Id" @onchange="e => MoverPara(c, e.Value?.ToString())" aria-label="Mover para">
+                                                @foreach (var e in colunas)
+                                                {
+                                                    <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    </details>
+                                }
+                            </span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (form is not null)
+{
+    <Modal Titulo="@(editando is null ? $"Imóvel no funil {Funis.Nome(funil)}" : $"{editando.Codigo} · {Funis.Nome(funil)}")" Largo AoFechar="() => form = null">
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="grade-4">
+                @if (editando is null)
+                {
+                    <label class="campo col-2">
+                        <span>Imóvel *</span>
+                        <InputSelect class="input" @bind-Value="form.ImovelId">
+                            <option value="">Selecione…</option>
+                            @foreach (var i in imoveis.Where(i => !NoFunil.Contains(i.Id)))
+                            {
+                                <option value="@i.Id">@i.Nome</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => form.ImovelId" />
+                    </label>
+                    <label class="campo">
+                        <span>Etapa inicial</span>
+                        <InputSelect class="input" @bind-Value="form.EstagioId">
+                            <option value="">Primeira etapa</option>
+                            @foreach (var c in colunas ?? [])
+                            {
+                                <option value="@c.Estagio.Id">@c.Estagio.Nome</option>
+                            }
+                        </InputSelect>
+                    </label>
+                }
+                @if (!Usuario.EscopoProprio)
+                {
+                    <label class="campo">
+                        <span>Responsável</span>
+                        <InputSelect class="input" @bind-Value="form.ResponsavelId">
+                            <option value="">Sem responsável</option>
+                            @foreach (var r in responsaveis)
+                            {
+                                <option value="@r.Id">@r.Nome</option>
+                            }
+                        </InputSelect>
+                    </label>
+                }
+                <label class="campo">
+                    <span>Prazo</span>
+                    <InputDate class="input" @bind-Value="form.Prazo" />
+                </label>
+                <label class="campo col-4">
+                    <span>Observações</span>
+                    <InputTextArea class="input" rows="4" @bind-Value="form.Observacoes" placeholder="O que falta, documentos pendentes, contatos…" />
+                </label>
+            </div>
+            @if (historico.Count > 0)
+            {
+                <details class="historico-processo">
+                    <summary class="pequeno">Histórico de etapas (@historico.Count)</summary>
+                    <ul class="pequeno">
+                        @foreach (var h in historico)
+                        {
+                            <li>@Texto.DataHora(h.CriadoEm) · @(h.EstagioAnterior is null ? "entrou em" : $"{h.EstagioAnterior} →") <b>@h.EstagioNovo</b>@(h.Usuario is null ? "" : $" · {h.Usuario}")</li>
+                        }
+                    </ul>
+                </details>
+            }
+            <MensagemErro Texto="@erroModal" />
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">@(editando is null ? "Adicionar" : "Salvar")</button>
+                @if (editando is not null)
+                {
+                    <a class="btn-ghost" href="imoveis/@editando.ImovelId">Ficha do imóvel</a>
+                    <button type="button" class="btn-perigo" disabled="@Ocupado" @onclick="Remover">Tirar do funil</button>
+                }
+                <button type="button" class="btn-ghost" @onclick="() => form = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    private Funil funil = Funil.ADMINISTRATIVO;
+    private IReadOnlyList<ColunaProcesso>? colunas;
+    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<Opcao> responsaveis = [];
+    private string responsavelFiltro = "";
+    private Guid? imovelFiltro;
+    private bool soVencidos;
+    private int versao;
+
+    private ProcessoForm? form;
+    private CartaoProcesso? editando;
+    private IReadOnlyList<HistoricoEstagio> historico = [];
+    private string? erroModal;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.ProcessosEditar);
+
+    private HashSet<Guid> NoFunil => colunas?.SelectMany(c => c.Cartoes).Select(c => c.ImovelId).ToHashSet() ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (q.TryGetValue("funil", out var fu) && Enum.TryParse<Funil>(fu, true, out var f) && Funis.EhProcesso(f)) funil = f;
+        if (q.TryGetValue("imovel", out var im) && Guid.TryParse(im, out var id)) imovelFiltro = id;
+        await Executar(async () =>
+        {
+            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
+        });
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () =>
+    {
+        var (resp, sem) = responsavelFiltro switch
+        {
+            "eu" => ((Guid?)Usuario.Id, false),
+            "sem" => (null, true),
+            var v when Guid.TryParse(v, out var g) => (g, false),
+            _ => (null, false),
+        };
+        colunas = await Servico.QuadroAsync(Usuario, funil, resp, imovelFiltro, sem);
+        versao++;
+    });
+
+    private Task TrocarFunil(Funil f)
+    {
+        funil = f;
+        colunas = null;
+        Nav.NavigateTo($"processos?funil={f}", replace: true);
+        return Carregar();
+    }
+
+    private Task FiltrarResponsavel(ChangeEventArgs e)
+    {
+        responsavelFiltro = e.Value?.ToString() ?? "";
+        return Carregar();
+    }
+
+    private Task FiltrarImovel(ChangeEventArgs e)
+    {
+        imovelFiltro = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        return Carregar();
+    }
+
+    /* ---- arrastar e soltar ---- */
+
+    private CartaoProcesso? arrastando;
+    private Guid? colunaAlvo;
+
+    private void FimArraste()
+    {
+        arrastando = null;
+        colunaAlvo = null;
+    }
+
+    private async Task Soltar(FunilEstagio destino, CartaoProcesso? sobre)
+    {
+        var c = arrastando;
+        FimArraste();
+        if (c is null || !PodeEditar || sobre?.Id == c.Id) return;
+        var origem = colunas!.First(x => x.Cartoes.Any(y => y.Id == c.Id)).Estagio;
+        if (origem.Id == destino.Id && sobre is null) return;
+        if (await Executar(() => Servico.MoverAsync(Usuario, c.Id, destino.Id, sobre?.Ordem))) await Carregar();
+    }
+
+    private async Task MoverPara(CartaoProcesso c, string? estagioId)
+    {
+        if (!Guid.TryParse(estagioId, out var id)) return;
+        if (await Executar(() => Servico.MoverAsync(Usuario, c.Id, id))) await Carregar();
+    }
+
+    /* ---- criar / editar ---- */
+
+    private void Novo()
+    {
+        erroModal = null;
+        editando = null;
+        historico = [];
+        form = new ProcessoForm { Funil = funil, ImovelId = imovelFiltro is { } i && !NoFunil.Contains(i) ? i : null };
+    }
+
+    private async Task Editar(CartaoProcesso c)
+    {
+        erroModal = null;
+        editando = c;
+        historico = [];
+        form = new ProcessoForm { Funil = funil, ImovelId = c.ImovelId, ResponsavelId = c.ResponsavelId, Prazo = c.Prazo, Observacoes = c.Observacoes };
+        await Executar(async () => historico = await Servico.HistoricoAsync(Usuario, c.Id));
+    }
+
+    private async Task Salvar()
+    {
+        var f = form!;
+        var ok = await Executar(() => editando is null ? Servico.CriarAsync(Usuario, f) : Servico.AtualizarAsync(Usuario, editando.Id, f));
+        if (!ok)
+        {
+            erroModal = Erro;
+            Erro = null;
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+
+    private async Task Remover()
+    {
+        if (editando is null) return;
+        if (!await Executar(() => Servico.ExcluirAsync(Usuario, editando.Id)))
+        {
+            erroModal = Erro;
+            Erro = null;
+            return;
+        }
+        form = null;
+        await Carregar();
+    }
+}

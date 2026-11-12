@@ -59,7 +59,7 @@ public class MigradorTests
         Assert.Equal(PadroesIniciais.CategoriasDespesa.Count,
             await Escalar<long>(BancoFixture.Url, $"SELECT count(*) FROM despesa_categorias WHERE nome = ANY(ARRAY['{string.Join("','", PadroesIniciais.CategoriasDespesa)}'])"));
         Assert.Equal(PadroesIniciais.Estagios.Count * 2,
-            await Escalar<long>(BancoFixture.Url, $"SELECT count(*) FROM funil_estagios WHERE nome = ANY(ARRAY['{string.Join("','", PadroesIniciais.Estagios.Select(e => e.Nome))}'])"));
+            await Escalar<long>(BancoFixture.Url, $"SELECT count(*) FROM funil_estagios WHERE funil IN ('VENDA','LOCACAO') AND nome = ANY(ARRAY['{string.Join("','", PadroesIniciais.Estagios.Select(e => e.Nome))}'])"));
         Assert.True(await Escalar<bool>(BancoFixture.Url, "SELECT EXISTS (SELECT 1 FROM usuarios WHERE email = 'admin@inovabens.com.br')"));
     }
 

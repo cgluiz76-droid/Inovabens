@@ -189,8 +189,8 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
     /// <summary>REGRA: imóvel vendido ou arquivado não pode ser marcado como novo interesse (os já marcados continuam).</summary>
     public static readonly IReadOnlyList<SituacaoImovel> SituacoesSemInteresse = [SituacaoImovel.VENDIDO, SituacaoImovel.ARQUIVADO];
 
-    public static Funil FunilDa(FinalidadeLead f) => f == FinalidadeLead.COMPRA ? Funil.VENDA : Funil.LOCACAO;
-    private static FinalidadeLead FinalidadeDo(Funil f) => f == Funil.VENDA ? FinalidadeLead.COMPRA : FinalidadeLead.LOCACAO;
+    public static Funil FunilDa(FinalidadeLead f) => Funis.Do(f);
+    private static FinalidadeLead FinalidadeDo(Funil f) => Funis.FinalidadeDo(f);
 
     private static IQueryable<Lead> Visiveis(InovabensDb db, UsuarioAtual u) =>
         db.Leads.Where(l => l.ExcluidoEm == null).VisiveisPara(u);
@@ -219,7 +219,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         else if (responsavelId is { } r) q = q.Where(l => l.ResponsavelId == r);
         if (imovelId is { } im)
             q = q.Where(l => l.ImovelSugeridoId == im || db.LeadImoveisInteresse.Any(i => i.LeadId == l.Id && i.ImovelId == im));
-        var venda = finalidade == FinalidadeLead.COMPRA;
+        var venda = finalidade != FinalidadeLead.LOCACAO; // captação mostra o preço de venda
         var linhas = await q
             .OrderBy(l => l.Ordem).ThenByDescending(l => l.AtualizadoEm)
             .Select(l => new
@@ -784,6 +784,8 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         await using var db = await fabrica.CreateDbContextAsync();
         var n = await db.Leads.CountAsync(l => l.EstagioId == id && l.ExcluidoEm == null);
         if (n > 0) throw new RegraNegocioException("_", $"Há {n} lead(s) neste estágio. Mova-os ou desative o estágio em vez de excluir.");
+        var np = await db.Processos.CountAsync(x => x.EstagioId == id && x.ExcluidoEm == null);
+        if (np > 0) throw new RegraNegocioException("_", $"Há {np} imóvel(is) neste estágio. Mova-os ou desative o estágio em vez de excluir.");
         try { await db.FunilEstagios.Where(e => e.Id == id).ExecuteDeleteAsync(); }
         catch (Exception ex) when (ex is DbUpdateException or Npgsql.PostgresException)
         {

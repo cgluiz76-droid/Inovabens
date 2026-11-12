@@ -172,6 +172,7 @@ public sealed class PropostasService(IDbContextFactory<InovabensDb> fabrica, Aud
         var l = await Leads(db, u).Include(x => x.Estagio).SingleOrDefaultAsync(x => x.Id == leadId)
             ?? throw new NaoEncontradoException("Lead não encontrado.");
         if (l.Estagio!.Tipo == TipoEstagio.PERDIDO) throw new RegraNegocioException("_", "Lead perdido não recebe proposta");
+        if (l.Finalidade == FinalidadeLead.CAPTACAO) throw new RegraNegocioException("_", "Lead de captação não recebe proposta de compra ou aluguel");
         var venda = l.Finalidade == FinalidadeLead.COMPRA;
         if (venda && f.Itens.Count == 0) throw new RegraNegocioException(nameof(f.Itens), "Informe ao menos uma forma de pagamento");
         if (!venda && f.Aluguel is null) throw new RegraNegocioException(nameof(f.Aluguel), "Informe o valor do aluguel");

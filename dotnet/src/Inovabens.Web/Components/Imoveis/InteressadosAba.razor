@@ -46,7 +46,7 @@ else
                                 }
                                 <br /><span class="pequeno mudo">@i.Telefone</span>
                             </td>
-                            <td>@(i.Finalidade == FinalidadeLead.COMPRA ? "Venda" : "Locação")</td>
+                            <td>@Funis.Nome(i.Finalidade)</td>
                             <td><span class="chip-estagio" style="border-color:@(i.EstagioCor ?? "#64748b")">@i.Estagio</span></td>
                             <td>
                                 @if (i.StatusProposta is { } sp && i.ValorProposta is { } vp)
