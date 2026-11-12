@@ -625,3 +625,21 @@ fieldset.opcoes-post { flex-direction: row; gap: 1.25rem; }
     .filtros-crm, .filtro-imovel { width: 100%; min-width: 0; }
     .filtro-imovel .input { max-width: none; flex: 1; }
 }
+
+/* ---- CRM: painel de acompanhamento ---- */
+.filtros-acompanhamento { display: grid; gap: .6rem .9rem; grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr)); align-items: end;
+    background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio); padding: .9rem; margin-bottom: 1rem; }
+.filtros-acompanhamento .acoes { grid-column: 1 / -1; margin: 0; }
+.checks-acompanhamento { display: flex; flex-direction: column; gap: .3rem; justify-content: flex-end; }
+button.kpi { font: inherit; text-align: left; cursor: pointer; }
+.grade-acompanhamento { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 1.25rem; }
+.subtitulo-tabela { font-size: .95rem; margin: 0; padding: .7rem .9rem; color: var(--marinho); border-bottom: 1px solid var(--borda); }
+.subtitulo-secao { font-size: 1.05rem; color: var(--marinho); margin: .5rem 0 .6rem; }
+.linha-grupo td { font-weight: 650; color: var(--marinho); background: #f3f5fa; }
+.ponto-etapa { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; margin-right: .45rem; vertical-align: middle; }
+.etiqueta-etapa { display: inline-block; border-left: 3px solid #64748b; padding: .05rem .45rem; background: #f3f5fa; border-radius: 4px; font-size: .8rem; }
+.grupo-imovel { margin-bottom: .9rem; }
+.topo-grupo-imovel { display: flex; align-items: center; gap: .4rem; font-size: .95rem; margin: 0; padding: .65rem .9rem; border-bottom: 1px solid var(--borda); }
+.topo-grupo-imovel .badge { margin-left: auto; }
+@media (max-width: 900px) { .grade-acompanhamento { grid-template-columns: 1fr; } }
+.link-filtro { all: unset; cursor: pointer; color: var(--azul); } .link-filtro:hover { text-decoration: underline; }

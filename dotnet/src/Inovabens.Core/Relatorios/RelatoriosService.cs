@@ -400,7 +400,7 @@ public sealed class RelatoriosService(
     private static XLCellValue V(double? v) => v is { } x ? x : Blank.Value;
     private static XLCellValue V(int? v) => v is { } x ? x : Blank.Value;
 
-    private static IXLWorksheet Aba(XLWorkbook wb, string nome, (string Titulo, double Largura)[] colunas, IEnumerable<XLCellValue[]> linhas)
+    internal static IXLWorksheet Aba(XLWorkbook wb, string nome, (string Titulo, double Largura)[] colunas, IEnumerable<XLCellValue[]> linhas)
     {
         var ws = wb.Worksheets.Add(nome);
         for (var c = 0; c < colunas.Length; c++)
@@ -420,7 +420,7 @@ public sealed class RelatoriosService(
         return ws;
     }
 
-    private static byte[] Salvar(XLWorkbook wb)
+    internal static byte[] Salvar(XLWorkbook wb)
     {
         using var ms = new MemoryStream();
         wb.SaveAs(ms);

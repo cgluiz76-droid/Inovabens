@@ -239,6 +239,10 @@ imovel.MapGet("ficha-financeira.pdf", (Guid id, CodigoIndice? indice, HttpContex
 imovel.MapGet("ficha-financeira.xlsx", (Guid id, CodigoIndice? indice, HttpContext c, RelatoriosService r) =>
     Baixar(c, u => r.FichaFinanceiraXlsxAsync(u, id, indice ?? CodigoIndice.IPCA))).RequireAuthorization(Permissoes.FinanceiroExportar);
 
+// Painel de acompanhamento do CRM em Excel, com os mesmos filtros da tela (crm/acompanhamento?...)
+app.MapGet("/crm/acompanhamento.xlsx", (HttpContext c, AcompanhamentoService s) =>
+    Baixar(c, u => s.ExcelAsync(u, FiltroAcompanhamento.Ler(k => c.Request.Query[k].FirstOrDefault())))).RequireAuthorization(Permissoes.CrmVer);
+
 // Pré-visualização do site público (páginas próprias, abertas em outra aba pelo botão "Ver no site"):
 // /site (início), /site/imoveis?finalidade=venda|locacao (busca) e /site/imovel/{id} (ficha). Logo e menu ligam as três.
 Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s) => PaginaImovelSite(id, c, s, null);

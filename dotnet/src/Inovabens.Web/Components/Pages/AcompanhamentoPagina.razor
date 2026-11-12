@@ -1,0 +1,338 @@
+@page "/crm/acompanhamento"
+@attribute [Authorize(Policy = Permissoes.CrmVer)]
+@inherits ComponenteBase
+@inject AcompanhamentoService Servico
+@inject CrmService Crm
+@inject OpcoesService Opcoes
+@inject NavigationManager Nav
+
+<PageTitle>Acompanhamento do CRM · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Acompanhamento do CRM</h1>
+    <div class="acoes-topo">
+        <a class="btn-ghost" href="crm">← Funil</a>
+        <a class="btn-ghost" href="@($"crm/acompanhamento.xlsx?{filtro.ParaConsulta()}")" download>⬇ Excel</a>
+    </div>
+</div>
+
+<form class="filtros-acompanhamento" @onsubmit="Aplicar" @onsubmit:preventDefault>
+    <label class="campo">
+        <span>Pessoa</span>
+        <input class="input" placeholder="Nome, telefone ou e-mail" @bind="filtro.Pessoa" />
+    </label>
+    <label class="campo">
+        <span>Imóvel</span>
+        <select class="input" @bind="filtro.ImovelId">
+            <option value="">Todos</option>
+            @foreach (var i in imoveis)
+            {
+                <option value="@i.Id">@i.Nome</option>
+            }
+        </select>
+    </label>
+    @if (!Usuario.EscopoProprio)
+    {
+        <label class="campo">
+            <span>Responsável</span>
+            <select class="input" value="@ResponsavelValor" @onchange="DefinirResponsavel">
+                <option value="">Todos</option>
+                <option value="fila">Fila aberta (sem responsável)</option>
+                @foreach (var r in responsaveis)
+                {
+                    <option value="@r.Id">@r.Nome</option>
+                }
+            </select>
+        </label>
+    }
+    <label class="campo">
+        <span>Funil</span>
+        <select class="input" value="@(filtro.Funil?.ToString() ?? "")" @onchange="DefinirFunil">
+            <option value="">Venda e locação</option>
+            <option value="@Funil.VENDA">Venda</option>
+            <option value="@Funil.LOCACAO">Locação</option>
+        </select>
+    </label>
+    <label class="campo">
+        <span>Etapa</span>
+        <select class="input" @bind="filtro.EstagioId">
+            <option value="">Todas</option>
+            @foreach (var e in estagios.Where(e => filtro.Funil is null || e.Funil == filtro.Funil))
+            {
+                <option value="@e.Id">@(filtro.Funil is null ? (e.Funil == Funil.VENDA ? "Venda · " : "Locação · ") : "")@e.Nome</option>
+            }
+        </select>
+    </label>
+    <label class="campo">
+        <span>Situação</span>
+        <select class="input" @bind="filtro.Status">
+            <option value="">Todas</option>
+            <option value="@TipoEstagio.ABERTO">Em aberto</option>
+            <option value="@TipoEstagio.GANHO">Ganhos</option>
+            <option value="@TipoEstagio.PERDIDO">Perdidos</option>
+        </select>
+    </label>
+    <label class="campo">
+        <span>Origem</span>
+        <select class="input" @bind="filtro.Origem">
+            <option value="">Todas</option>
+            @foreach (var o in origens)
+            {
+                <option value="@o">@o</option>
+            }
+        </select>
+    </label>
+    <label class="campo">
+        <span>Entrada de</span>
+        <input class="input" type="date" @bind="filtro.De" />
+    </label>
+    <label class="campo">
+        <span>até</span>
+        <input class="input" type="date" @bind="filtro.Ate" />
+    </label>
+    <label class="campo">
+        <span>Parado na etapa há (dias)</span>
+        <input class="input" type="number" min="1" placeholder="Ex.: 7" @bind="filtro.ParadoDias" />
+    </label>
+    <div class="campo checks-acompanhamento">
+        <label class="check"><input type="checkbox" @bind="filtro.SemProximoPasso" /> Sem próximo passo</label>
+        <label class="check"><input type="checkbox" @bind="filtro.AtividadeVencida" /> Com atividade vencida</label>
+    </div>
+    <div class="acoes">
+        <button type="submit" class="btn-primary" disabled="@Ocupado">Filtrar</button>
+        <button type="button" class="btn-ghost" @onclick="Limpar">Limpar</button>
+    </div>
+</form>
+
+<MensagemErro Texto="@Erro" />
+
+@if (dados is null)
+{
+    <p class="carregando">Carregando…</p>
+}
+else
+{
+    var imoveisComLead = dados.Linhas.Where(l => l.ImovelId is not null).Select(l => l.ImovelId).Distinct().Count();
+    var vencidas = dados.Usuarios.Sum(x => x.AtividadesVencidas);
+    var semPasso = dados.Usuarios.Sum(x => x.SemProximoPasso);
+    <div class="kpis">
+        <div class="kpi"><span class="rotulo-kpi">Leads</span><span class="valor-kpi">@dados.Leads</span></div>
+        <div class="kpi"><span class="rotulo-kpi">Imóveis com leads</span><span class="valor-kpi">@imoveisComLead</span></div>
+        <button class="kpi link-kpi" @onclick="() => Alternar(vencida: true)" title="Mostrar só os leads com atividade vencida">
+            <span class="rotulo-kpi">Atividades vencidas</span><span class="valor-kpi @(vencidas > 0 ? "texto-erro" : "")">@vencidas</span>
+        </button>
+        <button class="kpi link-kpi" @onclick="() => Alternar(vencida: false)" title="Mostrar só os leads sem próximo passo">
+            <span class="rotulo-kpi">Sem próximo passo</span><span class="valor-kpi @(semPasso > 0 ? "texto-erro" : "")">@semPasso</span>
+        </button>
+    </div>
+
+    <div class="grade-acompanhamento">
+        <section class="tabela-container">
+            <h2 class="subtitulo-tabela">Etapas do funil</h2>
+            <table class="tabela simples">
+                <thead><tr><th>Etapa</th><th>Hoje</th><th title="Leads que já estiveram nesta etapa">Passaram</th><th title="Dos que passaram aqui, quantos chegaram à etapa seguinte">Conversão</th><th title="Tempo médio que os leads ficam nesta etapa">Tempo médio</th></tr></thead>
+                <tbody>
+                    @foreach (var g in dados.Etapas.GroupBy(e => e.Funil))
+                    {
+                        @if (filtro.Funil is null)
+                        {
+                            <tr class="linha-grupo"><td colspan="5">@(g.Key == Funil.VENDA ? "Venda" : "Locação")</td></tr>
+                        }
+                        @foreach (var e in g)
+                        {
+                            <tr>
+                                <td><span class="ponto-etapa" style="background:@(e.Cor ?? "#64748b")"></span>@e.Nome</td>
+                                <td>@e.Atuais</td>
+                                <td>@e.Passaram</td>
+                                <td>@(e.ConversaoProxima is { } c ? $"{c:0.#}%" : "—")</td>
+                                <td>@(e.DiasMedios is { } d ? $"{d:0.#} d" : "—")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </section>
+        <section class="tabela-container">
+            <h2 class="subtitulo-tabela">Por responsável</h2>
+            <table class="tabela simples">
+                <thead><tr><th>Responsável</th><th>Abertos</th><th>Ativ. vencidas</th><th>Sem passo</th><th>Ganhos</th><th>Perdidos</th></tr></thead>
+                <tbody>
+                    @foreach (var x in dados.Usuarios)
+                    {
+                        <tr>
+                            <td>
+                                @if (!Usuario.EscopoProprio)
+                                {
+                                    <button class="link-filtro" title="Filtrar por este responsável" @onclick="() => FiltrarPor(x.Id)">@x.Nome</button>
+                                }
+                                else
+                                {
+                                    @x.Nome
+                                }
+                            </td>
+                            <td>@x.Abertos</td>
+                            <td class="@(x.AtividadesVencidas > 0 ? "texto-erro" : "")">@x.AtividadesVencidas</td>
+                            <td>@x.SemProximoPasso</td>
+                            <td>@x.Ganhos</td>
+                            <td>@x.Perdidos</td>
+                        </tr>
+                    }
+                    @if (dados.Usuarios.Count == 0)
+                    {
+                        <tr><td colspan="6" class="mudo">Nenhum lead com estes filtros.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <h2 class="subtitulo-secao">Por imóvel</h2>
+    @if (dados.Linhas.Count == 0)
+    {
+        <p class="pequeno mudo">Nenhum lead com estes filtros.</p>
+    }
+    @foreach (var g in dados.PorImovel)
+    {
+        var primeiro = g.First();
+        <section class="tabela-container grupo-imovel">
+            <h3 class="topo-grupo-imovel">
+                @if (g.Key is { } imId)
+                {
+                    <a href="imoveis/@imId">🏠 @primeiro.ImovelCodigo</a>
+                    <span class="mudo"> · @primeiro.ImovelTitulo</span>
+                }
+                else
+                {
+                    <span>Sem imóvel vinculado</span>
+                }
+                <span class="badge">@g.Count()</span>
+            </h3>
+            <table class="tabela simples">
+                <thead><tr><th>Pessoa</th><th>Funil · etapa</th><th>Na etapa</th><th>Responsável</th><th>Próximo passo</th><th>Proposta</th></tr></thead>
+                <tbody>
+                    @foreach (var l in g)
+                    {
+                        <tr>
+                            <td>
+                                <a href="@($"crm?lead={l.LeadId}")">@l.Pessoa</a>
+                                @if (l.SoSugerido)
+                                {
+                                    <span class="pequeno mudo" title="Imóvel citado no WhatsApp, ainda não confirmado"> (sugerido)</span>
+                                }
+                                <br /><span class="pequeno mudo">@l.Telefone@(l.Origem is null ? "" : $" · {l.Origem}")</span>
+                            </td>
+                            <td>
+                                <span class="pequeno mudo">@(l.Funil == Funil.VENDA ? "Venda" : "Locação")</span><br />
+                                <span class="etiqueta-etapa" style="border-color:@(l.EstagioCor ?? "#64748b")">@l.Estagio</span>
+                            </td>
+                            <td>@l.DiasNaEtapa d</td>
+                            <td>@(l.Responsavel ?? "🙋 Fila aberta")</td>
+                            <td>
+                                @if (l.Tipo == TipoEstagio.ABERTO)
+                                {
+                                    <span class="situacao situacao-@l.Situacao.ToString().ToLowerInvariant()">@Rotulo(l.Situacao)</span>
+                                    @if (l.ProximoEm is { } p)
+                                    {
+                                        <br /><span class="pequeno">@(l.ProximoTitulo ?? "Próxima ação") · @Texto.DataHora(p)</span>
+                                    }
+                                    @if (l.AtividadesVencidas > 1)
+                                    {
+                                        <br /><span class="pequeno texto-erro">@l.AtividadesVencidas atividades vencidas</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="pequeno mudo">@(l.Tipo == TipoEstagio.GANHO ? "Concluído" : "Perdido")</span>
+                                }
+                            </td>
+                            <td>
+                                @if (l.ValorProposta is { } v)
+                                {
+                                    <span>@Texto.MoedaCompacta(v)</span><br />
+                                    <span class="pequeno mudo">@(l.StatusProposta == StatusProposta.ACEITA ? "Aceita" : "Em análise")</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+    }
+}
+
+@code {
+    private FiltroAcompanhamento filtro = new();
+    private Acompanhamento? dados;
+    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<Opcao> responsaveis = [];
+    private IReadOnlyList<FunilEstagio> estagios = [];
+    private IReadOnlyList<string> origens = [];
+
+    private string ResponsavelValor => filtro.SemResponsavel ? "fila" : filtro.ResponsavelId?.ToString() ?? "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var consulta = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        filtro = FiltroAcompanhamento.Ler(k => consulta.TryGetValue(k, out var v) ? v.ToString() : null);
+        await Executar(async () =>
+        {
+            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
+            estagios = (await Crm.EstagiosAsync()).Where(e => e.Ativo).ToList();
+            origens = await Servico.OrigensAsync(Usuario);
+        });
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () => dados = await Servico.ConsultarAsync(Usuario, filtro));
+
+    /// <summary>Recarrega e põe os filtros na URL (o link pode ser guardado ou enviado).</summary>
+    private async Task Aplicar()
+    {
+        var q = filtro.ParaConsulta();
+        Nav.NavigateTo("crm/acompanhamento" + (q.Length > 0 ? "?" + q : ""), replace: true);
+        await Carregar();
+    }
+
+    private Task Limpar()
+    {
+        filtro = new FiltroAcompanhamento();
+        return Aplicar();
+    }
+
+    private void DefinirResponsavel(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        filtro.SemResponsavel = v == "fila";
+        filtro.ResponsavelId = Guid.TryParse(v, out var id) ? id : null;
+    }
+
+    private void DefinirFunil(ChangeEventArgs e)
+    {
+        filtro.Funil = Enum.TryParse<Funil>(e.Value?.ToString(), out var f) ? f : null;
+        if (filtro.EstagioId is { } est && estagios.FirstOrDefault(x => x.Id == est)?.Funil != filtro.Funil && filtro.Funil is not null)
+            filtro.EstagioId = null;
+    }
+
+    private Task FiltrarPor(Guid? responsavel)
+    {
+        filtro.SemResponsavel = responsavel is null;
+        filtro.ResponsavelId = responsavel;
+        return Aplicar();
+    }
+
+    private Task Alternar(bool vencida)
+    {
+        if (vencida) filtro.AtividadeVencida = !filtro.AtividadeVencida;
+        else filtro.SemProximoPasso = !filtro.SemProximoPasso;
+        return Aplicar();
+    }
+
+    private static string Rotulo(SituacaoProximoPasso s) => s switch
+    {
+        SituacaoProximoPasso.Atrasado => "Atrasado",
+        SituacaoProximoPasso.Hoje => "Hoje",
+        SituacaoProximoPasso.Agendado => "Agendado",
+        _ => "Sem próximo passo",
+    };
+}
