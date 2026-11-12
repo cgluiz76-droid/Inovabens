@@ -61,6 +61,20 @@ public class ImoveisIntegracaoTests
         Assert.All((await s.ListarAsync(admin, new FiltroImoveis { Situacao = SituacaoImovel.EM_AQUISICAO })).Itens,
             i => Assert.Equal(SituacaoImovel.EM_AQUISICAO, i.Situacao));
 
+        // --- mapa: mesmos filtros da lista, sem paginação, coordenadas e itens sem localização ---
+        var cidadeMapa = "Mapa " + Guid.NewGuid().ToString("N")[..8];
+        var idMapa = await s.CriarAsync(admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa no mapa", Tipo = "casa", Cidade = cidadeMapa, Latitude = -20.7918, Longitude = -49.302707 });
+        var idSemLocal = await s.CriarAsync(admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa sem local", Tipo = "casa", Cidade = cidadeMapa });
+        var noMapa = await s.ListarParaMapaAsync(admin, new FiltroImoveis { Cidade = cidadeMapa, TamanhoPagina = 1 });
+        Assert.Equal(2, noMapa.Count); // TamanhoPagina não limita o mapa
+        var pinoMapa = Assert.Single(noMapa, i => i.Id == idMapa);
+        Assert.Equal((-20.7918, -49.302707), (pinoMapa.Latitude!.Value, pinoMapa.Longitude!.Value));
+        Assert.Null(Assert.Single(noMapa, i => i.Id == idSemLocal).Latitude);
+        Assert.Empty(await s.ListarParaMapaAsync(admin, new FiltroImoveis { Cidade = cidadeMapa, Tipo = "terreno" }));
+        Assert.Contains(cidadeMapa, await s.CidadesAsync(admin));
+        Assert.Empty(await s.ListarParaMapaAsync(corretor, new FiltroImoveis { Cidade = cidadeMapa })); // escopo do Corretor
+        Assert.DoesNotContain(cidadeMapa, await s.CidadesAsync(corretor));
+
         // --- atualizar ---
         var form = ImovelForm.De(d1.Dados);
         form.Titulo = "Apartamento Gonzaga reformado";

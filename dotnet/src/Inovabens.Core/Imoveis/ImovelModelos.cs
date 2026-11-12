@@ -23,6 +23,10 @@ public sealed record ImovelListaItem(
     string? Cidade, string? Bairro, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, string? CorretorNome,
     string? CapaUrl = null);
 
+/// <summary>Imóvel no mapa: coordenadas (nulas = sem localização) e o resumo do balão.</summary>
+public sealed record ImovelMapaItem(Guid Id, string Codigo, string Titulo, string Tipo, SituacaoImovel Situacao, string? Bairro,
+    string? Cidade, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, double? Latitude, double? Longitude, string? CapaUrl = null);
+
 /// <param name="Url">Endereço no próprio sistema (o arquivo vem do Drive pelo servidor, com verificação de acesso).</param>
 /// <param name="UrlPublica">Endereço da cópia no R2 (site), quando publicada e com domínio público configurado.</param>
 public sealed record MidiaDetalhe(ImovelMidia Midia, string? Url, string? UrlPublica = null)

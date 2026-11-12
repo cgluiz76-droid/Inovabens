@@ -661,3 +661,39 @@ button.kpi { font: inherit; text-align: left; cursor: pointer; }
 .meta-celula { display: flex; flex-direction: column; gap: .25rem; min-width: 7rem; }
 .meta-celula .barra-trilho { width: 100%; }
 @media (max-width: 640px) { .grade-3 { grid-template-columns: 1fr; } }
+
+/* Imóveis → Mapa (Components/Imoveis/MapaImoveis.razor + wwwroot/mapa-imoveis.js) */
+.abas-visao { border-bottom: 0; margin: 0 auto 0 1rem; overflow: visible; }
+.mapa-imoveis { display: grid; grid-template-columns: 22rem 1fr; height: calc(100vh - 15rem); min-height: 28rem; background: var(--superficie);
+    border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: var(--sombra-1); overflow: hidden; }
+.mapa-lista { overflow-y: auto; border-right: 1px solid var(--borda); }
+.mapa-resumo { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; gap: .5rem; padding: .6rem .9rem;
+    font-size: .8rem; color: var(--mudo); background: var(--superficie); border-bottom: 1px solid var(--borda); }
+.mapa-resumo label { display: flex; align-items: center; gap: .35rem; cursor: pointer; white-space: nowrap; }
+.mapa-cartao { display: flex; gap: .7rem; padding: .65rem .9rem; border-bottom: 1px solid var(--borda); cursor: pointer; }
+.mapa-cartao:hover { background: var(--azul-claro); }
+.mapa-cartao.sem-local { cursor: default; }
+.mapa-cartao .miniatura-imovel { width: 72px; height: 54px; flex: none; }
+.mapa-cartao p { margin: 0; }
+.mapa-cartao .codigo { font-size: .8rem; font-weight: 650; }
+.titulo-cartao { font-size: .82rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.aviso-local { color: #b45309; }
+.mapa-quadro-imoveis { height: 100%; min-height: 20rem; }
+.pino-imovel { position: relative; display: inline-block; transform: translate(-50%, calc(-100% - 7px)); padding: 3px 8px; border-radius: 14px;
+    background: #fff; border: 2px solid var(--azul); color: var(--azul); font: 700 12px/1.2 Inter, system-ui, sans-serif; white-space: nowrap;
+    box-shadow: 0 2px 6px rgb(0 0 0 / .35); }
+.pino-imovel::after { content: ""; position: absolute; left: 50%; bottom: -8px; margin-left: -6px; border: 6px solid transparent; border-top-color: var(--azul); }
+.pino-imovel.preparo { border-color: #b45309; color: #b45309; }
+.pino-imovel.preparo::after { border-top-color: #b45309; }
+.pino-imovel.encerrado { border-color: #6b7280; color: #6b7280; }
+.pino-imovel.encerrado::after { border-top-color: #6b7280; }
+.pino-imovel.ativo { background: var(--azul); border-color: var(--azul); color: #fff; z-index: 1000; }
+.balao-imovel { display: grid; gap: 2px; font-size: .82rem; }
+.balao-imovel img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 4px; }
+.balao-imovel .mudo { color: var(--mudo); }
+.balao-imovel .links { display: flex; gap: .9rem; margin-top: 4px; }
+@media (max-width: 760px) {
+    .mapa-imoveis { grid-template-columns: 1fr; grid-template-rows: 50vh auto; height: auto; }
+    .mapa-lista { order: 2; border-right: 0; max-height: 60vh; }
+    .abas-visao { margin: 0; }
+}

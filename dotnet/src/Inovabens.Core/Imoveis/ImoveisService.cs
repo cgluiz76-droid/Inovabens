@@ -28,19 +28,7 @@ public sealed class ImoveisService(
         var tamanho = Math.Clamp(f.TamanhoPagina, 1, 100);
         await using var db = await fabrica.CreateDbContextAsync();
 
-        var q = db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null).VisiveisPara(u);
-        if (!u.EscopoProprio && f.CorretorId is { } c) q = q.Where(i => i.CorretorResponsavelId == c);
-        if (f.Situacao is { } s) q = q.Where(i => i.Situacao == s);
-        if (f.Finalidade is { } fi) q = q.Where(i => i.Finalidade == fi);
-        if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.ILike(i.Tipo, Texto.LikeLiteral(tipo), @"\"));
-        if (Texto.Limpo(f.Cidade) is { } cidade) q = q.Where(i => EF.Functions.ILike(i.Cidade!, Texto.LikeLiteral(cidade), @"\"));
-        if (Texto.Limpo(f.Termo) is { } termo)
-        {
-            var t = $"%{Texto.LikeLiteral(termo)}%";
-            q = q.Where(i => EF.Functions.ILike(i.Titulo, t, @"\") || EF.Functions.ILike(i.Codigo, t, @"\")
-                || EF.Functions.ILike(i.Bairro!, t, @"\") || EF.Functions.ILike(i.Cidade!, t, @"\")
-                || EF.Functions.ILike(i.Logradouro!, t, @"\") || EF.Functions.ILike(i.Matricula!, t, @"\"));
-        }
+        var q = Filtrados(db, u, f);
 
         var total = await q.CountAsync();
         var itens = await q.OrderByDescending(i => i.CriadoEm)
@@ -57,6 +45,54 @@ public sealed class ImoveisService(
         var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.UrlPublica ?? d.Url : null);
         itens = [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id) })];
         return new Paginado<ImovelListaItem>(itens, total, pagina, tamanho);
+    }
+
+    /// <summary>Filtros comuns da lista e do mapa de imóveis (respeita o escopo do usuário).</summary>
+    private static IQueryable<Imovel> Filtrados(InovabensDb db, UsuarioAtual u, FiltroImoveis f)
+    {
+        var q = db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null).VisiveisPara(u);
+        if (!u.EscopoProprio && f.CorretorId is { } c) q = q.Where(i => i.CorretorResponsavelId == c);
+        if (f.Situacao is { } s) q = q.Where(i => i.Situacao == s);
+        if (f.Finalidade is { } fi) q = q.Where(i => i.Finalidade == fi);
+        if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.ILike(i.Tipo, Texto.LikeLiteral(tipo), @"\"));
+        if (Texto.Limpo(f.Cidade) is { } cidade) q = q.Where(i => EF.Functions.ILike(i.Cidade!, Texto.LikeLiteral(cidade), @"\"));
+        if (Texto.Limpo(f.Termo) is { } termo)
+        {
+            var t = $"%{Texto.LikeLiteral(termo)}%";
+            q = q.Where(i => EF.Functions.ILike(i.Titulo, t, @"\") || EF.Functions.ILike(i.Codigo, t, @"\")
+                || EF.Functions.ILike(i.Bairro!, t, @"\") || EF.Functions.ILike(i.Cidade!, t, @"\")
+                || EF.Functions.ILike(i.Logradouro!, t, @"\") || EF.Functions.ILike(i.Matricula!, t, @"\"));
+        }
+        return q;
+    }
+
+    /// <summary>
+    /// Todos os imóveis do filtro (sem paginação), só com o necessário para o mapa. Os sem coordenadas vêm também,
+    /// para a tela contar e listar o que falta localizar.
+    /// </summary>
+    public async Task<IReadOnlyList<ImovelMapaItem>> ListarParaMapaAsync(UsuarioAtual u, FiltroImoveis f)
+    {
+        u.Exigir(P.ImoveisVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var itens = await Filtrados(db, u, f).OrderBy(i => i.Codigo)
+            .Select(i => new ImovelMapaItem(i.Id, i.Codigo, i.Titulo, i.Tipo, i.Situacao, i.Bairro, i.Cidade, i.Uf,
+                i.PrecoVenda, i.PrecoLocacao, i.Latitude, i.Longitude))
+            .ToListAsync();
+        var ids = itens.Select(i => i.Id).ToList();
+        var fotos = await db.ImovelMidias.AsNoTracking()
+            .Where(m => ids.Contains(m.ImovelId) && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
+            .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
+        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.UrlPublica ?? d.Url : null);
+        return [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id) })];
+    }
+
+    /// <summary>Cidades dos imóveis que o usuário vê, para o filtro.</summary>
+    public async Task<IReadOnlyList<string>> CidadesAsync(UsuarioAtual u)
+    {
+        u.Exigir(P.ImoveisVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        return await db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null && i.Cidade != null && i.Cidade != "").VisiveisPara(u)
+            .Select(i => i.Cidade!).Distinct().OrderBy(c => c).ToListAsync();
     }
 
     /// <summary>

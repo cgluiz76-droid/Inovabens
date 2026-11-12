@@ -244,6 +244,10 @@ public class LocalizacaoImovelTests
         Assert.Equal("Av. Ana Costa, 100, Gonzaga, Santos - SP, Brasil", endereco);
         Assert.Equal("https://www.google.com/maps?q=Av.%20Ana%20Costa%2C%20100%2C%20Gonzaga%2C%20Santos%20-%20SP%2C%20Brasil&t=k", RegrasImovel.LinkGoogleMaps(null, null, endereco));
         Assert.Null(RegrasImovel.LinkGoogleMaps(null, null, RegrasImovel.EnderecoParaMapa(null, null, null, null, null, null)));
+        // coordenadas sempre vencem o endereço (o endereço pode levar o Google a outro lugar)
+        Assert.Equal("-20.7918,-49.302707", RegrasImovel.ConsultaMapa(-20.7918, -49.302707, "Rua X, 10, Santos - SP, Brasil"));
+        Assert.Equal("Santos%20-%20SP", RegrasImovel.ConsultaMapa(null, null, "Santos - SP"));
+        Assert.Equal("Santos%20-%20SP", RegrasImovel.ConsultaMapa(-20.7918, null, "Santos - SP"));
     }
 
     [Fact]

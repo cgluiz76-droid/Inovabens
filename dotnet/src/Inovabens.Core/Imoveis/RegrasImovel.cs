@@ -111,9 +111,18 @@ public static class RegrasImovel
     /// </summary>
     public static string? LinkGoogleMaps(double? lat, double? lng, string? endereco)
     {
-        if (lat is not null && lng is not null)
-            return "https://www.google.com/maps?q=" + FormatarCoordenadas(lat, lng).Replace(" ", "") + "&t=k&z=18";
-        return Texto.Limpo(endereco) is { } e ? "https://www.google.com/maps?q=" + Uri.EscapeDataString(e) + "&t=k" : null;
+        if (ConsultaMapa(lat, lng, endereco) is not { } q) return null;
+        return "https://www.google.com/maps?q=" + q + "&t=k" + (lat is not null && lng is not null ? "&z=18" : "");
+    }
+
+    /// <summary>
+    /// Valor do parâmetro q= do Google Maps (já escapado): as coordenadas têm prioridade sobre o endereço sempre que
+    /// existirem; o endereço só é usado quando o imóvel não tem coordenadas.
+    /// </summary>
+    public static string? ConsultaMapa(double? lat, double? lng, string? endereco)
+    {
+        if (lat is not null && lng is not null) return FormatarCoordenadas(lat, lng).Replace(" ", "");
+        return Texto.Limpo(endereco) is { } e ? Uri.EscapeDataString(e) : null;
     }
 
     /// <summary>

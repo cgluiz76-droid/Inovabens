@@ -262,7 +262,7 @@
                         <div class="bloco">
                             <h2>Localização</h2>
                             <div class="mapa-quadro">
-                                <iframe src="https://www.google.com/maps?q=@Uri.EscapeDataString(ConsultaMapa)&t=k&z=@(Im.EnderecoPublico ? 17 : 13)&output=embed"
+                                <iframe src="https://www.google.com/maps?q=@ConsultaMapa&t=k&z=@(Im.EnderecoPublico ? 17 : 13)&output=embed"
                                         title="Mapa da localização" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
                             </div>
                             @if (Im.EnderecoPublico)
@@ -394,10 +394,13 @@
 
     private string? EnderecoCompleto => RegrasImovel.EnderecoParaMapa(Im.Logradouro, Im.Numero, Im.Bairro, Im.Cidade, Im.Uf, null)?.Replace(", Brasil", "");
 
-    /// <summary>Endereço público: ponto exato; senão, só bairro e cidade.</summary>
+    /// <summary>
+    /// Site público. Endereço público: o ponto cadastrado (coordenadas têm prioridade sobre o endereço). Endereço não
+    /// público: só bairro e cidade, nunca o ponto exato — a localização exata é só para usuários do sistema.
+    /// </summary>
     private string? ConsultaMapa => Im.EnderecoPublico
-        ? (Im.Latitude is { } la && Im.Longitude is { } lo ? RegrasImovel.FormatarCoordenadas(la, lo).Replace(" ", "") : EnderecoCompleto)
-        : RegrasImovel.EnderecoParaMapa(null, null, Im.Bairro, Im.Cidade, Im.Uf, null);
+        ? RegrasImovel.ConsultaMapa(Im.Latitude, Im.Longitude, EnderecoCompleto)
+        : RegrasImovel.ConsultaMapa(null, null, RegrasImovel.EnderecoParaMapa(null, null, Im.Bairro, Im.Cidade, Im.Uf, null));
 
     private string? LinkMapa => RegrasImovel.LinkGoogleMaps(Im.Latitude, Im.Longitude, EnderecoCompleto);
 

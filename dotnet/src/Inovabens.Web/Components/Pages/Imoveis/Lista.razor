@@ -3,11 +3,18 @@
 @inherits ComponenteBase
 @implements IDisposable
 @inject ImoveisService Servico
+@inject OpcoesService Opcoes
+@inject CadastrosService Cadastros
+@inject NavigationManager Nav
 
 <PageTitle>Imóveis · Inovabens</PageTitle>
 
 <div class="titulo">
     <h1>Imóveis</h1>
+    <div class="abas abas-visao">
+        <button class="aba @(Mapa ? "" : "ativa")" @onclick="() => TrocarVisao(false)">☰ Lista</button>
+        <button class="aba @(Mapa ? "ativa" : "")" @onclick="() => TrocarVisao(true)">🗺️ Mapa</button>
+    </div>
     @if (Usuario.Pode(Permissoes.ImoveisCriar))
     {
         <a class="btn-primary" href="imoveis/novo">+ Novo imóvel</a>
@@ -24,11 +31,46 @@
             <option value="@s">@Texto.Rotulo(s)</option>
         }
     </select>
+    <select class="input filtro" @bind="tipo" @bind:after="Filtrar">
+        <option value="">Todos os tipos</option>
+        @foreach (var t in tipos)
+        {
+            <option value="@t">@Texto.Rotulo(t)</option>
+        }
+    </select>
+    <select class="input filtro" @bind="cidade" @bind:after="Filtrar">
+        <option value="">Todas as cidades</option>
+        @foreach (var c in cidades)
+        {
+            <option value="@c">@c</option>
+        }
+    </select>
+    @if (!Usuario.EscopoProprio)
+    {
+        <select class="input filtro" @bind="corretor" @bind:after="Filtrar">
+            <option value="">Todos os corretores</option>
+            @foreach (var c in corretores)
+            {
+                <option value="@c.Id">@c.Nome</option>
+            }
+        </select>
+    }
 </div>
 
 <MensagemErro Texto="@Erro" />
 
-@if (resultado is null)
+@if (Mapa)
+{
+    @if (pontos is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <MapaImoveis Itens="pontos" />
+    }
+}
+else if (resultado is null)
 {
     <p class="carregando">Carregando…</p>
 }
@@ -76,29 +118,62 @@ else
         </table>
     </div>
 }
-@if (resultado is not null)
+@if (!Mapa && resultado is not null)
 {
     <Paginacao Pagina="pagina" Total="resultado.Total" TamanhoPagina="resultado.TamanhoPagina" AoMudar="IrPara" />
 }
 
 @code {
+    /// <summary>?visao=mapa abre direto no mapa (dá para mandar o link).</summary>
+    [SupplyParameterFromQuery(Name = "visao")] public string? Visao { get; set; }
+
+    private bool Mapa => string.Equals(Visao, "mapa", StringComparison.OrdinalIgnoreCase);
+
     private Paginado<ImovelListaItem>? resultado;
+    private IReadOnlyList<ImovelMapaItem>? pontos;
+    private IReadOnlyList<string> tipos = [];
+    private IReadOnlyList<string> cidades = [];
+    private IReadOnlyList<Opcao> corretores = [];
+    private string tipo = "";
+    private string cidade = "";
+    private string corretor = "";
+    private bool? mapaCarregado;
     private string termo = "";
     /// <summary>Começa mostrando só os disponíveis; "Todas as situações" continua no filtro.</summary>
     private string situacao = nameof(SituacaoImovel.DISPONIVEL);
     private int pagina = 1;
     private CancellationTokenSource? espera;
 
-    protected override Task OnInitializedAsync() => Carregar();
+    protected override Task OnInitializedAsync() => Executar(async () =>
+    {
+        tipos = [.. (await Cadastros.TiposImovelAsync(incluirInativos: true)).Select(t => t.Nome)];
+        cidades = await Servico.CidadesAsync(Usuario);
+        if (!Usuario.EscopoProprio) corretores = await Opcoes.CorretoresAsync();
+    });
+
+    /// <summary>Carrega a visão atual quando ela muda (inclusive pelo link com ?visao=mapa).</summary>
+    protected override Task OnParametersSetAsync() => mapaCarregado == Mapa ? Task.CompletedTask : Carregar();
+
+    private FiltroImoveis Filtro => new()
+    {
+        Termo = termo,
+        Situacao = Enum.TryParse<SituacaoImovel>(situacao, out var s) ? s : null,
+        Tipo = tipo,
+        Cidade = cidade,
+        CorretorId = Guid.TryParse(corretor, out var c) ? c : null,
+        Pagina = pagina,
+        TamanhoPagina = 25,
+    };
 
     private Task Carregar() => Executar(async () =>
-        resultado = await Servico.ListarAsync(Usuario, new FiltroImoveis
-        {
-            Termo = termo,
-            Situacao = Enum.TryParse<SituacaoImovel>(situacao, out var s) ? s : null,
-            Pagina = pagina,
-            TamanhoPagina = 25,
-        }));
+    {
+        mapaCarregado = Mapa;
+        if (Mapa) pontos = await Servico.ListarParaMapaAsync(Usuario, Filtro);
+        else resultado = await Servico.ListarAsync(Usuario, Filtro);
+    });
+
+    private void TrocarVisao(bool mapa) =>
+        Nav.NavigateTo(Nav.GetUriWithQueryParameter("visao", mapa ? "mapa" : null), replace: true);
 
     /// <summary>Espera o usuário parar de digitar (300 ms) antes de consultar.</summary>
     private async Task AoDigitar()

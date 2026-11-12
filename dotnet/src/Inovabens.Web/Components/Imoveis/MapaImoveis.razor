@@ -1,0 +1,153 @@
+@* Visão "Mapa" do menu Imóveis: lista à esquerda, mapa à direita (wwwroot/mapa-imoveis.js).
+   Recebe os imóveis já filtrados pela página; os sem coordenadas ficam só na lista, com aviso. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="mapa-imoveis">
+    <div class="mapa-lista">
+        <div class="mapa-resumo">
+            <span>
+                @Visiveis.Count() @(Visiveis.Count() == 1 ? "imóvel" : "imóveis")
+                @if (SemLocalizacao > 0)
+                {
+                    <span class="aviso-local"> · @SemLocalizacao sem localização</span>
+                }
+            </span>
+            <label><input type="checkbox" @bind="soArea" /> Só a área do mapa</label>
+        </div>
+        @if (Itens.Count == 0)
+        {
+            <p class="vazio">Nenhum imóvel encontrado.</p>
+        }
+        @foreach (var i in Visiveis)
+        {
+            var temLocal = i.Latitude is not null && i.Longitude is not null;
+            <div class="mapa-cartao @(temLocal ? "" : "sem-local")" @key="i.Id"
+                 @onmouseenter="() => Destacar(i.Id)" @onmouseleave="() => Destacar(null)" @onclick="() => Focar(i)">
+                <img class="miniatura-imovel" src="@(i.CapaUrl ?? "img/sem-foto.svg")" alt="" loading="lazy" />
+                <div>
+                    <a class="codigo" href="imoveis/@i.Id" @onclick:stopPropagation="true">@i.Codigo</a>
+                    <p class="titulo-cartao">@i.Titulo</p>
+                    <p class="forte">@Texto.Moeda(i.PrecoVenda ?? i.PrecoLocacao)</p>
+                    @if (temLocal)
+                    {
+                        <p class="pequeno mudo">@Local(i)</p>
+                    }
+                    else
+                    {
+                        <p class="pequeno aviso-local">⚠ Sem localização — <a href="imoveis/@i.Id" @onclick:stopPropagation="true">informar coordenadas</a></p>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+    <div class="mapa-quadro-imoveis" @ref="elemento"></div>
+</div>
+<MensagemErro Texto="@erro" />
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ImovelMapaItem> Itens { get; set; } = [];
+
+    private ElementReference elemento;
+    private IJSObjectReference? modulo;
+    private DotNetObjectReference<MapaImoveis>? referencia;
+    private IReadOnlyList<ImovelMapaItem>? desenhados;
+    private HashSet<Guid>? naArea;
+    private bool soArea;
+    private string? erro;
+
+    private int SemLocalizacao => Visiveis.Count(i => i.Latitude is null || i.Longitude is null);
+
+    /// <summary>Com "Só a área do mapa", só os que aparecem no trecho visível do mapa.</summary>
+    private IEnumerable<ImovelMapaItem> Visiveis =>
+        soArea && naArea is not null ? Itens.Where(i => naArea.Contains(i.Id)) : Itens;
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        try
+        {
+            if (primeira)
+            {
+                modulo = await JS.InvokeAsync<IJSObjectReference>("import", "./mapa-imoveis.js");
+                referencia = DotNetObjectReference.Create(this);
+                await modulo.InvokeVoidAsync("iniciar", elemento, referencia);
+            }
+            if (modulo is not null && !ReferenceEquals(desenhados, Itens))
+            {
+                desenhados = Itens;
+                await modulo.InvokeVoidAsync("desenhar", elemento, Itens.Where(i => i.Latitude is not null && i.Longitude is not null).Select(Pino), true);
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException ex)
+        {
+            erro = ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private static object Pino(ImovelMapaItem i)
+    {
+        var preco = i.PrecoVenda ?? i.PrecoLocacao;
+        return new
+        {
+            id = i.Id,
+            codigo = i.Codigo,
+            titulo = i.Titulo,
+            lat = i.Latitude,
+            lng = i.Longitude,
+            preco,
+            precoCheio = Texto.Moeda(preco),
+            situacao = Texto.Rotulo(i.Situacao),
+            cor = i.Situacao switch
+            {
+                SituacaoImovel.DISPONIVEL => "",
+                SituacaoImovel.VENDIDO or SituacaoImovel.LOCADO or SituacaoImovel.ARQUIVADO => "encerrado",
+                _ => "preparo",
+            },
+            local = Local(i),
+            capa = i.CapaUrl,
+            maps = RegrasImovel.LinkGoogleMaps(i.Latitude, i.Longitude, null),
+        };
+    }
+
+    [JSInvokable]
+    public Task AreaMudou(Guid[] ids)
+    {
+        naArea = [.. ids];
+        return soArea ? InvokeAsync(StateHasChanged) : Task.CompletedTask;
+    }
+
+    private async Task Destacar(Guid? id)
+    {
+        if (modulo is null) return;
+        try { await modulo.InvokeVoidAsync("destacar", elemento, id); } catch (JSDisconnectedException) { }
+    }
+
+    private async Task Focar(ImovelMapaItem i)
+    {
+        if (modulo is null || i.Latitude is null) return;
+        try { await modulo.InvokeVoidAsync("focar", elemento, i.Id); } catch (JSDisconnectedException) { }
+    }
+
+    private static string Local(ImovelMapaItem i)
+    {
+        var cidade = i.Cidade is null ? null : i.Cidade + (i.Uf is null ? "" : "/" + i.Uf);
+        var partes = new[] { i.Bairro, cidade }.Where(x => !string.IsNullOrEmpty(x));
+        return partes.Any() ? string.Join(" · ", partes) : "—";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (modulo is not null)
+            {
+                await modulo.InvokeVoidAsync("destruir", elemento);
+                await modulo.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+        referencia?.Dispose();
+    }
+}
