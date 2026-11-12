@@ -21,9 +21,12 @@ public sealed record LeadCartao(
     string? ResponsavelNome, decimal? OrcamentoMax, DateTime? ProximaAcaoEm, int Ordem,
     bool VincularImovel = false, string? ImovelSugerido = null,
     string? ProximoTitulo = null, DateTime? NaFaseDesde = null, string? ImovelCodigo = null, int OutrosImoveis = 0, decimal? Valor = null,
-    decimal? ValorProposta = null, decimal? PropostaAnunciado = null, StatusProposta? StatusProposta = null)
+    decimal? ValorProposta = null, decimal? PropostaAnunciado = null, StatusProposta? StatusProposta = null, Guid? ResponsavelId = null)
 {
     public SituacaoProximoPasso Situacao => SituacaoDe(ProximaAcaoEm);
+
+    /// <summary>Lead na fila aberta: ninguém pegou o atendimento ainda.</summary>
+    public bool NaFila => ResponsavelId is null;
 
     /// <summary>Valor da negociação: a proposta em análise ou aceita; sem proposta, o anunciado.</summary>
     public decimal? ValorAtual => ValorProposta ?? Valor;
@@ -192,16 +195,28 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
     private static IQueryable<Lead> Visiveis(InovabensDb db, UsuarioAtual u) =>
         db.Leads.Where(l => l.ExcluidoEm == null).VisiveisPara(u);
 
+    /// <summary>
+    /// REGRA (fila aberta): no funil, o Corretor vê os leads dele e os que estão sem responsável. Os da fila só abrem e
+    /// se movem depois que ele clica em "Pegar atendimento" (<see cref="PegarAsync"/>).
+    /// </summary>
+    private static IQueryable<Lead> VisiveisNoFunil(InovabensDb db, UsuarioAtual u) =>
+        u.EscopoProprio ? db.Leads.Where(l => l.ExcluidoEm == null && (l.ResponsavelId == u.Id || l.ResponsavelId == null)) : Visiveis(db, u);
+
     /* ----------------------------- Pipeline ----------------------------- */
 
     /// <param name="imovelId">Só os leads interessados neste imóvel (marcado como interesse ou sugerido pelo WhatsApp).</param>
-    public async Task<IReadOnlyList<ColunaFunil>> PipelineAsync(UsuarioAtual u, Funil funil, Guid? imovelId = null)
+    /// <param name="responsavelId">Só os leads deste responsável.</param>
+    /// <param name="semResponsavel">Só a fila aberta (leads sem responsável).</param>
+    public async Task<IReadOnlyList<ColunaFunil>> PipelineAsync(UsuarioAtual u, Funil funil, Guid? imovelId = null,
+        Guid? responsavelId = null, bool semResponsavel = false)
     {
         u.Exigir(P.CrmVer);
         await using var db = await fabrica.CreateDbContextAsync();
         var estagios = await db.FunilEstagios.AsNoTracking().Where(e => e.Funil == funil && e.Ativo).OrderBy(e => e.Ordem).ToListAsync();
         var finalidade = FinalidadeDo(funil);
-        var q = Visiveis(db, u).AsNoTracking().Where(l => l.Finalidade == finalidade);
+        var q = VisiveisNoFunil(db, u).AsNoTracking().Where(l => l.Finalidade == finalidade);
+        if (semResponsavel) q = q.Where(l => l.ResponsavelId == null);
+        else if (responsavelId is { } r) q = q.Where(l => l.ResponsavelId == r);
         if (imovelId is { } im)
             q = q.Where(l => l.ImovelSugeridoId == im || db.LeadImoveisInteresse.Any(i => i.LeadId == l.Id && i.ImovelId == im));
         var venda = finalidade == FinalidadeLead.COMPRA;
@@ -210,7 +225,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
             .Select(l => new
             {
                 l.EstagioId, l.Id, Nome = l.Pessoa!.NomeRazao, Telefone = l.Pessoa.Telefone ?? l.Pessoa.Whatsapp, l.Pessoa.Email, l.Finalidade, l.Origem,
-                Responsavel = l.Responsavel != null ? l.Responsavel.Nome : null, l.OrcamentoMax, l.ProximaAcaoEm, l.Ordem, l.CriadoEm,
+                l.ResponsavelId, Responsavel = l.Responsavel != null ? l.Responsavel.Nome : null, l.OrcamentoMax, l.ProximaAcaoEm, l.Ordem, l.CriadoEm,
                 SemInteresse = !db.LeadImoveisInteresse.Any(i => i.LeadId == l.Id),
                 Sugerido = db.Imoveis.Where(i => i.Id == l.ImovelSugeridoId).Select(i => i.Codigo).FirstOrDefault(),
                 Proximo = db.Compromissos.Where(c => c.LeadId == l.Id && c.Status == StatusCompromisso.PENDENTE && c.ExcluidoEm == null)
@@ -232,7 +247,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
             l.Proximo?.InicioEm ?? l.ProximaAcaoEm, l.Ordem,
             l.Origem == WhatsappService.Origem && l.SemInteresse, l.Sugerido,
             l.Proximo?.Titulo, l.NaFase ?? l.CriadoEm, l.Imoveis.FirstOrDefault()?.Codigo, Math.Max(0, l.Imoveis.Count - 1),
-            l.Imoveis.Max(i => i.Preco), l.Proposta?.ValorTotal, l.Proposta?.ValorAnunciado, l.Proposta?.Status))).ToList();
+            l.Imoveis.Max(i => i.Preco), l.Proposta?.ValorTotal, l.Proposta?.ValorAnunciado, l.Proposta?.Status, l.ResponsavelId))).ToList();
         return [.. estagios.Select(e => new ColunaFunil(e, [.. cartoes.Where(l => l.EstagioId == e.Id).Select(l => l.Cartao)]))];
     }
 
@@ -381,6 +396,32 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         await using var tx = await db.Database.BeginTransactionAsync();
         await db.SaveChangesAsync();
         if (form.ImoveisInteresse is { } interesse) await SincronizarInteresse(db, u, id, interesse);
+        await tx.CommitAsync();
+    }
+
+    /// <summary>
+    /// "Pegar atendimento": o usuário vira o responsável de um lead da fila aberta. Se dois clicarem juntos, só o
+    /// primeiro fica com o lead. Os avisos de "novo lead" dos outros corretores se resolvem.
+    /// </summary>
+    public async Task PegarAsync(UsuarioAtual u, Guid id)
+    {
+        u.Exigir(P.CrmEditar);
+        await using var db = await fabrica.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var pegou = await db.Leads.Where(l => l.Id == id && l.ExcluidoEm == null && l.ResponsavelId == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(l => l.ResponsavelId, u.Id).SetProperty(l => l.AtualizadoEm, DateTime.UtcNow));
+        if (pegou == 0)
+        {
+            var dono = await db.Leads.Where(l => l.Id == id && l.ExcluidoEm == null)
+                .Select(l => new { Nome = l.Responsavel != null ? l.Responsavel.Nome : null }).SingleOrDefaultAsync()
+                ?? throw new NaoEncontradoException("Lead não encontrado.");
+            throw new RegraNegocioException("ResponsavelId", $"Este lead já está com {dono.Nome ?? "outro usuário"}.");
+        }
+        await db.Alertas.Where(a => a.LeadId == id && a.Tipo == TipoAlerta.NOVO_LEAD && a.ResolvidoEm == null && a.UsuarioId != u.Id
+                                    && db.Usuarios.Any(x => x.Id == a.UsuarioId && x.Perfil!.EscopoProprio))
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.ResolvidoEm, DateTime.UtcNow));
+        audit.Registrar(db, u.Id, "leads", id, "PEGAR", depois: new { responsavel_id = u.Id });
+        await db.SaveChangesAsync();
         await tx.CommitAsync();
     }
 

@@ -253,6 +253,9 @@ public sealed partial class ConfiguracoesService(
                 return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
             case TipoCampoConfig.Booleano:
                 return v.Equals("true", StringComparison.OrdinalIgnoreCase) ? "true" : "false";
+            case TipoCampoConfig.Selecao:
+                return item.Opcoes?.FirstOrDefault(o => o.Valor.Equals(v, StringComparison.OrdinalIgnoreCase))?.Valor
+                    ?? throw new RegraNegocioException(item.Chave, $"{item.Rotulo}: opção inválida.");
         }
         if (item.Chave == "google_drive.credenciais_json") ValidarChaveContaServico(v);
         return v;

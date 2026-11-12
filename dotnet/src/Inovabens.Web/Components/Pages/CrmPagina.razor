@@ -27,16 +27,39 @@
         <button class="aba @(funil == Funil.VENDA ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.VENDA)">Funil de vendas</button>
         <button class="aba @(funil == Funil.LOCACAO ? "ativa" : "")" @onclick="() => TrocarFunil(Funil.LOCACAO)">Funil de locação</button>
     </div>
-    <label class="filtro-imovel">
-        <span class="pequeno mudo">Imóvel</span>
-        <select class="input" aria-label="Filtrar por imóvel" value="@(imovelFiltro?.ToString() ?? "")" @onchange="FiltrarImovel">
-            <option value="">Todos os imóveis</option>
-            @foreach (var i in OpcoesFiltro)
-            {
-                <option value="@i.Id">@i.Nome</option>
-            }
-        </select>
-    </label>
+    <div class="filtros-crm">
+        <label class="filtro-imovel">
+            <span class="pequeno mudo">Responsável</span>
+            <select class="input" aria-label="Filtrar por responsável" value="@responsavelFiltro" @onchange="FiltrarResponsavel">
+                <option value="">@(Usuario.EscopoProprio ? "Meus leads e fila aberta" : "Todos")</option>
+                <option value="@FiltroEu">Só os meus</option>
+                <option value="@FiltroFila">Fila aberta (sem responsável)</option>
+                @foreach (var r in responsaveis ?? [])
+                {
+                    if (r.Id != Usuario.Id)
+                    {
+                        <option value="@r.Id">@r.Nome</option>
+                    }
+                }
+            </select>
+        </label>
+        <label class="filtro-imovel">
+            <span class="pequeno mudo">Imóvel</span>
+            <select class="input" aria-label="Filtrar por imóvel" value="@(imovelFiltro?.ToString() ?? "")" @onchange="FiltrarImovel">
+                <option value="">Todos os imóveis</option>
+                @foreach (var i in OpcoesFiltro)
+                {
+                    <option value="@i.Id">@i.Nome</option>
+                }
+            </select>
+        </label>
+        @if (!Usuario.EscopoProprio)
+        {
+            <label class="check filtro-raias">
+                <input type="checkbox" checked="@raias" @onchange="e => raias = e.Value is true" /> Raias por responsável
+            </label>
+        }
+    </div>
 </div>
 
 @if (imovelFiltro is { } fi)
@@ -48,6 +71,10 @@
 }
 
 <MensagemErro Texto="@Erro" />
+@if (aviso is not null)
+{
+    <p class="aviso-passivo">@aviso</p>
+}
 
 @if (colunas is null)
 {
@@ -55,96 +82,58 @@
 }
 else
 {
-    <div class="kanban @(leadAberto is null ? "" : "com-painel")">
-        @foreach (var col in colunas)
+    <div class="resumo-funil" role="group" aria-label="Filtrar por situação do próximo passo">
+        <button class="chip-situacao @(situacaoFiltro is null ? "ativo" : "")" @onclick="() => situacaoFiltro = null">
+            Todos <b>@Contar(null)</b>
+        </button>
+        @foreach (var s in new[] { SituacaoProximoPasso.Atrasado, SituacaoProximoPasso.Hoje, SituacaoProximoPasso.Nenhum })
         {
-            <div class="coluna @(arrastando is not null && colunaAlvo == col.Estagio.Id ? "alvo" : "")" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")"
-                 @ondragenter="() => colunaAlvo = col.Estagio.Id" @ondragover:preventDefault @ondrop="() => Soltar(col.Estagio, null)">
-                <div class="coluna-topo">
-                    <strong>@col.Estagio.Nome</strong>
-                    <span class="badge">@col.Leads.Count</span>
-                </div>
-                @if (col.ValorTotal > 0)
-                {
-                    <p class="coluna-valor" title="Soma do valor das propostas (ou do anunciado, sem proposta)">@Texto.MoedaCompacta(col.ValorTotal)</p>
-                }
-                @foreach (var l in col.Leads)
-                {
-                    var perdido = col.Estagio.Tipo == TipoEstagio.PERDIDO;
-                    <div class="cartao-lead @(l.VincularImovel ? "vincular" : "") @(arrastando?.Id == l.Id ? "arrastando" : "") @(leadAberto == l.Id ? "aberto" : "")" @key="(l.Id, versao)"
-                         draggable="@(PodeMover ? "true" : "false")" @ondragstart="() => arrastando = l" @ondragend="FimArraste"
-                         @ondrop="() => Soltar(col.Estagio, l)" @ondrop:stopPropagation>
-                        <div class="cartao-topo">
-                            @if (!perdido)
-                            {
-                                <span class="situacao situacao-@l.Situacao.ToString().ToLowerInvariant()" title="@TituloSituacao(l)">@RotuloSituacao(l.Situacao)</span>
-                            }
-                            <span class="pequeno mudo" title="Dias neste estágio">⏳ @l.DiasNaFase d</span>
-                        </div>
-                        <button class="link-cartao" @onclick="() => Abrir(l.Id)">
-                            <span class="forte">@l.PessoaNome</span>
-                            <span class="pequeno mudo">@(l.Telefone ?? l.Email ?? "")</span>
-                        </button>
-                        @if (l.ImovelCodigo is not null || l.Valor is not null)
-                        {
-                            <p class="pequeno">
-                                @if (l.ImovelCodigo is { } cod)
-                                {
-                                    <span>🏠 @cod@(l.OutrosImoveis > 0 ? $" +{l.OutrosImoveis}" : "")</span>
-                                }
-                                @if (l.Valor is { } v)
-                                {
-                                    <span class="valor-lead"> · @Texto.MoedaCompacta(v)</span>
-                                }
-                            </p>
-                        }
-                        else if (l.OrcamentoMax is { } o)
-                        {
-                            <p class="pequeno">até @Texto.Moeda(o)</p>
-                        }
-                        @if (l.StatusProposta is { } sp && l.ValorProposta is { } vp)
-                        {
-                            <p class="pequeno proposta-cartao proposta-@sp.ToString().ToLowerInvariant()">
-                                @(sp == StatusProposta.ACEITA ? "✔ Aceita" : "💰 Proposta") @Texto.MoedaCompacta(vp)@PropostasAba.Pct(l.DiferencaPct, " · ")
-                            </p>
-                        }
-                        @if (l.VincularImovel)
-                        {
-                            <p class="pequeno aviso-vinculo">📲 Vincular imóvel@(l.ImovelSugerido is { } sug ? $" · sugerido {sug}" : "")</p>
-                        }
-                        @if (!perdido && l.ProximaAcaoEm is { } p)
-                        {
-                            <p class="pequeno proximo-cartao">➜ @(l.ProximoTitulo ?? "Próxima ação") · @Texto.DataHora(p)</p>
-                        }
-                        <div class="cartao-rodape">
-                            <span class="pequeno mudo">@(l.ResponsavelNome is null ? "" : $"👤 {l.ResponsavelNome}")@(l.Origem is null ? "" : $" · {l.Origem}")</span>
-                            @if (PodeMover)
-                            {
-                                <span class="cartao-botoes">
-                                    @if (!perdido)
-                                    {
-                                        <button class="btn-icone" title="Agendar atividade" aria-label="Agendar atividade" @onclick="() => AbrirAgendar(l)">+</button>
-                                    }
-                                    <details class="menu-cartao">
-                                        <summary class="btn-icone" title="Mais ações" aria-label="Mais ações">⋯</summary>
-                                        <div class="menu-cartao-itens">
-                                            <label class="pequeno">Mover para</label>
-                                            <select class="input mini" value="@col.Estagio.Id" @onchange="e => Mover(l, e.Value?.ToString())" aria-label="Mover para">
-                                                @foreach (var e in colunas)
-                                                {
-                                                    <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
-                                                }
-                                            </select>
-                                        </div>
-                                    </details>
-                                </span>
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
+            <button class="chip-situacao situacao-@s.ToString().ToLowerInvariant() @(situacaoFiltro == s ? "ativo" : "")"
+                    @onclick="() => situacaoFiltro = situacaoFiltro == s ? null : s">
+                @RotuloSituacao(s) <b>@Contar(s)</b>
+            </button>
+        }
+        @if (Fila > 0 || responsavelFiltro == FiltroFila)
+        {
+            <button class="chip-situacao chip-fila @(responsavelFiltro == FiltroFila ? "ativo" : "")"
+                    @onclick="AlternarFila">
+                🙋 Fila aberta <b>@Fila</b>
+            </button>
         }
     </div>
+
+    @if (raias && !Usuario.EscopoProprio)
+    {
+        var lista = Raias().ToList();
+        @foreach (var raia in lista)
+        {
+            <section class="raia">
+                <h2 class="raia-topo">
+                    <span>@(raia.Id is null ? "🙋 Fila aberta (sem responsável)" : $"👤 {raia.Nome}")</span>
+                    <span class="pequeno mudo">
+                        @raia.Total lead(s)
+                        @if (raia.Atrasados > 0)
+                        {
+                            <span class="texto-erro"> · @raia.Atrasados atrasado(s)</span>
+                        }
+                        @if (raia.SemPasso > 0)
+                        {
+                            <span> · @raia.SemPasso sem próximo passo</span>
+                        }
+                    </span>
+                </h2>
+                @Quadro(ColunasVisiveis(raia.Id, raia.Id is null))
+            </section>
+        }
+        @if (lista.Count == 0)
+        {
+            <p class="pequeno mudo">Nenhum lead com estes filtros.</p>
+        }
+    }
+    else
+    {
+        @Quadro(ColunasVisiveis())
+    }
 }
 
 @if (perda is not null)
@@ -263,6 +252,175 @@ else
 }
 
 @code {
+    /// <summary>Quadro do funil (colunas e cartões); nas raias, um por responsável.</summary>
+    private RenderFragment Quadro(IReadOnlyList<ColunaFunil> cols) => @<div class="kanban @(leadAberto is null ? "" : "com-painel")">
+        @foreach (var col in cols)
+        {
+            <div class="coluna @(arrastando is not null && colunaAlvo == col.Estagio.Id ? "alvo" : "")" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")"
+                 @ondragenter="() => colunaAlvo = col.Estagio.Id" @ondragover:preventDefault @ondrop="() => Soltar(col.Estagio, null)">
+                <div class="coluna-topo">
+                    <strong>@col.Estagio.Nome</strong>
+                    <span class="badge">@col.Leads.Count</span>
+                </div>
+                @if (col.ValorTotal > 0)
+                {
+                    <p class="coluna-valor" title="Soma do valor das propostas (ou do anunciado, sem proposta)">@Texto.MoedaCompacta(col.ValorTotal)</p>
+                }
+                @foreach (var l in col.Leads)
+                {
+                    var perdido = col.Estagio.Tipo == TipoEstagio.PERDIDO;
+                    var abre = PodeAbrir(l);
+                    <div class="cartao-lead @(l.VincularImovel ? "vincular" : "") @(l.NaFila ? "na-fila" : "") @(!perdido && l.Situacao == SituacaoProximoPasso.Atrasado ? "atrasado" : "") @(arrastando?.Id == l.Id ? "arrastando" : "") @(leadAberto == l.Id ? "aberto" : "") @(destaque == l.Id ? "destaque" : "")" @key="(l.Id, versao)"
+                         draggable="@(PodeMover && abre ? "true" : "false")" @ondragstart="() => arrastando = l" @ondragend="FimArraste"
+                         @ondrop="() => Soltar(col.Estagio, l)" @ondrop:stopPropagation>
+                        <div class="cartao-topo">
+                            @if (!perdido)
+                            {
+                                <span class="situacao situacao-@l.Situacao.ToString().ToLowerInvariant()" title="@TituloSituacao(l)">@RotuloSituacao(l.Situacao)</span>
+                            }
+                            <span class="pequeno mudo" title="Dias neste estágio">⏳ @l.DiasNaFase d</span>
+                        </div>
+                        @if (abre)
+                        {
+                            <button class="link-cartao" @onclick="() => Abrir(l.Id)">
+                                <span class="forte">@l.PessoaNome</span>
+                                <span class="pequeno mudo">@(l.Telefone ?? l.Email ?? "")</span>
+                            </button>
+                        }
+                        else
+                        {
+                            <span class="forte">@l.PessoaNome</span>
+                        }
+                        @if (l.ImovelCodigo is not null || l.Valor is not null)
+                        {
+                            <p class="pequeno">
+                                @if (l.ImovelCodigo is { } cod)
+                                {
+                                    <span>🏠 @cod@(l.OutrosImoveis > 0 ? $" +{l.OutrosImoveis}" : "")</span>
+                                }
+                                @if (l.Valor is { } v)
+                                {
+                                    <span class="valor-lead"> · @Texto.MoedaCompacta(v)</span>
+                                }
+                            </p>
+                        }
+                        else if (l.OrcamentoMax is { } o)
+                        {
+                            <p class="pequeno">até @Texto.Moeda(o)</p>
+                        }
+                        @if (l.StatusProposta is { } sp && l.ValorProposta is { } vp)
+                        {
+                            <p class="pequeno proposta-cartao proposta-@sp.ToString().ToLowerInvariant()">
+                                @(sp == StatusProposta.ACEITA ? "✔ Aceita" : "💰 Proposta") @Texto.MoedaCompacta(vp)@PropostasAba.Pct(l.DiferencaPct, " · ")
+                            </p>
+                        }
+                        @if (l.VincularImovel)
+                        {
+                            <p class="pequeno aviso-vinculo">📲 Vincular imóvel@(l.ImovelSugerido is { } sug ? $" · sugerido {sug}" : "")</p>
+                        }
+                        @if (!perdido && l.ProximaAcaoEm is { } p)
+                        {
+                            <p class="pequeno proximo-cartao">➜ @(l.ProximoTitulo ?? "Próxima ação") · @Texto.DataHora(p)</p>
+                        }
+                        @if (l.NaFila && PodeMover)
+                        {
+                            <button class="btn-primary mini btn-pegar" disabled="@Ocupado" @onclick="() => Pegar(l)">🙋 Pegar atendimento</button>
+                        }
+                        <div class="cartao-rodape">
+                            <span class="pequeno mudo">@(l.NaFila ? "🙋 Fila aberta" : $"👤 {l.ResponsavelNome}")@(l.Origem is null ? "" : $" · {l.Origem}")</span>
+                            @if (PodeMover && abre)
+                            {
+                                <span class="cartao-botoes">
+                                    @if (!perdido)
+                                    {
+                                        <button class="btn-icone" title="Agendar atividade" aria-label="Agendar atividade" @onclick="() => AbrirAgendar(l)">+</button>
+                                    }
+                                    <details class="menu-cartao">
+                                        <summary class="btn-icone" title="Mais ações" aria-label="Mais ações">⋯</summary>
+                                        <div class="menu-cartao-itens">
+                                            <label class="pequeno">Mover para</label>
+                                            <select class="input mini" value="@col.Estagio.Id" @onchange="e => Mover(l, e.Value?.ToString())" aria-label="Mover para">
+                                                @foreach (var e in colunas!)
+                                                {
+                                                    <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    </details>
+                                </span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>;
+
+    /* ---- filtros: responsável (no servidor); situação e raias (na tela) ---- */
+
+    private const string FiltroEu = "eu", FiltroFila = "fila";
+    private string responsavelFiltro = "";
+    private SituacaoProximoPasso? situacaoFiltro;
+    private bool raias;
+    private Guid? destaque;
+    private string? aviso;
+
+    /// <summary>Lead da fila aberta: o Corretor só abre depois de pegar o atendimento (o gestor abre direto).</summary>
+    private bool PodeAbrir(LeadCartao l) => !l.NaFila || !Usuario.EscopoProprio;
+
+    private IEnumerable<LeadCartao> Ativos => colunas?.Where(c => c.Estagio.Tipo != TipoEstagio.PERDIDO).SelectMany(c => c.Leads) ?? [];
+
+    private int Contar(SituacaoProximoPasso? s) => Ativos.Count(l => s is null || l.Situacao == s);
+
+    private int Fila => colunas?.SelectMany(c => c.Leads).Count(l => l.NaFila) ?? 0;
+
+    private bool PassaSituacao(LeadCartao l, FunilEstagio e) =>
+        situacaoFiltro is not { } s || (e.Tipo != TipoEstagio.PERDIDO && l.Situacao == s);
+
+    /// <param name="raia">Responsável da raia; null com <paramref name="fila"/> = a raia dos sem responsável.</param>
+    private IReadOnlyList<ColunaFunil> ColunasVisiveis(Guid? raia = null, bool fila = false) =>
+        [.. colunas!.Select(c => new ColunaFunil(c.Estagio, [.. c.Leads.Where(l => PassaSituacao(l, c.Estagio)
+            && ((raia is null && !fila) || l.ResponsavelId == raia))]))];
+
+    private sealed record Raia(Guid? Id, string? Nome, int Total, int Atrasados, int SemPasso);
+
+    /// <summary>Uma raia por responsável com leads (fila aberta primeiro), com os contadores do próximo passo.</summary>
+    private IEnumerable<Raia> Raias() => colunas!
+        .SelectMany(c => c.Leads.Where(l => PassaSituacao(l, c.Estagio)).Select(l => (Lead: l, c.Estagio.Tipo)))
+        .GroupBy(x => x.Lead.ResponsavelId)
+        .Select(g =>
+        {
+            var ativos = g.Where(x => x.Tipo != TipoEstagio.PERDIDO).Select(x => x.Lead).ToList();
+            return new Raia(g.Key, g.First().Lead.ResponsavelNome, g.Count(),
+                ativos.Count(l => l.Situacao == SituacaoProximoPasso.Atrasado), ativos.Count(l => l.Situacao == SituacaoProximoPasso.Nenhum));
+        })
+        .OrderBy(r => r.Id is not null).ThenBy(r => r.Nome);
+
+    private Task FiltrarResponsavel(ChangeEventArgs e) => DefinirResponsavel(e.Value?.ToString() ?? "");
+
+    private Task AlternarFila() => DefinirResponsavel(responsavelFiltro == FiltroFila ? "" : FiltroFila);
+
+    private Task DefinirResponsavel(string valor)
+    {
+        responsavelFiltro = valor;
+        return Carregar();
+    }
+
+    private async Task Pegar(LeadCartao l)
+    {
+        aviso = null;
+        if (!await Executar(() => Servico.PegarAsync(Usuario, l.Id)))
+        {
+            var erro = Erro;
+            await Carregar(); // outro usuário pegou antes: o cartão sai da fila
+            Erro = erro;
+            return;
+        }
+        destaque = null;
+        await Carregar();
+        leadAberto = l.Id;
+    }
+
     private Funil funil = Funil.VENDA;
     private IReadOnlyList<ColunaFunil>? colunas;
     private IReadOnlyList<Opcao> pessoas = [];
@@ -330,7 +488,7 @@ else
         });
         await Carregar();
         // vindo do alerta "novo lead" (crm?lead=<id>): abre o lead no funil dele
-        if (consulta.TryGetValue("lead", out var lid) && Guid.TryParse(lid, out var leadId))
+        if (consulta.TryGetValue("lead", out var lid) && Guid.TryParse(lid, out var leadId) && !await MostrarNaFila(leadId))
         {
             LeadDetalhe? d = null;
             await Executar(async () => d = await Servico.ObterAsync(Usuario, leadId));
@@ -348,6 +506,37 @@ else
         if (consulta.ContainsKey("novo") && Usuario.Pode(Permissoes.CrmCriar)) NovoLead(imovelFiltro);
     }
 
+    /// <summary>
+    /// Alerta de lead novo na fila aberta (crm?lead=): o Corretor ainda não abre o lead; o cartão fica em destaque
+    /// com o botão "Pegar atendimento".
+    /// </summary>
+    private async Task<bool> MostrarNaFila(Guid leadId)
+    {
+        if (!Usuario.EscopoProprio) return false;
+        var inicial = funil;
+        foreach (var f in new[] { inicial, inicial == Funil.VENDA ? Funil.LOCACAO : Funil.VENDA })
+        {
+            if (f != funil)
+            {
+                funil = f;
+                await Carregar();
+            }
+            if (colunas?.SelectMany(c => c.Leads).FirstOrDefault(l => l.Id == leadId) is { } l)
+            {
+                if (!l.NaFila) return false;
+                destaque = leadId;
+                aviso = $"{l.PessoaNome} está na fila aberta. Clique em \"Pegar atendimento\" para assumir o lead.";
+                return true;
+            }
+        }
+        if (funil != inicial)
+        {
+            funil = inicial;
+            await Carregar();
+        }
+        return false;
+    }
+
     private Task FiltrarImovel(ChangeEventArgs e) => AplicarFiltro(Guid.TryParse(e.Value?.ToString(), out var id) ? id : null);
 
     private Task AplicarFiltro(Guid? id)
@@ -361,7 +550,14 @@ else
 
     private Task Carregar() => Executar(async () =>
     {
-        colunas = await Servico.PipelineAsync(Usuario, funil, imovelFiltro);
+        var (resp, fila) = responsavelFiltro switch
+        {
+            FiltroEu => ((Guid?)Usuario.Id, false),
+            FiltroFila => (null, true),
+            var v when Guid.TryParse(v, out var id) => (id, false),
+            _ => (null, false),
+        };
+        colunas = await Servico.PipelineAsync(Usuario, funil, imovelFiltro, resp, fila);
         versao++;
     });
 

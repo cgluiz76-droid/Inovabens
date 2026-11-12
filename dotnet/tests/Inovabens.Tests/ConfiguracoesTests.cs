@@ -31,6 +31,8 @@ public class ConfiguracoesRegrasTests
     [InlineData("portal_olx.ativo", "qualquer", "false")]
     [InlineData("magnific.api_key", "  abc  ", "abc")]
     [InlineData("r2.bucket", "   ", "")]
+    [InlineData("crm.distribuicao_leads", "RODIZIO", "rodizio")]
+    [InlineData("crm.distribuicao_leads", "fila", "fila")]
     public void Normaliza_conforme_o_tipo(string chave, string valor, string esperado) =>
         Assert.Equal(esperado, ConfiguracoesService.Normalizar(Item(chave), valor));
 
@@ -41,6 +43,7 @@ public class ConfiguracoesRegrasTests
     [InlineData("site.whatsapp", "1234")]
     [InlineData("google_drive.credenciais_json", "{\"type\":\"authorized_user\"}")]
     [InlineData("google_drive.credenciais_json", "não é json")]
+    [InlineData("crm.distribuicao_leads", "sorteio")]
     public void Recusa_valor_invalido(string chave, string valor) =>
         Assert.Throws<RegraNegocioException>(() => ConfiguracoesService.Normalizar(Item(chave), valor));
 

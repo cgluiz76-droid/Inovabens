@@ -2,7 +2,10 @@ using Microsoft.Extensions.Configuration;
 
 namespace Inovabens.Core;
 
-public enum TipoCampoConfig { Texto, Url, Email, Telefone, Multilinha, Booleano, Numero }
+public enum TipoCampoConfig { Texto, Url, Email, Telefone, Multilinha, Booleano, Numero, Selecao }
+
+/// <summary>Opção de um campo <see cref="TipoCampoConfig.Selecao"/> (valor gravado, texto mostrado).</summary>
+public sealed record OpcaoConfig(string Valor, string Rotulo);
 
 /// <summary>
 /// Uma configuração editável em Administração → Configurações. <see cref="Variavel"/> é a variável de ambiente
@@ -10,7 +13,8 @@ public enum TipoCampoConfig { Texto, Url, Email, Telefone, Multilinha, Booleano,
 /// </summary>
 public sealed record ItemConfiguracao(
     string Chave, string Grupo, string Rotulo, string? Ajuda = null, bool Secreto = false,
-    string? Variavel = null, TipoCampoConfig Tipo = TipoCampoConfig.Texto, string? Padrao = null);
+    string? Variavel = null, TipoCampoConfig Tipo = TipoCampoConfig.Texto, string? Padrao = null,
+    IReadOnlyList<OpcaoConfig>? Opcoes = null);
 
 public sealed record GrupoConfiguracao(string Codigo, string Titulo, string Descricao, bool Testavel = false);
 
@@ -19,7 +23,10 @@ public static class CatalogoConfiguracoes
 {
     public const string GoogleDrive = "google_drive", R2 = "r2", Magnific = "magnific", GoogleAgenda = "google_agenda",
         GoogleMaps = "google_maps", Site = "site", Imobibrasil = "imobibrasil", Whatsapp = "whatsapp",
-        Claude = "claude", Meta = "meta";
+        Claude = "claude", Meta = "meta", Crm = "crm";
+
+    /// <summary>Distribuição dos leads novos do WhatsApp: fila aberta (padrão) ou rodízio entre os corretores.</summary>
+    public const string DistribuicaoFila = "fila", DistribuicaoRodizio = "rodizio";
 
     /// <summary>Portais que recebem os anúncios (código, nome). Cada um ganha o grupo "portal_{código}".</summary>
     public static readonly IReadOnlyList<(string Codigo, string Nome)> Portais =
@@ -33,6 +40,10 @@ public static class CatalogoConfiguracoes
 
     public static readonly IReadOnlyList<GrupoConfiguracao> Grupos =
     [
+        new(Crm, "CRM (distribuição de leads)",
+            "Como os leads novos que chegam pelo WhatsApp ganham um responsável. Na fila aberta, o lead aparece no funil de " +
+            "todos os corretores até um deles clicar em \"Pegar atendimento\". No rodízio, cada lead novo vai direto para o " +
+            "próximo corretor da vez (quem recebeu lead há mais tempo)."),
         new(GoogleDrive, "Google Drive (fotos e documentos)",
             "Drive compartilhado do Google Workspace onde ficam as pastas dos imóveis, acessado por uma conta de serviço " +
             "com papel \"Administrador de conteúdo\".", Testavel: true),
@@ -65,6 +76,10 @@ public static class CatalogoConfiguracoes
 
     public static readonly IReadOnlyList<ItemConfiguracao> Itens =
     [
+        new("crm.distribuicao_leads", Crm, "Distribuição dos leads novos", Tipo: TipoCampoConfig.Selecao, Padrao: DistribuicaoFila,
+            Opcoes: [new(DistribuicaoFila, "Fila aberta: aparece para todos os corretores até alguém pegar"),
+                     new(DistribuicaoRodizio, "Rodízio: vai direto para o próximo corretor da vez")]),
+
         new("google_drive.id", GoogleDrive, "ID do drive compartilhado", "Trecho da URL do drive depois de /folders/.", Variavel: "GOOGLE_DRIVE_ID"),
         new("google_drive.credenciais_json", GoogleDrive, "Chave da conta de serviço (JSON)",
             "Conteúdo completo do arquivo .json baixado no Google Cloud (IAM → Contas de serviço → Chaves).",
@@ -207,6 +222,9 @@ public sealed class Integracoes(IReadOnlyDictionary<string, string> valores)
     public string? WhatsappVerifyToken => this["whatsapp.verify_token"];
     public string? WhatsappAppSecret => this["whatsapp.app_secret"];
     public string? WhatsappPhoneNumberId => this["whatsapp.phone_number_id"];
+
+    /// <summary>Leads novos do WhatsApp vão direto para o próximo corretor (senão, ficam na fila aberta).</summary>
+    public bool CrmRodizio => this["crm.distribuicao_leads"] == CatalogoConfiguracoes.DistribuicaoRodizio;
 
     public string ImobibrasilSite => (this["imobibrasil.site"] ?? "https://www.inovabens.com.br").TrimEnd('/');
 

@@ -60,7 +60,7 @@
                     @foreach (var c in doGrupo)
                     {
                         var i = c.Item;
-                        <div class="campo @(i.Tipo == TipoCampoConfig.Multilinha ? "campo-largo" : "")">
+                        <div class="campo @(i.Tipo is TipoCampoConfig.Multilinha or TipoCampoConfig.Selecao ? "campo-largo" : "")">
                             @if (i.Tipo == TipoCampoConfig.Booleano)
                             {
                                 <label class="check">
@@ -71,7 +71,16 @@
                             else
                             {
                                 <span>@i.Rotulo</span>
-                                @if (i.Tipo == TipoCampoConfig.Multilinha)
+                                @if (i.Tipo == TipoCampoConfig.Selecao)
+                                {
+                                    <select class="input" value="@Valor(c)" @onchange="e => Editar(i, e.Value?.ToString())">
+                                        @foreach (var o in i.Opcoes ?? [])
+                                        {
+                                            <option value="@o.Valor">@o.Rotulo</option>
+                                        }
+                                    </select>
+                                }
+                                else if (i.Tipo == TipoCampoConfig.Multilinha)
                                 {
                                     <textarea class="input" rows="@(i.Secreto ? 4 : 3)" placeholder="@Dica(c)" value="@Valor(c)"
                                               @onchange="e => Editar(i, e.Value?.ToString())"></textarea>

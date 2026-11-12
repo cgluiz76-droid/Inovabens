@@ -212,17 +212,24 @@ public sealed partial class WhatsappService(
             else
             {
                 var ordem = (await db.Leads.Where(x => x.EstagioId == estagio.Id).MinAsync(x => (int?)x.Ordem, ct) ?? 1) - 1;
+                var daVez = op.Integracoes.CrmRodizio ? await CorretorDaVez(db, ct) : null;
                 lead = new Lead
                 {
                     Id = Guid.NewGuid(), PessoaId = pessoa.Id, Finalidade = finalidade, EstagioId = estagio.Id, Origem = Origem,
-                    ImovelSugeridoId = imovel?.Id, Ordem = ordem,
+                    ImovelSugeridoId = imovel?.Id, Ordem = ordem, ResponsavelId = daVez,
                 };
                 db.Leads.Add(lead);
                 db.LeadHistoricoEstagios.Add(new LeadHistoricoEstagio { LeadId = lead.Id, EstagioNovoId = estagio.Id });
-                audit.Registrar(db, null, "leads", lead.Id, "CRIAR", depois: new { origem = Origem, telefone = pessoa.Whatsapp, imovel_sugerido = imovel?.Id });
+                audit.Registrar(db, null, "leads", lead.Id, "CRIAR",
+                    depois: new { origem = Origem, telefone = pessoa.Whatsapp, imovel_sugerido = imovel?.Id, responsavel_rodizio = daVez });
                 await db.SaveChangesAsync(ct); // o alerta referencia o lead, que precisa existir antes
-                await AvisarGestores(db, lead.Id, $"Novo lead pelo WhatsApp: {pessoa.NomeRazao} ({pessoa.Whatsapp ?? pessoa.Telefone})" +
-                    (imovel is null ? ". Vincule o imóvel de interesse no CRM." : $", interessado no imóvel {imovel.Codigo}. Confirme o vínculo no CRM."), ct);
+                var aviso = $"Novo lead pelo WhatsApp: {pessoa.NomeRazao} ({pessoa.Whatsapp ?? pessoa.Telefone})" +
+                    (imovel is null ? ". Vincule o imóvel de interesse no CRM." : $", interessado no imóvel {imovel.Codigo}. Confirme o vínculo no CRM.");
+                await AvisarGestores(db, lead.Id, aviso, ct);
+                if (daVez is { } c)
+                    db.Alertas.Add(new Alerta { Id = Guid.NewGuid(), Tipo = TipoAlerta.NOVO_LEAD, UsuarioId = c, LeadId = lead.Id, Mensagem = aviso + " (rodízio: o lead é seu)" });
+                else
+                    await AvisarCorretores(db, lead.Id, aviso + " Lead na fila aberta: pegue o atendimento no CRM.", ct);
                 criouLead = true;
             }
         }
@@ -311,6 +318,34 @@ public sealed partial class WhatsappService(
             .Where(u => db.PerfilPermissoes.Any(pp => pp.PerfilId == u.PerfilId && pp.Permissao!.Codigo == Permissoes.CrmEditar))
             .Select(u => u.Id).ToListAsync(ct);
         foreach (var id in destinatarios)
+            db.Alertas.Add(new Alerta { Id = Guid.NewGuid(), Tipo = TipoAlerta.NOVO_LEAD, UsuarioId = id, LeadId = leadId, Mensagem = mensagem });
+    }
+
+    /// <summary>Corretores que atendem leads: perfil com escopo próprio que pode editar o CRM.</summary>
+    private static IQueryable<Usuario> Corretores(InovabensDb db) =>
+        db.Usuarios.Where(u => u.Ativo && u.ExcluidoEm == null && u.Perfil!.EscopoProprio)
+            .Where(u => db.PerfilPermissoes.Any(pp => pp.PerfilId == u.PerfilId && pp.Permissao!.Codigo == Permissoes.CrmEditar));
+
+    /// <summary>
+    /// Rodízio: o corretor que recebeu lead do WhatsApp há mais tempo (quem nunca recebeu vem primeiro). Sem corretor
+    /// ativo, o lead fica na fila aberta.
+    /// </summary>
+    internal static async Task<Guid?> CorretorDaVez(InovabensDb db, CancellationToken ct = default)
+    {
+        var candidatos = await Corretores(db)
+            .Select(u => new
+            {
+                u.Id, u.Nome,
+                Ultimo = db.Leads.Where(l => l.ResponsavelId == u.Id && l.Origem == Origem).Max(l => (DateTime?)l.CriadoEm),
+            })
+            .ToListAsync(ct);
+        return candidatos.OrderBy(c => c.Ultimo ?? DateTime.MinValue).ThenBy(c => c.Nome).Select(c => (Guid?)c.Id).FirstOrDefault();
+    }
+
+    /// <summary>Fila aberta: todos os corretores são avisados; o primeiro que pegar fica com o lead.</summary>
+    private static async Task AvisarCorretores(InovabensDb db, Guid leadId, string mensagem, CancellationToken ct)
+    {
+        foreach (var id in await Corretores(db).Select(u => u.Id).ToListAsync(ct))
             db.Alertas.Add(new Alerta { Id = Guid.NewGuid(), Tipo = TipoAlerta.NOVO_LEAD, UsuarioId = id, LeadId = leadId, Mensagem = mensagem });
     }
 
