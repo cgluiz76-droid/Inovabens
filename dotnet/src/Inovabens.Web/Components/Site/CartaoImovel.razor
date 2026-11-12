@@ -5,17 +5,17 @@
     <div class="cartao-foto">
         @if (Item.Capa is not null)
         {
-            <img src="@Item.Capa" alt="" loading="lazy" />
+            <img src="@Item.Capa" alt="" width="400" height="300" loading="@(Prioridade ? "eager" : "lazy")" fetchpriority="@(Prioridade ? "high" : "auto")" decoding="async" />
         }
         else
         {
-            <img src="img/sem-foto.svg" alt="Sem foto" loading="lazy" />
+            <img src="img/sem-foto.svg" alt="Sem foto" width="400" height="300" loading="lazy" />
         }
         <span class="cartao-etiqueta">@(Locacao ? "Aluguel" : "Venda")</span>
     </div>
     <div class="cartao-corpo">
         <span class="rotulo">@Texto.Rotulo(Item.Tipo) · @Item.Codigo</span>
-        <h3>@Item.Titulo</h3>
+        @if (TituloH2) { <h2 class="cartao-titulo">@Item.Titulo</h2> } else { <h3 class="cartao-titulo">@Item.Titulo</h3> }
         <span class="local mudo"><svg class="ico"><use href="#i-pino" /></svg>@Onde</span>
         <div class="cartao-numeros mudo num">
             @if (Item.Area is { } a) { <span><svg class="ico"><use href="#i-area" /></svg>@Area(a)</span> }
@@ -31,6 +31,10 @@
     [Parameter, EditorRequired] public VitrineItem Item { get; set; } = default!;
     /// <summary>Página de aluguel: mostra o valor do aluguel em vez do de venda.</summary>
     [Parameter] public bool Aluguel { get; set; }
+    /// <summary>Primeiros cartões da página (visíveis sem rolar): carregam já, sem lazy, para não atrasar o LCP.</summary>
+    [Parameter] public bool Prioridade { get; set; }
+    /// <summary>Na busca o cartão fica logo abaixo do h1 da página: título h2 (hierarquia sem pular nível).</summary>
+    [Parameter] public bool TituloH2 { get; set; }
 
     private static readonly CultureInfo Br = Texto.PtBr;
     private bool Locacao => Item.Finalidade == FinalidadeImovel.LOCACAO || (Aluguel && Item.PrecoLocacao is not null);

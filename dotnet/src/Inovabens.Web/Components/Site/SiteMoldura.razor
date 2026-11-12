@@ -7,11 +7,44 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <base href="/" />
-    <meta name="robots" content="noindex" />
+    @* Sem o site público ligado (SITE_PUBLICO_URL), a prévia não vai para o Google; ligado, as páginas do site são indexáveis. *@
+    <meta name="robots" content="@(Publico ? "index, follow, max-image-preview:large" : "noindex, nofollow")" />
     <meta name="theme-color" content="#03075f" />
-    <title>@Titulo · Inovabens (pré-visualização)</title>
+    <title>@Titulo · Inovabens@(Publico ? "" : " (pré-visualização)")</title>
+    @if (Descricao is not null)
+    {
+        <meta name="description" content="@Descricao" />
+    }
+    @if (Canonico is not null)
+    {
+        <link rel="canonical" href="@Seo.Absoluto(Op, Canonico)" />
+    }
+    <meta property="og:site_name" content="Inovabens" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="@Titulo" />
+    @if (Descricao is not null)
+    {
+        <meta property="og:description" content="@Descricao" />
+    }
+    @if (Canonico is not null)
+    {
+        <meta property="og:url" content="@Seo.Absoluto(Op, Canonico)" />
+    }
+    @if (Imagem is not null)
+    {
+        <meta property="og:image" content="@Seo.Absoluto(Op, Imagem)" />
+        <meta name="twitter:card" content="summary_large_image" />
+    }
     <link rel="icon" type="image/svg+xml" href="img/marca.svg" />
-    <link rel="stylesheet" href="site-previa.css" />
+    @* as duas fontes ficam no caminho crítico (títulos e texto): pedir já evita a troca tardia que move o layout *@
+    <link rel="preload" href="fontes/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="fontes/montserrat-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="@Assets["site-previa.css"]" />
+    @foreach (var json in DadosEstruturados)
+    {
+        @((MarkupString)("<script type=\"application/ld+json\">" + json + "</script>"))
+    }
 </head>
 <body>
     <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -44,7 +77,7 @@
 
     <header class="topo">
         <div class="miolo">
-            <a class="marca" href="site" aria-label="Inovabens: página inicial">
+            <a class="marca" href="site" title="Página inicial">
                 <img src="img/marca.svg" alt="" />
                 <span class="marca-txt"><b>INOVA<span>BENS</span></b><small>GESTÃO PATRIMONIAL</small></span>
             </a>
@@ -63,7 +96,7 @@
     <footer class="rodape">
         <div class="miolo">
             <div class="rodape-col">
-                <a class="marca marca-rodape" href="site" aria-label="Inovabens: página inicial">
+                <a class="marca marca-rodape" href="site" title="Página inicial">
                     <img src="img/marca.svg" alt="" />
                     <span class="marca-txt"><b>INOVA<span>BENS</span></b><small>GESTÃO PATRIMONIAL</small></span>
                 </a>
@@ -87,12 +120,23 @@
 </body>
 </html>
 
+@inject InovabensOpcoes Op
 @code {
     /// <summary>WhatsApp e telefone do site atual da Inovabens.</summary>
     public const string Whatsapp = "5517981850171";
     public const string TelefoneTexto = "(17) 98185-0171";
 
     [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    /// <summary>Meta description (resumo da página nos resultados de busca e no compartilhamento).</summary>
+    [Parameter] public string? Descricao { get; set; }
+    /// <summary>Caminho canônico da página (sem parâmetros que só reordenam a lista), relativo ao site.</summary>
+    [Parameter] public string? Canonico { get; set; }
+    /// <summary>Imagem do compartilhamento (Open Graph): capa do imóvel.</summary>
+    [Parameter] public string? Imagem { get; set; }
+    /// <summary>Dados estruturados (JSON-LD já serializado) da página: organização, trilha, etc.</summary>
+    [Parameter] public IReadOnlyList<string> DadosEstruturados { get; set; } = [];
+
+    private bool Publico => Op.SitePublicoUrl is not null;
     /// <summary>Item do menu em destaque: "venda" ou "locacao".</summary>
     [Parameter] public string? Ativo { get; set; }
     /// <summary>Texto da faixa de pré-visualização (avisos da página).</summary>

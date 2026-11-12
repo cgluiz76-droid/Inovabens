@@ -49,7 +49,7 @@
 <section class="card espaco-topo">
     <div class="titulo-secao">
         <h2>Estágios do funil</h2>
-        <select class="input filtro" @bind="funil" @bind:after="CarregarEstagios">
+        <select class="input filtro" aria-label="Funil" @bind="funil" @bind:after="CarregarEstagios">
             @foreach (var f in Enum.GetValues<Funil>())
             {
                 <option value="@f">@Funis.Nome(f)@(Funis.EhProcesso(f) ? " (processos do imóvel)" : "")</option>

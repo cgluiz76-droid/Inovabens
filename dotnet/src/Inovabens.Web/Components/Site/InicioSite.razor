@@ -1,6 +1,7 @@
 @* Página inicial da pré-visualização do site (rota /site): busca, destaques à venda e para alugar, anunciar e sobre. *@
 
-<SiteMoldura Titulo="Imóveis em São José do Rio Preto">
+<SiteMoldura Titulo="Imóveis em São José do Rio Preto" Canonico="site" DadosEstruturados="[DadosSite.Imobiliaria(Op)]"
+             Descricao="Imóveis à venda e para alugar em São José do Rio Preto e região. Inova Bens Gestão Patrimonial (CRECI 50457-J): compra, venda, locação e regularização.">
     <main>
         <section class="hero">
             <div class="miolo hero-miolo">
@@ -68,6 +69,7 @@
     </main>
 </SiteMoldura>
 
+@inject InovabensOpcoes Op
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<VitrineItem> Venda { get; set; } = [];
     [Parameter, EditorRequired] public IReadOnlyList<VitrineItem> Aluguel { get; set; } = [];

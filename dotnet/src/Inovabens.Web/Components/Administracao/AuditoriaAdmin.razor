@@ -3,7 +3,7 @@
 
 <section class="card">
     <div class="filtros">
-        <select class="input filtro" @bind="entidade" @bind:after="Filtrar">
+        <select class="input filtro" aria-label="Entidade" @bind="entidade" @bind:after="Filtrar">
             <option value="">Todas as entidades</option>
             @foreach (var e in entidades)
             {

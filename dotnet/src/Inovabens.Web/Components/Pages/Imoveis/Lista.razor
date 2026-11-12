@@ -102,23 +102,23 @@ else
     private RenderFragment BarraFiltros => __builder =>
     {
         <div class="filtros">
-            <input class="input busca" placeholder="Buscar por código, título, endereço…"
+            <input class="input busca" aria-label="Buscar imóveis" placeholder="Buscar por código, título, endereço…"
                    @bind="termo" @bind:event="oninput" @bind:after="AoDigitar" />
-            <select class="input filtro" @bind="situacao" @bind:after="Filtrar">
+            <select class="input filtro" aria-label="Situação" @bind="situacao" @bind:after="Filtrar">
                 <option value="">Todas as situações</option>
                 @foreach (var s in Enum.GetValues<SituacaoImovel>())
                 {
                     <option value="@s">@Texto.Rotulo(s)</option>
                 }
             </select>
-            <select class="input filtro" @bind="tipo" @bind:after="Filtrar">
+            <select class="input filtro" aria-label="Tipo" @bind="tipo" @bind:after="Filtrar">
                 <option value="">Todos os tipos</option>
                 @foreach (var t in tipos)
                 {
                     <option value="@t">@Texto.Rotulo(t)</option>
                 }
             </select>
-            <select class="input filtro" @bind="cidade" @bind:after="Filtrar">
+            <select class="input filtro" aria-label="Cidade" @bind="cidade" @bind:after="Filtrar">
                 <option value="">Todas as cidades</option>
                 @foreach (var c in cidades)
                 {
@@ -127,7 +127,7 @@ else
             </select>
             @if (!Usuario.EscopoProprio)
             {
-                <select class="input filtro" @bind="corretor" @bind:after="Filtrar">
+                <select class="input filtro" aria-label="Corretor" @bind="corretor" @bind:after="Filtrar">
                     <option value="">Todos os corretores</option>
                     @foreach (var c in corretores)
                     {

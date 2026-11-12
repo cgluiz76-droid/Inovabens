@@ -1,6 +1,7 @@
 @* Busca do site (rota /site/imoveis?finalidade=venda|locacao&tipo=&cidade=&ordem=): todos os imóveis divulgados daquela finalidade. *@
 
-<SiteMoldura Titulo="@Titulo" Ativo="@(Locacao ? "locacao" : "venda")">
+<SiteMoldura Titulo="@TituloPagina" Ativo="@(Locacao ? "locacao" : "venda")" Descricao="@Descricao" Canonico="@Canonico"
+             DadosEstruturados="@Trilha">
     <main class="miolo">
         <nav class="trilha" aria-label="Você está em">
             <a href="site">Início</a><span>›</span><span aria-current="page">@(Locacao ? "Alugar" : "Comprar")</span>
@@ -45,11 +46,12 @@
         }
         else
         {
-            <div class="cartoes">@foreach (var i in Ordenados) { <CartaoImovel Item="i" Aluguel="Locacao" /> }</div>
+            <div class="cartoes">@foreach (var (i, k) in Ordenados.Select((i, k) => (i, k))) { <CartaoImovel Item="i" Aluguel="Locacao" Prioridade="k < 2" TituloH2 /> }</div>
         }
     </main>
 </SiteMoldura>
 
+@inject InovabensOpcoes Op
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<VitrineItem> Itens { get; set; } = [];
     /// <summary>Todos os da finalidade, sem os filtros (para montar as opções de tipo e cidade).</summary>
@@ -60,6 +62,15 @@
     [Parameter] public string? Ordem { get; set; }
 
     private string Titulo => Locacao ? "Imóveis para alugar" : "Imóveis à venda";
+    /// <summary>Título com o filtro (ex.: "Terrenos à venda em Cedral"): páginas filtradas têm assunto próprio.</summary>
+    private string TituloPagina => Titulo + (Tipo is null ? "" : $" · {Texto.Rotulo(Tipo)}") + (Cidade is null ? "" : $" em {Cidade}");
+    /// <summary>Canônica sem "ordem" (só reordena a mesma lista); tipo e cidade mudam o conteúdo e ficam.</summary>
+    private string Canonico => $"site/imoveis?finalidade={(Locacao ? "locacao" : "venda")}"
+        + (Tipo is null ? "" : "&tipo=" + Uri.EscapeDataString(Tipo)) + (Cidade is null ? "" : "&cidade=" + Uri.EscapeDataString(Cidade));
+    private string Descricao => DadosSite.Resumo(
+        $"{Contagem}: {(Tipo is null ? "imóveis" : Texto.Rotulo(Tipo).ToLowerInvariant())} {(Locacao ? "para alugar" : "à venda")} "
+        + $"{(Cidade is null ? "em São José do Rio Preto e região" : "em " + Cidade)} com a Inovabens (CRECI 50457-J). Veja fotos, valores e fale pelo WhatsApp.");
+    private IReadOnlyList<string> Trilha => [DadosSite.Trilha(Op, ("Início", "site"), (Locacao ? "Alugar" : "Comprar", Canonico))];
     private string Contagem => Itens.Count == 1 ? "1 imóvel encontrado" : $"{Itens.Count} imóveis encontrados";
     private IEnumerable<string> Tipos => Todos.Select(i => i.Tipo).Distinct(StringComparer.OrdinalIgnoreCase).Order();
     private IEnumerable<string> Cidades => Todos.Select(i => i.Cidade).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Order();

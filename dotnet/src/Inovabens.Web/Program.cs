@@ -37,6 +37,7 @@ builder.Services.AddHostedService<PostsRedesJob>();
 builder.Services.AddHostedService<LimiteGratuitoR2Job>();
 builder.Services.AddSingleton<RenovacaoSessao>();
 
+builder.Services.AddSingleton<FotosReduzidas>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -184,6 +185,7 @@ if (args.Contains("importar-notion"))
 
 app.UseForwardedHeaders();
 app.UseRateLimiter(); // depois do UseForwardedHeaders: limita pelo IP real do cliente
+app.UseIndexacao(); // X-Robots-Tag: noindex em tudo enquanto o site público não estiver ligado (Seo.cs)
 
 // Cabeçalhos de segurança (papel do helmet na versão Node): sem iframe de outros sites (clickjacking), sem o
 // navegador "adivinhar" tipos de arquivo, formulários só para o próprio sistema. Sem script-src: o Blazor não muda.
@@ -303,11 +305,31 @@ site.MapGet("imoveis", async (string? finalidade, string? tipo, string? cidade, 
 
 // Fotos e documentos: o Drive é privado, então o sistema confere o acesso ao imóvel e repassa o arquivo.
 // O id do arquivo no Drive vai na URL e muda quando a foto é trocada, por isso o navegador pode guardar em cache.
-app.MapGet("/imoveis/midias/{midiaId:guid}/{arquivo}", async (Guid midiaId, string arquivo, HttpContext c, ImoveisService s) =>
+// ?l=400|1200: foto reduzida em WebP (listas, cartões, galeria) em vez do original de vários MB.
+app.MapGet("/imoveis/midias/{midiaId:guid}/{arquivo}", async (Guid midiaId, string arquivo, int? l, HttpContext c, ImoveisService s, FotosReduzidas reduzidas) =>
 {
     try
     {
-        var a = await s.ArquivoMidiaAsync(UsuarioAtual.De(c.User)!, midiaId, arquivo, c.RequestAborted);
+        var u = UsuarioAtual.De(c.User)!;
+        if (l is { } largura && ImoveisService.LarguraValida(largura))
+        {
+            // o arquivo do Drive na URL muda quando a foto é trocada: a versão reduzida nunca fica velha
+            if (reduzidas.EmMemoria(arquivo, largura) is { } pronta)
+            {
+                await s.ConferirArquivoMidiaAsync(u, midiaId, arquivo, c.RequestAborted);
+                c.Response.Headers.CacheControl = "private, max-age=2592000, immutable";
+                return Results.File(pronta, "image/webp");
+            }
+            var original = await s.ArquivoMidiaAsync(u, midiaId, arquivo, c.RequestAborted);
+            if (FotosReduzidas.Reduzivel(original.ContentType) && reduzidas.Obter(arquivo, largura, () => original.Dados) is { } webp)
+            {
+                c.Response.Headers.CacheControl = "private, max-age=2592000, immutable";
+                return Results.File(webp, "image/webp");
+            }
+            c.Response.Headers.CacheControl = "private, max-age=86400";
+            return Results.File(original.Dados, original.ContentType);
+        }
+        var a = await s.ArquivoMidiaAsync(u, midiaId, arquivo, c.RequestAborted);
         c.Response.Headers.CacheControl = "private, max-age=86400";
         return a.Download
             ? Results.File(a.Dados, a.ContentType, a.Nome)
@@ -399,6 +421,8 @@ app.MapGet("/conta/renovar-sessao", async (string t, HttpContext c, AuthService 
     await c.SignInAsync(UsuarioAtual.Esquema, atual.ParaPrincipal());
     return Results.LocalRedirect("/conta?senha=alterada");
 }).RequireAuthorization();
+
+app.MapIndexacao(); // robots.txt, sitemap.xml (só com SITE_PUBLICO_URL) e favicon.ico
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

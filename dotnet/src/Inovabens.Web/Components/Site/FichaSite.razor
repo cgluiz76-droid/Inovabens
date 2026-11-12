@@ -2,7 +2,9 @@
    Mostra só o que o site mostraria: fotos públicas, características públicas e o endereço apenas se for público. *@
 @using System.Globalization
 
-<SiteMoldura Titulo="@(SoSimulador ? "Simular financiamento · " + Im.Titulo : Im.Titulo)" Ativo="@(Locacao ? "locacao" : "venda")" MensagemWhatsapp="@MensagemWhatsapp">
+<SiteMoldura Titulo="@(SoSimulador ? "Simular financiamento · " + Im.Titulo : Im.Titulo)" Ativo="@(Locacao ? "locacao" : "venda")" MensagemWhatsapp="@MensagemWhatsapp"
+             Descricao="@DescricaoMeta" Canonico="@(SoSimulador ? $"site/imovel/{Im.Id}/simulador" : $"site/imovel/{Im.Id}")"
+             Imagem="@(Fotos.Count > 0 ? Fotos[0].Src : null)" DadosEstruturados="@Trilha">
     <Faixa>
         é assim que o @Im.Codigo aparece no site público.
         @if (!Im.DivulgarSite)
@@ -33,7 +35,7 @@
                 <div class="sim-cab">
                     @if (Fotos.Count > 0)
                     {
-                        <img src="@Fotos[0].Src" alt="" />
+                        <img src="@Fotos[0].Pequena" alt="" width="400" height="300" fetchpriority="high" />
                     }
                     <div>
                         <span class="rotulo">@TipoRotulo à venda · @Codigo</span>
@@ -147,9 +149,10 @@
                             @if (Fotos.Count < 5)
                             {
                                 @* foto sozinha: aparece inteira, na proporção dela; as laterais ficam com a própria foto desfocada *@
-                                <img class="fundo" src="@f.Src" alt="" aria-hidden="true" />
+                                <img class="fundo" src="@f.Pequena" alt="" aria-hidden="true" decoding="async" />
                             }
-                            <img src="@f.Src" alt="@(f.Legenda ?? Im.Titulo)" loading="@(k == 0 ? "eager" : "lazy")" />
+                            <img src="@f.Src" srcset="@f.Srcset" sizes="@(k == 0 ? "(max-width: 760px) 100vw, 50vw" : "(max-width: 760px) 50vw, 25vw")"
+                                 alt="@(f.Legenda ?? Im.Titulo)" loading="@(k == 0 ? "eager" : "lazy")" fetchpriority="@(k == 0 ? "high" : "auto")" decoding="@(k == 0 ? "sync" : "async")" />
                         </button>
                     }
                     <button type="button" class="ver-todas" data-luz="0"><svg class="ico"><use href="#i-fotos" /></svg> Ver as @Fotos.Count fotos</button>
@@ -360,6 +363,7 @@
     </Scripts>
 </SiteMoldura>
 
+@inject InovabensOpcoes Op
 @code {
     [Parameter, EditorRequired] public ImovelDetalhe Detalhe { get; set; } = default!;
     [Parameter] public string? LinkImobibrasil { get; set; }
@@ -368,7 +372,12 @@
     /// <summary>Taxas dos bancos do comparativo (só na página do simulador).</summary>
     [Parameter] public IReadOnlyList<TaxaBanco>? Taxas { get; set; }
 
-    private sealed record FotoSite(string Src, string? Legenda);
+    /// <param name="Src">Foto para exibir grande (1200 px).</param>
+    /// <param name="Pequena">Versão reduzida (400 px): fundos desfocados, miniaturas e telas pequenas.</param>
+    private sealed record FotoSite(string Src, string Pequena, string? Legenda)
+    {
+        public string Srcset => Pequena == Src ? Src : $"{Pequena} 400w, {Src} 1200w";
+    }
     private sealed record Paragrafo(string? Texto, IReadOnlyList<string>? Itens);
 
     private static readonly CultureInfo Br = Texto.PtBr;
@@ -415,6 +424,20 @@
 
     private string MensagemWhatsapp => $"Olá! Tenho interesse no imóvel {Codigo} ({Im.Titulo}). Pode me passar mais informações?";
     private string LinkWhatsapp => $"https://wa.me/{SiteMoldura.Whatsapp}?text=" + Uri.EscapeDataString(MensagemWhatsapp);
+    /// <summary>Meta description: o que é, onde, números principais e preço; depois o começo do texto do anúncio.</summary>
+    private string DescricaoMeta => DadosSite.Resumo(string.Join(". ", new[]
+    {
+        $"{TipoRotulo} {(Locacao ? "para alugar" : "à venda")}{(Onde.Length > 0 ? " em " + Onde : "")}",
+        string.Join(", ", Numeros.Take(3).Select(n => $"{n.Rotulo.ToLowerInvariant()} {n.Valor}")),
+        PrecoTexto == "Consulte" ? "" : PrecoTexto,
+        Texto.Limpo(Im.DescricaoPublica) ?? "",
+    }.Where(x => x.Length > 0)));
+
+    private IReadOnlyList<string> Trilha =>
+    [
+        DadosSite.Trilha(Op, ("Início", "site"), (Locacao ? "Alugar" : "Comprar", LinkLista), (Im.Titulo, $"site/imovel/{Im.Id}")),
+    ];
+
     private string LinkLista => $"site/imoveis?finalidade={(Locacao ? "locacao" : "venda")}";
 
     /* ------- simulador de financiamento (regras em FinanciamentoCaixa, bancos e MCMV em ComparadorFinanciamento) ------- */
@@ -436,7 +459,7 @@
     {
         var midias = Detalhe.Midias.Where(m => m.Midia.Publica && m.Url is not null)
             .OrderByDescending(m => m.Midia.Capa).ThenBy(m => m.Midia.Ordem).ToList();
-        Fotos = [.. midias.Where(m => m.Midia.Tipo == TipoMidia.FOTO).Select(m => new FotoSite(m.UrlPublica ?? m.Url!, m.Midia.Legenda))];
+        Fotos = [.. midias.Where(m => m.Midia.Tipo == TipoMidia.FOTO).Select(m => new FotoSite(m.Tela ?? m.Url!, m.Miniatura ?? m.Tela ?? m.Url!, m.Midia.Legenda))];
         Videos = [.. midias.Where(m => m.Midia.Tipo == TipoMidia.VIDEO).Select(m => m.Url!)];
         FotosJson = System.Text.Json.JsonSerializer.Serialize(Fotos.Select(f => new { src = f.Src, legenda = f.Legenda }))
             .Replace("<", "\\u003c"); // dentro de <script>: nunca fecha a tag

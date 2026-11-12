@@ -51,7 +51,7 @@ else
                     var pos = form.Fotos.IndexOf(f.Midia.Id);
                     <button type="button" class="foto-post @(pos >= 0 ? "marcada" : "")" @onclick="() => AlternarFoto(f.Midia.Id)"
                             aria-pressed="@(pos >= 0 ? "true" : "false")" title="@(f.Midia.Legenda ?? f.Midia.NomeOriginal)">
-                        <img src="@(f.UrlPublica ?? f.Url)" alt="@(f.Midia.Legenda ?? "Foto do imóvel")" loading="lazy" />
+                        <img src="@(f.Miniatura ?? f.UrlPublica ?? f.Url)" alt="@(f.Midia.Legenda ?? "Foto do imóvel")" loading="lazy" decoding="async" />
                         @if (pos >= 0)
                         {
                             <span class="ordem-foto">@(pos + 1)</span>

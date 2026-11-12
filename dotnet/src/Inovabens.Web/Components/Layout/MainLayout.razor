@@ -50,7 +50,7 @@
 
     <div class="principal">
         <header class="topo">
-            <a class="sino" href="alertas" title="Alertas" aria-label="Alertas">
+            <a class="sino" href="alertas" title="Alertas" aria-label="@(alertas > 0 ? $"Alertas {(alertas > 99 ? "99+" : alertas.ToString())}" : "Alertas")">
                 <Icone Nome="sino" />
                 @if (alertas > 0)
                 {

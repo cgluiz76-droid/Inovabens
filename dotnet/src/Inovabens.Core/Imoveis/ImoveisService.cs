@@ -42,7 +42,7 @@ public sealed class ImoveisService(
         var fotos = await db.ImovelMidias.AsNoTracking()
             .Where(m => ids.Contains(m.ImovelId) && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
             .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
-        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.UrlPublica ?? d.Url : null);
+        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.Miniatura ?? d.Url : null);
         itens = [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id) })];
         return new Paginado<ImovelListaItem>(itens, total, pagina, tamanho);
     }
@@ -82,7 +82,7 @@ public sealed class ImoveisService(
         var fotos = await db.ImovelMidias.AsNoTracking()
             .Where(m => ids.Contains(m.ImovelId) && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
             .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
-        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.UrlPublica ?? d.Url : null);
+        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.Miniatura ?? d.Url : null);
         return [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id) })];
     }
 
@@ -115,7 +115,7 @@ public sealed class ImoveisService(
         var fotos = await db.ImovelMidias.AsNoTracking()
             .Where(m => ids.Contains(m.ImovelId) && m.Publica && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
             .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
-        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.UrlPublica ?? d.Url : null);
+        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.Miniatura ?? d.Url : null);
 
         return [.. imoveis.Select(i => new VitrineItem(i.Id, i.Referencia ?? i.Codigo, i.Titulo, i.Subtipo ?? i.Tipo, i.Finalidade,
             i.Cidade, i.Bairro, i.Uf, i.PrecoVenda, i.PrecoLocacao, i.Quartos, i.Suites, i.Vagas,
@@ -147,10 +147,23 @@ public sealed class ImoveisService(
         return new ImovelDetalhe(im, corretor, carac, [.. midias.Select(Detalhar)], props, envs, pastas.Link(im.DrivePastaId));
     }
 
-    /// <summary>O id do arquivo vai na URL: muda quando a foto é trocada (Magnific), então o navegador pode guardar em cache.</summary>
-    private MidiaDetalhe Detalhar(ImovelMidia m) =>
-        new(m, string.IsNullOrEmpty(m.ArquivoChave) ? null : $"imoveis/midias/{m.Id}/{Uri.EscapeDataString(m.ArquivoChave)}",
-            PublicacaoFotosService.Situacao(m) == SituacaoPublicacao.Publicada ? publicacao.Url(m) : null);
+    /// <summary>
+    /// O id do arquivo vai na URL: muda quando a foto é trocada (Magnific), então o navegador pode guardar em cache.
+    /// Fotos publicadas usam as versões WebP do R2 (400 e 1200 px); as demais, a redução feita pelo próprio sistema (?l=).
+    /// </summary>
+    private MidiaDetalhe Detalhar(ImovelMidia m)
+    {
+        var url = string.IsNullOrEmpty(m.ArquivoChave) ? null : $"imoveis/midias/{m.Id}/{Uri.EscapeDataString(m.ArquivoChave)}";
+        var publica = PublicacaoFotosService.Situacao(m) == SituacaoPublicacao.Publicada ? publicacao.Url(m) : null;
+        if (m.Tipo != TipoMidia.FOTO || url is null) return new(m, url, publica);
+        return publica is not null
+            ? new(m, url, publica, publicacao.Url(m, LarguraMiniatura), publica)
+            : new(m, url, null, $"{url}?l={LarguraMiniatura}", $"{url}?l={LarguraTela}");
+    }
+
+    /// <summary>Larguras que o sistema reduz ao entregar fotos do Drive (as mesmas versões publicadas no R2).</summary>
+    public const int LarguraMiniatura = 400, LarguraTela = 1200;
+    public static bool LarguraValida(int largura) => largura is LarguraMiniatura or LarguraTela;
 
     public async Task<Guid> CriarAsync(UsuarioAtual u, ImovelForm form)
     {
@@ -381,6 +394,17 @@ public sealed class ImoveisService(
         await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         var midias = await db.ImovelMidias.AsNoTracking().Where(m => m.ImovelId == id).OrderBy(m => m.Ordem).ToListAsync();
         return [.. midias.Select(Detalhar)];
+    }
+
+    /// <summary>Só confere se o usuário pode abrir o arquivo da mídia (sem baixar do Drive); usado com a foto reduzida em cache.</summary>
+    public async Task ConferirArquivoMidiaAsync(UsuarioAtual u, Guid midiaId, string arquivoId, CancellationToken ct = default)
+    {
+        u.Exigir(P.ImoveisVer);
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var m = await db.ImovelMidias.AsNoTracking().SingleOrDefaultAsync(x => x.Id == midiaId, ct)
+            ?? throw new NaoEncontradoException("Arquivo não encontrado.");
+        await Acesso.ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
+        if (arquivoId != m.ArquivoChave && arquivoId != m.ArquivoOriginalChave) throw new NaoEncontradoException("Arquivo não encontrado.");
     }
 
     /// <summary>

@@ -216,6 +216,9 @@ fieldset.campo { border: 0; padding: 0; margin-left: 0; margin-right: 0; margin-
     /* foto gerada pelo Magnific (Mystic); o degradê marinho garante a leitura do texto por cima */
     background: linear-gradient(180deg, rgb(3 7 95 / .82) 0%, rgb(3 7 95 / .45) 38%, rgb(3 7 95 / .55) 62%, rgb(3 7 95 / .9) 100%),
         var(--marinho) url("img/login-fundo.jpg") center / cover no-repeat;
+    /* WebP de 1100 px (57 KB) no lugar do JPEG de 1344 px (187 KB); navegadores sem image-set ficam com a linha acima */
+    background: linear-gradient(180deg, rgb(3 7 95 / .82) 0%, rgb(3 7 95 / .45) 38%, rgb(3 7 95 / .55) 62%, rgb(3 7 95 / .9) 100%),
+        var(--marinho) image-set(url("img/login-fundo-1100.webp") type("image/webp"), url("img/login-fundo.jpg") type("image/jpeg")) center / cover no-repeat;
 }
 .login-vitrine .marca { padding: 0; }
 .login-vitrine .marca img { width: 3rem; height: 3rem; }

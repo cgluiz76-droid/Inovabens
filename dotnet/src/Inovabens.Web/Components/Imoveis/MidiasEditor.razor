@@ -32,7 +32,7 @@
             <div class="midia">
                 @if (m.Url is not null && m.Midia.Tipo == TipoMidia.FOTO)
                 {
-                    <img src="@m.Url" alt="@(m.Midia.Legenda ?? "")" />
+                    <img src="@(m.Miniatura ?? m.Url)" alt="@(m.Midia.Legenda ?? "")" loading="lazy" decoding="async" />
                 }
                 else
                 {

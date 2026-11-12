@@ -65,14 +65,14 @@
     <strong class="mes">@mes.ToString("MMMM 'de' yyyy", Texto.PtBr)</strong>
     <button class="btn-ghost" @onclick="() => Mudar(1)">›</button>
     <button class="btn-ghost" @onclick="Hoje">Hoje</button>
-    <select class="input filtro" @bind="status" @bind:after="Carregar">
+    <select class="input filtro" aria-label="Situação" @bind="status" @bind:after="Carregar">
         <option value="">Todos os status</option>
         @foreach (var s in Enum.GetValues<StatusCompromisso>())
         {
             <option value="@s">@Texto.Rotulo(s)</option>
         }
     </select>
-    <select class="input filtro" @bind="imovelFiltro" @bind:after="Carregar">
+    <select class="input filtro" aria-label="Imóvel" @bind="imovelFiltro" @bind:after="Carregar">
         <option value="">Todos os imóveis</option>
         @foreach (var i in imoveis)
         {

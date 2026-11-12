@@ -16,6 +16,12 @@ public sealed class InovabensOpcoes
 
     /// <summary>Endereço público da aplicação (volta do OAuth do Google).</summary>
     public string WebUrl { get; init; } = "http://localhost:5051";
+    /// <summary>
+    /// SITE_PUBLICO_URL (ex.: https://www.inovabens.com.br): endereço do site público no domínio próprio. Vazio (hoje) =
+    /// nada deste sistema é indexado pelo Google (X-Robots-Tag noindex em tudo) e não há sitemap. Preenchido = as páginas
+    /// do site (/site...) passam a ser indexáveis, com URL canônica e sitemap nesse endereço; o restante segue noindex.
+    /// </summary>
+    public string? SitePublicoUrl { get; init; }
     /// <summary>Chave do HMAC dos tokens de canal do Google (JWT_REFRESH_SECRET na versão Node, para os canais continuarem válidos).</summary>
     public string SegredoHmac { get; init; } = "";
     /// <summary>Administrador criado no banco novo (SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD, como no seed do Node).</summary>
@@ -45,6 +51,7 @@ public sealed class InovabensOpcoes
             Producao = producao,
             DesativarJobs = string.Equals(c["DISABLE_JOBS"], "true", StringComparison.OrdinalIgnoreCase),
             WebUrl = (Vazio(c["WEB_URL"]) ?? "http://localhost:5051").TrimEnd('/'),
+            SitePublicoUrl = Vazio(c["SITE_PUBLICO_URL"])?.TrimEnd('/'),
             SegredoHmac = Vazio(c["JWT_REFRESH_SECRET"]) ?? c["TOKEN_ENC_KEY"] ?? new string('0', 64),
             SeedAdminEmail = Vazio(c["SEED_ADMIN_EMAIL"]) ?? "admin@inovabens.com.br",
             SeedAdminSenha = Vazio(c["SEED_ADMIN_PASSWORD"]) ?? Dados.DadosIniciais.SenhaPadrao,

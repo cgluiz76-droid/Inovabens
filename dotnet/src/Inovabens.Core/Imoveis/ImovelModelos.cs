@@ -29,7 +29,9 @@ public sealed record ImovelMapaItem(Guid Id, string Codigo, string? Referencia, 
 
 /// <param name="Url">Endereço no próprio sistema (o arquivo vem do Drive pelo servidor, com verificação de acesso).</param>
 /// <param name="UrlPublica">Endereço da cópia no R2 (site), quando publicada e com domínio público configurado.</param>
-public sealed record MidiaDetalhe(ImovelMidia Midia, string? Url, string? UrlPublica = null)
+/// <param name="Miniatura">Foto reduzida (até 400 px, WebP) para listas, cartões e miniaturas.</param>
+/// <param name="Tela">Foto para exibir grande (até 1200 px, WebP); o original fica em <paramref name="Url"/>.</param>
+public sealed record MidiaDetalhe(ImovelMidia Midia, string? Url, string? UrlPublica = null, string? Miniatura = null, string? Tela = null)
 {
     public string? NomeSubpasta => Midia.Subpasta is { } s && SubpastasDrive.Valida(s) ? SubpastasDrive.Nome(s) : null;
     public SituacaoPublicacao Publicacao => PublicacaoFotosService.Situacao(Midia);
