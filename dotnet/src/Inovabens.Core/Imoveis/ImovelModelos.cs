@@ -24,7 +24,7 @@ public sealed record ImovelListaItem(
     string? CapaUrl = null);
 
 /// <summary>Imóvel no mapa: coordenadas (nulas = sem localização) e o resumo do balão.</summary>
-public sealed record ImovelMapaItem(Guid Id, string Codigo, string Titulo, string Tipo, SituacaoImovel Situacao, string? Bairro,
+public sealed record ImovelMapaItem(Guid Id, string Codigo, string? Referencia, string Titulo, string Tipo, SituacaoImovel Situacao, string? Bairro,
     string? Cidade, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, double? Latitude, double? Longitude, string? CapaUrl = null);
 
 /// <param name="Url">Endereço no próprio sistema (o arquivo vem do Drive pelo servidor, com verificação de acesso).</param>

@@ -75,7 +75,7 @@ public sealed class ImoveisService(
         u.Exigir(P.ImoveisVer);
         await using var db = await fabrica.CreateDbContextAsync();
         var itens = await Filtrados(db, u, f).OrderBy(i => i.Codigo)
-            .Select(i => new ImovelMapaItem(i.Id, i.Codigo, i.Titulo, i.Tipo, i.Situacao, i.Bairro, i.Cidade, i.Uf,
+            .Select(i => new ImovelMapaItem(i.Id, i.Codigo, i.Referencia, i.Titulo, i.Tipo, i.Situacao, i.Bairro, i.Cidade, i.Uf,
                 i.PrecoVenda, i.PrecoLocacao, i.Latitude, i.Longitude))
             .ToListAsync();
         var ids = itens.Select(i => i.Id).ToList();

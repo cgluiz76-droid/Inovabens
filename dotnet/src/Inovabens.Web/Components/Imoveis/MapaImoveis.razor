@@ -1,66 +1,73 @@
-@* Visão "Mapa" do menu Imóveis: lista à esquerda, mapa à direita (wwwroot/mapa-imoveis.js).
-   Recebe os imóveis já filtrados pela página; os sem coordenadas ficam só na lista, com aviso. *@
+@* Mapa de imóveis em tela cheia (menu Imóveis → Mapa), desenhado por wwwroot/mapa-imoveis.js (MapLibre GL).
+   Recebe os imóveis já filtrados pela página; os filtros ficam na barra do topo; ✕ ou Esc fecha.
+   Clicar num alfinete abre a página do imóvel no site. Sem filtro ativo, abre em Rio Preto (raio de 20 km). *@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="mapa-imoveis">
-    <div class="mapa-lista">
-        <div class="mapa-resumo">
+<div class="mapa-tela-cheia" role="dialog" aria-modal="true" aria-label="Mapa de imóveis">
+    <header class="mapa-topo">
+        <div class="mapa-marca">
+            <b>Mapa de imóveis</b>
             <span>
-                @Visiveis.Count() @(Visiveis.Count() == 1 ? "imóvel" : "imóveis")
-                @if (SemLocalizacao > 0)
+                @ComLocal @(ComLocal == 1 ? "imóvel" : "imóveis") no mapa
+                @if (naArea is { } n && n != ComLocal)
                 {
-                    <span class="aviso-local"> · @SemLocalizacao sem localização</span>
+                    <text> · @n nesta área</text>
                 }
             </span>
-            <label><input type="checkbox" @bind="soArea" /> Só a área do mapa</label>
         </div>
-        @if (Itens.Count == 0)
-        {
-            <p class="vazio">Nenhum imóvel encontrado.</p>
-        }
-        @foreach (var i in Visiveis)
-        {
-            var temLocal = i.Latitude is not null && i.Longitude is not null;
-            <div class="mapa-cartao @(temLocal ? "" : "sem-local")" @key="i.Id"
-                 @onmouseenter="() => Destacar(i.Id)" @onmouseleave="() => Destacar(null)" @onclick="() => Focar(i)">
-                <img class="miniatura-imovel" src="@(i.CapaUrl ?? "img/sem-foto.svg")" alt="" loading="lazy" />
-                <div>
-                    <a class="codigo" href="imoveis/@i.Id" @onclick:stopPropagation="true">@i.Codigo</a>
-                    <p class="titulo-cartao">@i.Titulo</p>
-                    <p class="forte">@Texto.Moeda(i.PrecoVenda ?? i.PrecoLocacao)</p>
-                    @if (temLocal)
-                    {
-                        <p class="pequeno mudo">@Local(i)</p>
-                    }
-                    else
-                    {
-                        <p class="pequeno aviso-local">⚠ Sem localização — <a href="imoveis/@i.Id" @onclick:stopPropagation="true">informar coordenadas</a></p>
-                    }
-                </div>
-            </div>
-        }
+        <div class="mapa-filtros">@Filtros</div>
+        <div class="mapa-bases" role="group" aria-label="Tipo de mapa">
+            <button class="@(baseAtual == "satelite" ? "ativa" : "")" @onclick='() => TrocarBase("satelite")'>Satélite</button>
+            <button class="@(baseAtual == "ruas" ? "ativa" : "")" @onclick='() => TrocarBase("ruas")'>Ruas</button>
+        </div>
+        <button class="mapa-fechar" title="Fechar o mapa (Esc)" aria-label="Fechar o mapa" @onclick="AoFechar">✕</button>
+    </header>
+
+    <div class="mapa-area" @ref="elemento"></div>
+
+    <div class="mapa-legenda">
+        <span><i class="cor-disponivel"></i>Disponível</span>
+        <span><i class="cor-preparo"></i>Em preparo</span>
+        <span><i class="cor-encerrado"></i>Vendido / locado</span>
     </div>
-    <div class="mapa-quadro-imoveis" @ref="elemento"></div>
+
+    @if (SemLocal.Count > 0)
+    {
+        <details class="mapa-sem-local">
+            <summary>⚠ @SemLocal.Count sem localização</summary>
+            <ul>
+                @foreach (var i in SemLocal)
+                {
+                    <li><a href="imoveis/@i.Id">@(i.Referencia ?? i.Codigo)</a> <span>@i.Titulo</span></li>
+                }
+            </ul>
+        </details>
+    }
+    @if (erro is not null)
+    {
+        <div class="mapa-erro"><MensagemErro Texto="@erro" /></div>
+    }
 </div>
-<MensagemErro Texto="@erro" />
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<ImovelMapaItem> Itens { get; set; } = [];
+    /// <summary>Algum filtro diferente do padrão: enquadra os resultados; senão, Rio Preto com raio de 20 km.</summary>
+    [Parameter] public bool FiltroAtivo { get; set; }
+    [Parameter] public RenderFragment? Filtros { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
 
     private ElementReference elemento;
     private IJSObjectReference? modulo;
     private DotNetObjectReference<MapaImoveis>? referencia;
     private IReadOnlyList<ImovelMapaItem>? desenhados;
-    private HashSet<Guid>? naArea;
-    private bool soArea;
+    private int? naArea;
+    private string baseAtual = "satelite";
     private string? erro;
 
-    private int SemLocalizacao => Visiveis.Count(i => i.Latitude is null || i.Longitude is null);
-
-    /// <summary>Com "Só a área do mapa", só os que aparecem no trecho visível do mapa.</summary>
-    private IEnumerable<ImovelMapaItem> Visiveis =>
-        soArea && naArea is not null ? Itens.Where(i => naArea.Contains(i.Id)) : Itens;
+    private int ComLocal => Itens.Count(TemLocal);
+    private List<ImovelMapaItem> SemLocal => [.. Itens.Where(i => !TemLocal(i))];
+    private static bool TemLocal(ImovelMapaItem i) => i.Latitude is not null && i.Longitude is not null;
 
     protected override async Task OnAfterRenderAsync(bool primeira)
     {
@@ -75,7 +82,7 @@
             if (modulo is not null && !ReferenceEquals(desenhados, Itens))
             {
                 desenhados = Itens;
-                await modulo.InvokeVoidAsync("desenhar", elemento, Itens.Where(i => i.Latitude is not null && i.Longitude is not null).Select(Pino), true);
+                await modulo.InvokeVoidAsync("desenhar", elemento, Itens.Where(TemLocal).Select(Alfinete), !FiltroAtivo);
             }
         }
         catch (JSDisconnectedException) { }
@@ -86,48 +93,46 @@
         }
     }
 
-    private static object Pino(ImovelMapaItem i)
+    private static object Alfinete(ImovelMapaItem i)
     {
         var preco = i.PrecoVenda ?? i.PrecoLocacao;
         return new
         {
             id = i.Id,
-            codigo = i.Codigo,
+            rotulo = i.Referencia ?? i.Codigo,
             titulo = i.Titulo,
             lat = i.Latitude,
             lng = i.Longitude,
             preco,
-            precoCheio = Texto.Moeda(preco),
+            precoCheio = preco is null ? "Sob consulta" : Texto.Moeda(preco),
             situacao = Texto.Rotulo(i.Situacao),
             cor = i.Situacao switch
             {
-                SituacaoImovel.DISPONIVEL => "",
+                SituacaoImovel.DISPONIVEL => "disponivel",
                 SituacaoImovel.VENDIDO or SituacaoImovel.LOCADO or SituacaoImovel.ARQUIVADO => "encerrado",
                 _ => "preparo",
             },
             local = Local(i),
             capa = i.CapaUrl,
-            maps = RegrasImovel.LinkGoogleMaps(i.Latitude, i.Longitude, null),
+            site = $"imoveis/{i.Id}/site",
         };
     }
 
     [JSInvokable]
-    public Task AreaMudou(Guid[] ids)
+    public Task AreaMudou(int quantos)
     {
-        naArea = [.. ids];
-        return soArea ? InvokeAsync(StateHasChanged) : Task.CompletedTask;
+        naArea = quantos;
+        return InvokeAsync(StateHasChanged);
     }
 
-    private async Task Destacar(Guid? id)
+    [JSInvokable]
+    public Task Fechar() => InvokeAsync(() => AoFechar.InvokeAsync());
+
+    private async Task TrocarBase(string nome)
     {
+        baseAtual = nome;
         if (modulo is null) return;
-        try { await modulo.InvokeVoidAsync("destacar", elemento, id); } catch (JSDisconnectedException) { }
-    }
-
-    private async Task Focar(ImovelMapaItem i)
-    {
-        if (modulo is null || i.Latitude is null) return;
-        try { await modulo.InvokeVoidAsync("focar", elemento, i.Id); } catch (JSDisconnectedException) { }
+        try { await modulo.InvokeVoidAsync("base", elemento, nome); } catch (JSDisconnectedException) { }
     }
 
     private static string Local(ImovelMapaItem i)
