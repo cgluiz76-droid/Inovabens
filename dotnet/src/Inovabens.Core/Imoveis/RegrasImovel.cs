@@ -104,11 +104,16 @@ public static class RegrasImovel
         return preenchidas.Count == 0 ? null : string.Join(", ", preenchidas) + ", Brasil";
     }
 
-    /// <summary>Link do Google Maps: pelas coordenadas, se houver; senão pelo endereço.</summary>
+    /// <summary>
+    /// Link do Google Maps com pino, sempre na visualização de satélite (t=k): pelas coordenadas em graus decimais
+    /// com ponto ("-20.7918,-49.302707", o mesmo formato dos links do Google Maps), aproximado (z=18); sem coordenadas,
+    /// pelo endereço.
+    /// </summary>
     public static string? LinkGoogleMaps(double? lat, double? lng, string? endereco)
     {
-        var consulta = lat is not null && lng is not null ? FormatarCoordenadas(lat, lng).Replace(" ", "") : Texto.Limpo(endereco);
-        return consulta is null ? null : "https://www.google.com/maps/search/?api=1&query=" + Uri.EscapeDataString(consulta);
+        if (lat is not null && lng is not null)
+            return "https://www.google.com/maps?q=" + FormatarCoordenadas(lat, lng).Replace(" ", "") + "&t=k&z=18";
+        return Texto.Limpo(endereco) is { } e ? "https://www.google.com/maps?q=" + Uri.EscapeDataString(e) + "&t=k" : null;
     }
 
     /// <summary>

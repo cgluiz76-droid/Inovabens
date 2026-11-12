@@ -237,11 +237,12 @@ public class LocalizacaoImovelTests
     [Fact]
     public void Link_do_mapa_usa_coordenadas_ou_endereco()
     {
-        Assert.Equal("https://www.google.com/maps/search/?api=1&query=-23.5505%2C-46.6333",
+        Assert.Equal("https://www.google.com/maps?q=-23.5505,-46.6333&t=k&z=18",
             RegrasImovel.LinkGoogleMaps(-23.5505, -46.6333, "qualquer"));
+        Assert.Equal("https://www.google.com/maps?q=-20.7918,-49.302707&t=k&z=18", RegrasImovel.LinkGoogleMaps(-20.7918, -49.302707, null));
         var endereco = RegrasImovel.EnderecoParaMapa("Av. Ana Costa", "100", "Gonzaga", "Santos", "SP", null);
         Assert.Equal("Av. Ana Costa, 100, Gonzaga, Santos - SP, Brasil", endereco);
-        Assert.StartsWith("https://www.google.com/maps/search/?api=1&query=Av.%20Ana%20Costa", RegrasImovel.LinkGoogleMaps(null, null, endereco));
+        Assert.Equal("https://www.google.com/maps?q=Av.%20Ana%20Costa%2C%20100%2C%20Gonzaga%2C%20Santos%20-%20SP%2C%20Brasil&t=k", RegrasImovel.LinkGoogleMaps(null, null, endereco));
         Assert.Null(RegrasImovel.LinkGoogleMaps(null, null, RegrasImovel.EnderecoParaMapa(null, null, null, null, null, null)));
     }
 
