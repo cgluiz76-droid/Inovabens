@@ -7,7 +7,7 @@
 
 <PageTitle>@(detalhe?.Dados.Codigo ?? "Imóvel") · Inovabens</PageTitle>
 
-<a href="imoveis" class="voltar">← Imóveis</a>
+<nav class="trilha" aria-label="Trilha"><a href="imoveis">Imóveis</a><span class="sep" aria-hidden="true">›</span><span aria-current="page">@(detalhe?.Dados.Codigo ?? "Imóvel")</span></nav>
 
 @if (detalhe is null)
 {

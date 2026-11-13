@@ -186,6 +186,63 @@ p { line-height: 1.55; }
 .lateral .nav-item:focus-visible { outline-color: var(--ouro-claro); outline-offset: -2px; }
 .lateral-rodape { position: relative; z-index: 1; padding: var(--e-4) var(--e-5) var(--e-5); font-size: var(--t-xs); color: #8d9dd8; letter-spacing: .06em; }
 .nav-nota { padding: var(--e-4); font-size: var(--t-xs); color: #9fadd9; }
+.nav-item.nav-admin { margin-top: var(--e-4); }
+/* botão de recolher, no pé do menu */
+.recolher-menu { position: relative; z-index: 1; display: flex; align-items: center; gap: var(--e-3); margin: 0 var(--e-3); padding: var(--e-2) var(--e-3);
+    border: 0; border-radius: var(--raio-p); background: none; color: #a9b8ec; font: inherit; font-size: var(--t-xs); cursor: pointer; transition: background-color var(--dur), color var(--dur); }
+.recolher-menu:hover { background: rgb(255 255 255 / .07); color: #fff; }
+.recolher-menu svg { width: 1.125rem; height: 1.125rem; flex-shrink: 0; transition: transform var(--dur-l) var(--curva); }
+.menu-veu { display: none; position: fixed; inset: 0; z-index: 950; background: var(--veu); animation: surgir var(--dur) ease-out; }
+.marca-topo { display: none; align-items: center; gap: var(--e-2); margin-right: auto; color: var(--titulo); text-decoration: none; }
+.marca-topo:hover { text-decoration: none; }
+.marca-topo img { width: 2rem; height: 2rem; border-radius: .45rem; }
+.marca-topo .marca-nome { font-size: var(--t-base); color: var(--titulo); }
+/* barra inferior (só no celular) */
+.barra-inferior { display: none; position: fixed; z-index: 940; left: 0; right: 0; bottom: 0; justify-content: space-around;
+    padding: var(--e-1) var(--e-1) max(var(--e-1), env(safe-area-inset-bottom)); background: var(--superficie); border-top: 1px solid var(--borda);
+    box-shadow: 0 -4px 16px rgb(17 24 54 / .06); }
+.atalho { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 3.25rem; max-width: 6rem;
+    border: 0; background: none; border-radius: var(--raio-p); color: var(--mudo); font: inherit; font-size: .6875rem; font-weight: 500; text-decoration: none; cursor: pointer;
+    transition: color var(--dur), background-color var(--dur); -webkit-tap-highlight-color: transparent; }
+.atalho svg { width: 1.375rem; height: 1.375rem; }
+.atalho:hover { text-decoration: none; color: var(--texto); }
+.atalho.active, .atalho[aria-expanded="true"] { color: var(--acento); }
+.atalho.active svg { stroke-width: 2.2; }
+/* trilha (breadcrumb) das páginas internas */
+.trilha { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2); margin-bottom: var(--e-2); font-size: var(--t-sm); color: var(--mudo); }
+.trilha a { color: var(--mudo); }
+.trilha a:hover { color: var(--acento); }
+.trilha [aria-current] { color: var(--texto); font-weight: 500; }
+.trilha .sep { color: var(--borda-forte); }
+
+/* menu recolhido (só ícones): escolha do usuário ou, sem escolha, padrão em telas de 861 a 1200px.
+   Sem animar a largura: animar width refaria o layout do conteúdo a cada quadro. */
+@media (min-width: 861px) {
+    :root[data-menu="recolhido"] .lateral { width: 4.5rem; }
+    :root[data-menu="recolhido"] .lateral .nav-texto, :root[data-menu="recolhido"] .lateral .marca-texto,
+    :root[data-menu="recolhido"] .lateral .nav-titulo, :root[data-menu="recolhido"] .lateral .lateral-rodape,
+    :root[data-menu="recolhido"] .lateral::after { display: none; }
+    :root[data-menu="recolhido"] .lateral .marca { justify-content: center; padding-inline: 0; }
+    :root[data-menu="recolhido"] .lateral nav { padding-inline: var(--e-2); gap: var(--e-1); }
+    :root[data-menu="recolhido"] .lateral .nav-item { justify-content: center; padding-inline: 0; }
+    :root[data-menu="recolhido"] .lateral .nav-item.active::before { left: calc(-1 * var(--e-2)); }
+    :root[data-menu="recolhido"] .lateral .nav-admin { margin-top: var(--e-4); }
+    :root[data-menu="recolhido"] .recolher-menu { justify-content: center; margin-inline: var(--e-2); padding-inline: 0; }
+    :root[data-menu="recolhido"] .recolher-menu svg { transform: scaleX(-1); }
+}
+@media (min-width: 861px) and (max-width: 1200px) {
+    :root:not([data-menu="aberto"]) .lateral { width: 4.5rem; }
+    :root:not([data-menu="aberto"]) .lateral .nav-texto, :root:not([data-menu="aberto"]) .lateral .marca-texto,
+    :root:not([data-menu="aberto"]) .lateral .nav-titulo, :root:not([data-menu="aberto"]) .lateral .lateral-rodape,
+    :root:not([data-menu="aberto"]) .lateral::after { display: none; }
+    :root:not([data-menu="aberto"]) .lateral .marca { justify-content: center; padding-inline: 0; }
+    :root:not([data-menu="aberto"]) .lateral nav { padding-inline: var(--e-2); gap: var(--e-1); }
+    :root:not([data-menu="aberto"]) .lateral .nav-item { justify-content: center; padding-inline: 0; }
+    :root:not([data-menu="aberto"]) .lateral .nav-item.active::before { left: calc(-1 * var(--e-2)); }
+    :root:not([data-menu="aberto"]) .recolher-menu { justify-content: center; margin-inline: var(--e-2); padding-inline: 0; }
+    :root:not([data-menu="aberto"]) .recolher-menu svg { transform: scaleX(-1); }
+}
+
 .principal { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 /* fundo sólido (sem backdrop-filter): rolagem mais leve no celular */
 .topo {
@@ -892,15 +949,20 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
     .kanban.com-painel { padding-right: 0; }
 }
 @media (max-width: 860px) {
-    .app { flex-direction: column; }
-    .lateral { width: 100%; height: auto; position: static; }
-    .lateral::after, .lateral-rodape, .nav-titulo { display: none; }
-    .marca { padding: var(--e-3) var(--e-4) var(--e-2); }
-    .lateral nav { flex-direction: row; overflow-x: auto; padding: 0 var(--e-2) var(--e-2); scrollbar-width: none; }
-    .nav-item { white-space: nowrap; }
-    .nav-item.active::before { left: var(--e-2); right: var(--e-2); top: auto; bottom: 0; width: auto; height: 3px; border-radius: 3px 3px 0 0; }
-    .topo { padding: var(--e-2) var(--e-4); }
-    .usuario-dados { display: none; }
+    /* menu vira gaveta (aberta pelo "Mais" da barra inferior) */
+    .lateral { position: fixed; z-index: 960; top: 0; bottom: 0; left: 0; width: min(18rem, 84vw); height: auto;
+        transform: translateX(-102%); transition: transform var(--dur-l) var(--curva), visibility 0s linear var(--dur-l); visibility: hidden;
+        box-shadow: 0 0 40px rgb(0 0 0 / .35); }
+    :root[data-menu-aberto] .lateral { transform: none; visibility: visible; transition: transform var(--dur-l) var(--curva), visibility 0s; }
+    :root[data-menu-aberto] .menu-veu { display: block; }
+    :root[data-menu-aberto] body { overflow: hidden; }
+    .recolher-menu { display: none; }
+    .topo { padding: var(--e-2) var(--e-4); padding-top: max(var(--e-2), env(safe-area-inset-top)); }
+    .marca-topo { display: inline-flex; }
+    .usuario-dados, .separador-topo, .rotulo-sair { display: none; }
+    .barra-inferior { display: flex; }
+    .conteudo { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+    .msg-sucesso { bottom: calc(5rem + env(safe-area-inset-bottom)) !important; }
     .grade-2 { grid-template-columns: 1fr; }
     .conteudo { padding: var(--e-4); }
     .card { padding: var(--e-5); margin-bottom: var(--e-5); }

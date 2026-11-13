@@ -9,7 +9,7 @@
 
 @if (permuta is { } pm)
 {
-    <a href="crm?lead=@pm.LeadId" class="voltar">← Voltar ao lead</a>
+    <nav class="trilha" aria-label="Trilha"><a href="crm">CRM</a><span class="sep" aria-hidden="true">›</span><a href="crm?lead=@pm.LeadId">@pm.LeadNome</a><span class="sep" aria-hidden="true">›</span><span aria-current="page">Permuta</span></nav>
     <div class="titulo"><h1>Imóvel recebido em permuta</h1></div>
     <p class="aviso-whatsapp">
         Permuta da proposta nº @pm.PropostaNumero (@pm.ImovelCodigo) do lead <b>@pm.LeadNome</b>, avaliada em @Texto.Moeda(pm.Valor).
@@ -18,7 +18,7 @@
 }
 else
 {
-    <a href="imoveis" class="voltar">← Imóveis</a>
+    <nav class="trilha" aria-label="Trilha"><a href="imoveis">Imóveis</a><span class="sep" aria-hidden="true">›</span><span aria-current="page">Novo imóvel</span></nav>
     <div class="titulo"><h1>Novo imóvel</h1></div>
 }
 <MensagemErro Texto="@Erro" />

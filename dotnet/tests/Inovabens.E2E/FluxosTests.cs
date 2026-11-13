@@ -544,7 +544,7 @@ public class FluxosTests(Aplicacao app)
         // a lista só mostra o próprio imóvel (o filtro começa em "Disponível"; o imóvel novo está em captação)
         await c.GotoAsync("/imoveis");
         await c.Interativa();
-        var situacao = c.Locator("select.filtro");
+        var situacao = c.GetByLabel("Situação", new() { Exact = true });
         await Expect(situacao).ToHaveValueAsync("DISPONIVEL");
         await situacao.SelectOptionAsync("");
         await Expect(c.GetByText($"Imóvel do corretor {s}")).ToBeVisibleAsync();

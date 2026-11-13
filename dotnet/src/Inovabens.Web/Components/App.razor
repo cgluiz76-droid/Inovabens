@@ -3,13 +3,13 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <base href="/" />
     <link rel="icon" type="image/svg+xml" href="img/marca.svg" />
     <meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0f1f" media="(prefers-color-scheme: dark)" />
     @* tema escolhido pelo usuário aplicado antes da primeira pintura (sem piscar claro → escuro) *@
-    <script>try { var t = localStorage.getItem("tema"); if (t === "claro" || t === "escuro") document.documentElement.setAttribute("data-tema", t); } catch (e) { }</script>
+    <script>try { var h = document.documentElement, t = localStorage.getItem("tema"), m = localStorage.getItem("menu"); if (t === "claro" || t === "escuro") h.setAttribute("data-tema", t); if (m === "recolhido" || m === "aberto") h.setAttribute("data-menu", m); } catch (e) { }</script>
     @* só a Inter fica no caminho crítico; a Montserrat aparece apenas no nome da marca *@
     <link rel="preload" href="fontes/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <ResourcePreloader />

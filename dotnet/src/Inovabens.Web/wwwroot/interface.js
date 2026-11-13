@@ -14,6 +14,7 @@
 
     document.addEventListener("click", function (e) {
         var botao = e.target.closest && e.target.closest("[data-alternar-tema]");
+        if (botao) e.preventDefault();
         if (!botao) return;
         var novo = temaAtual() === "escuro" ? "claro" : "escuro";
         raiz.setAttribute("data-tema", novo);
@@ -21,7 +22,40 @@
         botao.setAttribute("aria-pressed", novo === "escuro" ? "true" : "false");
     });
 
-    var FOCAVEIS = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    // Menu lateral. Desktop: [data-recolher-menu] alterna só ícones (html[data-menu], guardado em localStorage "menu").
+    // Celular: [data-abrir-menu] abre a gaveta (html[data-menu-aberto]); fecha no véu, no Esc ou ao escolher um item.
+    var celular = window.matchMedia("(max-width: 860px)");
+    function menuRecolhido() {
+        var lateral = document.getElementById("menu-lateral");
+        return !!lateral && lateral.getBoundingClientRect().width < 120;
+    }
+    function gaveta(abrir, voltarFoco) {
+        var botao = document.querySelector("[data-abrir-menu]");
+        if (abrir) raiz.setAttribute("data-menu-aberto", ""); else raiz.removeAttribute("data-menu-aberto");
+        if (botao) botao.setAttribute("aria-expanded", abrir ? "true" : "false");
+        if (abrir) {
+            var primeiro = document.querySelector("#menu-lateral .nav-item");
+            if (primeiro) primeiro.focus({ preventScroll: true });
+        } else if (voltarFoco && botao) botao.focus();
+    }
+    document.addEventListener("click", function (e) {
+        if (!e.target.closest) return;
+        if (e.target.closest("[data-recolher-menu]")) {
+            var novo = menuRecolhido() ? "aberto" : "recolhido";
+            raiz.setAttribute("data-menu", novo);
+            try { localStorage.setItem("menu", novo); } catch (_) { }
+            return;
+        }
+        if (e.target.closest("[data-abrir-menu]")) { gaveta(!raiz.hasAttribute("data-menu-aberto"), false); return; }
+        if (e.target.closest("[data-fechar-menu]")) { gaveta(false, true); return; }
+        if (raiz.hasAttribute("data-menu-aberto") && e.target.closest("#menu-lateral a")) gaveta(false, false);
+    });
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && raiz.hasAttribute("data-menu-aberto")) gaveta(false, true);
+    });
+    celular.addEventListener("change", function () { if (!celular.matches) gaveta(false, false); });
+
+    var FOCAVEIS ='a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
     var pilha = []; // { modal, origem }
 
     function modais() { return Array.prototype.slice.call(document.querySelectorAll('[role="dialog"][aria-modal="true"]')); }

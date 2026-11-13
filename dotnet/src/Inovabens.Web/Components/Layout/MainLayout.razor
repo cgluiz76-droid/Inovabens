@@ -5,8 +5,10 @@
 
 @* data-interativo: o circuito do Blazor já assumiu a página (usado pelos testes de ponta a ponta) *@
 <div class="app" data-interativo="@(RendererInfo.IsInteractive ? "sim" : "nao")">
-    <aside class="lateral">
-        <a class="marca" href="">
+    @* Menu lateral: no desktop pode ser recolhido (só ícones; data-menu no <html>); no celular vira gaveta aberta
+       pelo "Mais" da barra inferior (data-menu-aberto). Comportamento em wwwroot/interface.js. *@
+    <aside class="lateral" id="menu-lateral" aria-label="Menu principal">
+        <a class="marca" href="" title="Inovabens">
             <img src="img/marca.svg" alt="" />
             <span class="marca-texto">
                 <span class="marca-nome">INOVA<b>BENS</b></span>
@@ -14,42 +16,51 @@
             </span>
         </a>
         <nav>
-            <span class="nav-titulo">Menu</span>
-            <NavLink class="nav-item" href="" Match="NavLinkMatch.All"><Icone Nome="painel" />Painel</NavLink>
+            <NavLink class="nav-item" href="" Match="NavLinkMatch.All" title="Painel"><Icone Nome="painel" /><span class="nav-texto">Painel</span></NavLink>
+            @if (Operacao)
+            {
+                <span class="nav-titulo">Operação</span>
+            }
             @if (usuario?.Pode(Permissoes.ImoveisVer) == true)
             {
-                <NavLink class="nav-item" href="imoveis"><Icone Nome="imoveis" />Imóveis</NavLink>
+                <NavLink class="nav-item" href="imoveis" title="Imóveis"><Icone Nome="imoveis" /><span class="nav-texto">Imóveis</span></NavLink>
             }
             @if (usuario?.Pode(Permissoes.PessoasVer) == true)
             {
-                <NavLink class="nav-item" href="pessoas"><Icone Nome="pessoas" />Pessoas</NavLink>
+                <NavLink class="nav-item" href="pessoas" title="Pessoas"><Icone Nome="pessoas" /><span class="nav-texto">Pessoas</span></NavLink>
             }
             @if (usuario?.Pode(Permissoes.CrmVer) == true)
             {
-                <NavLink class="nav-item" href="crm"><Icone Nome="crm" />CRM</NavLink>
+                <NavLink class="nav-item" href="crm" title="CRM"><Icone Nome="crm" /><span class="nav-texto">CRM</span></NavLink>
             }
             @if (usuario?.Pode(Permissoes.ProcessosVer) == true)
             {
-                <NavLink class="nav-item" href="processos"><Icone Nome="processos" />Processos</NavLink>
+                <NavLink class="nav-item" href="processos" title="Processos"><Icone Nome="processos" /><span class="nav-texto">Processos</span></NavLink>
             }
             @if (usuario?.Pode(Permissoes.AgendaVer) == true)
             {
-                <NavLink class="nav-item" href="agenda"><Icone Nome="agenda" />Agenda</NavLink>
-            }
-            @if (usuario?.Pode(Permissoes.AgendaVer) == true)
-            {
-                <NavLink class="nav-item" href="atividades"><Icone Nome="atividades" />Atividades</NavLink>
+                <span class="nav-titulo">Rotina</span>
+                <NavLink class="nav-item" href="agenda" title="Agenda"><Icone Nome="agenda" /><span class="nav-texto">Agenda</span></NavLink>
+                <NavLink class="nav-item" href="atividades" title="Atividades"><Icone Nome="atividades" /><span class="nav-texto">Atividades</span></NavLink>
             }
             @if (usuario is not null && Pages.AdminPagina.PodeAlgo(usuario))
             {
-                <NavLink class="nav-item" href="admin"><Icone Nome="admin" />Administração</NavLink>
+                <NavLink class="nav-item nav-admin" href="admin" title="Administração"><Icone Nome="admin" /><span class="nav-texto">Administração</span></NavLink>
             }
         </nav>
+        <button type="button" class="recolher-menu" data-recolher-menu aria-controls="menu-lateral" title="Recolher/expandir o menu">
+            <Icone Nome="recolher" /><span class="nav-texto">Recolher menu</span>
+        </button>
         <div class="lateral-rodape">CRECI 50457-J</div>
     </aside>
+    <div class="menu-veu" data-fechar-menu aria-hidden="true"></div>
 
     <div class="principal">
         <header class="topo">
+            <a class="marca-topo" href="" aria-label="Inovabens — Painel">
+                <img src="img/marca.svg" alt="" />
+                <span class="marca-nome">INOVA<b>BENS</b></span>
+            </a>
             @* troca de tema feita por interface.js (funciona sem o circuito do Blazor) *@
             <button type="button" class="sino alternar-tema" data-alternar-tema aria-label="Alternar tema claro/escuro" title="Alternar tema">
                 <span class="tema-escuro"><Icone Nome="lua" /></span>
@@ -69,7 +80,7 @@
             </a>
             <form method="post" action="sair">
                 <AntiforgeryToken />
-                <button type="submit" class="btn-ghost mini"><Icone Nome="sair" />Sair</button>
+                <button type="submit" class="btn-ghost mini" aria-label="Sair"><Icone Nome="sair" /><span class="rotulo-sair">Sair</span></button>
             </form>
         </header>
         <main class="conteudo">
@@ -85,6 +96,24 @@
             }
         </main>
     </div>
+
+    @* celular: atalhos no alcance do polegar; "Mais" abre o menu completo *@
+    <nav class="barra-inferior" aria-label="Atalhos">
+        <NavLink class="atalho" href="" Match="NavLinkMatch.All"><Icone Nome="painel" /><span>Painel</span></NavLink>
+        @if (usuario?.Pode(Permissoes.ImoveisVer) == true)
+        {
+            <NavLink class="atalho" href="imoveis"><Icone Nome="imoveis" /><span>Imóveis</span></NavLink>
+        }
+        @if (usuario?.Pode(Permissoes.CrmVer) == true)
+        {
+            <NavLink class="atalho" href="crm"><Icone Nome="crm" /><span>CRM</span></NavLink>
+        }
+        @if (usuario?.Pode(Permissoes.AgendaVer) == true)
+        {
+            <NavLink class="atalho" href="agenda"><Icone Nome="agenda" /><span>Agenda</span></NavLink>
+        }
+        <button type="button" class="atalho" data-abrir-menu aria-controls="menu-lateral" aria-expanded="false"><Icone Nome="menu" /><span>Mais</span></button>
+    </nav>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
@@ -123,6 +152,10 @@
     }
 
     /// <summary>"Ana Maria Souza" -> "AS" (primeira e última palavra).</summary>
+    /// <summary>Mostra o título "Operação" só se houver algum item do grupo.</summary>
+    private bool Operacao => usuario is not null && (usuario.Pode(Permissoes.ImoveisVer) || usuario.Pode(Permissoes.PessoasVer)
+        || usuario.Pode(Permissoes.CrmVer) || usuario.Pode(Permissoes.ProcessosVer));
+
     private static string Iniciais(string? nome)
     {
         var partes = (nome ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
