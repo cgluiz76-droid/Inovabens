@@ -82,6 +82,11 @@ public sealed class Aplicacao : IAsyncLifetime
                 // a suíte faz vários logins seguidos do mesmo IP; o teste do limite usa outro IP (X-Forwarded-For)
                 ["LOGIN_LIMITE_POR_MINUTO"] = LimiteLogin.ToString(),
                 ["Logging__LogLevel__Default"] = "Warning",
+                // sem Google Drive: o appsettings.Development.json aponta para o drive real da empresa, e cada imóvel
+                // criado pelos testes abria uma pasta vazia lá (251 pastas "Casa E2E <id>" etc. até 2026-11-11)
+                ["GOOGLE_DRIVE_ID"] = "",
+                ["GOOGLE_DRIVE_CREDENCIAIS"] = "",
+                ["GOOGLE_DRIVE_CREDENCIAIS_JSON"] = "",
             },
         };
         // perfil de usuário novo a cada subida, como num container: nada do disco local sobrevive ao reinício
