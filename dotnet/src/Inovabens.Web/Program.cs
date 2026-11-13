@@ -33,6 +33,7 @@ builder.Services.AddHostedService<SincronizacaoGoogleJob>();
 builder.Services.AddHostedService<RenovacaoCanaisGoogleJob>();
 builder.Services.AddHostedService<MelhoriaFotosJob>();
 builder.Services.AddHostedService<PublicacaoFotosJob>();
+builder.Services.AddHostedService<RenomearPastasDriveJob>();
 builder.Services.AddHostedService<PostsRedesJob>();
 builder.Services.AddHostedService<LimiteGratuitoR2Job>();
 builder.Services.AddSingleton<RenovacaoSessao>();
@@ -132,6 +133,46 @@ if (args.Contains("importar-imobibrasil"))
         Arg("site") ?? opcoes.Integracoes.ImobibrasilSite, comFotos: !args.Contains("--sem-fotos"), progresso: Console.WriteLine);
     Console.WriteLine($"Concluído: {itens.Count(i => i.Novo)} novos, {itens.Count(i => !i.Novo && i.Codigo != "—")} atualizados, " +
                       $"{itens.Count(i => i.Codigo == "—")} com falha, {itens.Sum(i => i.FotosNovas)} fotos enviadas.");
+    return;
+}
+
+// `dotnet Inovabens.Web.dll importar-imobibrasil-painel --arquivo=dados.json [--usuario=email] [--sem-fotos]`
+// importa o painel do Imobibrasil (imóveis ativos e inativos, fotos, pessoas, leads, negócios, agenda) do JSON extraído
+// do backup. Só lê o arquivo (nada muda no Imobibrasil); rodar de novo completa sem duplicar.
+if (args.Contains("importar-imobibrasil-painel"))
+{
+    string? Arg(string nome) => args.FirstOrDefault(a => a.StartsWith($"--{nome}=", StringComparison.Ordinal))?[(nome.Length + 3)..];
+    if (Arg("arquivo") is not { } arquivo || !File.Exists(arquivo))
+    {
+        Console.Error.WriteLine("Informe --arquivo=caminho do JSON extraído do painel do Imobibrasil.");
+        Environment.ExitCode = 1;
+        return;
+    }
+    using var escopo = app.Services.CreateScope();
+    var sp = escopo.ServiceProvider;
+    var fabricaDb = sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<InovabensDb>>();
+    Guid usuarioId;
+    await using (var db = await fabricaDb.CreateDbContextAsync())
+    {
+        var email = Arg("usuario");
+        usuarioId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            db.Usuarios.Where(x => x.Ativo && x.ExcluidoEm == null && (email == null ? x.Perfil!.Nome == "Administrador" : x.Email == email))
+                .OrderBy(x => x.CriadoEm).Select(x => x.Id));
+    }
+    var usuario = usuarioId == Guid.Empty ? null : await sp.GetRequiredService<AuthService>().RecarregarAsync(usuarioId);
+    if (usuario is null)
+    {
+        Console.Error.WriteLine("Usuário não encontrado (informe --usuario=email de um usuário ativo).");
+        Environment.ExitCode = 1;
+        return;
+    }
+    var dados = await Inovabens.Core.Imoveis.DadosPainelImobibrasil.LerAsync(arquivo);
+    var rel = await sp.GetRequiredService<Inovabens.Core.Imoveis.ImportacaoPainelImobibrasilService>().ImportarAsync(usuario, dados,
+        comFotos: !args.Contains("--sem-fotos"), progresso: Console.WriteLine);
+    Console.WriteLine();
+    foreach (var (chave, n) in rel.Contagens) Console.WriteLine($"{chave}: {n}");
+    if (rel.Avisos.Count > 0) Console.WriteLine();
+    foreach (var a in rel.Avisos) Console.WriteLine("aviso: " + a);
     return;
 }
 

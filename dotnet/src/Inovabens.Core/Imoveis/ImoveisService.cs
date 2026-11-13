@@ -60,6 +60,7 @@ public sealed class ImoveisService(
         {
             var t = $"%{Texto.LikeLiteral(termo)}%";
             q = q.Where(i => EF.Functions.ILike(i.Titulo, t, @"\") || EF.Functions.ILike(i.Codigo, t, @"\")
+                || EF.Functions.ILike(i.CodigoAntigo!, t, @"\")
                 || EF.Functions.ILike(i.Bairro!, t, @"\") || EF.Functions.ILike(i.Cidade!, t, @"\")
                 || EF.Functions.ILike(i.Logradouro!, t, @"\") || EF.Functions.ILike(i.Matricula!, t, @"\"));
         }
@@ -165,24 +166,25 @@ public sealed class ImoveisService(
     public const int LarguraMiniatura = 400, LarguraTela = 1200;
     public static bool LarguraValida(int largura) => largura is LarguraMiniatura or LarguraTela;
 
-    public async Task<Guid> CriarAsync(UsuarioAtual u, ImovelForm form)
+    /// <param name="codigoExterno">Código que o imóvel já tem fora do sistema (anúncio do Imobibrasil, ex.: CA0060):
+    /// usado se estiver no padrão e livre; senão o próximo do prefixo do tipo.</param>
+    public async Task<Guid> CriarAsync(UsuarioAtual u, ImovelForm form, string? codigoExterno = null)
     {
         u.Exigir(P.ImoveisCriar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
 
-        // Código sequencial IMV-000123; o lock consultivo evita duplicidade em criações simultâneas.
-        await db.Database.ExecuteSqlRawAsync("select pg_advisory_xact_lock(hashtext('imoveis_codigo'))");
-        var n = await db.Database.SqlQueryRaw<int>(
-            "select coalesce(max(substring(codigo from 5)::int), 0) + 1 as \"Value\" from imoveis where codigo ~ '^IMV-[0-9]+$'")
-            .SingleAsync();
-
         await ExigirTipoValido(db, form.Tipo, atual: null);
-        var im = new Imovel { Codigo = RegrasImovel.FormatarCodigo(n) };
+        var externo = codigoExterno?.Trim().ToUpperInvariant();
+        var im = new Imovel
+        {
+            Codigo = await ProximoCodigoAsync(db, form.Tipo) is var proximo && await CodigoLivreAsync(db, externo) ? externo! : proximo,
+        };
         form.AplicarEm(im);
+        im.Referencia = im.Codigo;
+        im.NomeDrive = RegrasImovel.NomeDriveComCodigo(im.Codigo, im.NomeDrive);
         await ExigirNomeDriveLivre(db, im.NomeDrive, exceto: null);
-        await ExigirReferenciaLivre(db, im.Referencia, exceto: null);
         im.CorretorResponsavelId = Acesso.ResponsavelAoCriar(u, form.CorretorResponsavelId);
         db.Imoveis.Add(im);
         audit.Registrar(db, u.Id, "imoveis", im.Id, "CRIAR", depois: im);
@@ -221,14 +223,28 @@ public sealed class ImoveisService(
             throw new RegraNegocioException(nameof(ImovelForm.NomeDrive), "Já existe outro imóvel com este nome de pasta no Drive.");
     }
 
-    /// <summary>A referência identifica o anúncio nos portais: não pode repetir.</summary>
-    private static async Task ExigirReferenciaLivre(InovabensDb db, string? referencia, Guid? exceto)
+    /// <summary>
+    /// Próximo código do prefixo do tipo (CA0109): continua do maior entre o último usado no Imobibrasil
+    /// (imoveis_codigo_sequencia) e o maior já gravado no sistema. Precisa estar numa transação: o lock consultivo
+    /// evita o mesmo código em cadastros simultâneos.
+    /// </summary>
+    public static async Task<string> ProximoCodigoAsync(InovabensDb db, string tipo, CancellationToken ct = default)
     {
-        if (referencia is null) return;
-        var minuscula = referencia.ToLower();
-        if (await db.Imoveis.AnyAsync(i => i.ExcluidoEm == null && i.Id != exceto && i.Referencia != null && i.Referencia.ToLower() == minuscula))
-            throw new RegraNegocioException(nameof(ImovelForm.Referencia), "Já existe outro imóvel com esta referência.");
+        await db.Database.ExecuteSqlRawAsync("select pg_advisory_xact_lock(hashtext('imoveis_codigo'))", ct);
+        var nome = tipo.Trim();
+        var prefixo = await db.TiposImovel.Where(t => t.Nome == nome).Select(t => t.PrefixoCodigo).SingleOrDefaultAsync(ct) ?? "OU";
+        var n = await db.Database.SqlQuery<int>($"""
+            select greatest(
+                coalesce((select ultimo from imoveis_codigo_sequencia where prefixo = {prefixo}), 0),
+                coalesce((select max(substring(codigo from 3)::int) from imoveis where codigo ~ ('^' || {prefixo} || '[0-9][0-9][0-9][0-9]$')), 0)
+            ) + 1 as "Value"
+            """).SingleAsync(ct);
+        return RegrasImovel.FormatarCodigo(prefixo, n);
     }
+
+    /// <summary>Código informado de fora (anúncio do Imobibrasil): vale se estiver no padrão e livre.</summary>
+    public static async Task<bool> CodigoLivreAsync(InovabensDb db, string? codigo, CancellationToken ct = default) =>
+        RegrasImovel.CodigoValido(codigo) && !await db.Imoveis.AnyAsync(i => i.Codigo == codigo, ct);
 
     public async Task AtualizarAsync(UsuarioAtual u, Guid id, ImovelForm form)
     {
@@ -239,8 +255,10 @@ public sealed class ImoveisService(
         await ExigirTipoValido(db, form.Tipo, atual: im.Tipo);
         var antes = im.Copia();
         form.AplicarEm(im);
+        // o código não muda na edição (nem trocando o tipo): é o mesmo do site, dos portais, do Drive e dos documentos
+        im.Referencia = im.Codigo;
+        im.NomeDrive = RegrasImovel.NomeDriveComCodigo(im.Codigo, im.NomeDrive);
         await ExigirNomeDriveLivre(db, im.NomeDrive, exceto: id);
-        await ExigirReferenciaLivre(db, im.Referencia, exceto: id);
         if (Acesso.NovoResponsavel(u, form.CorretorResponsavelId) is { } r) im.CorretorResponsavelId = r;
         // nome mudou: renomeia a pasta no Drive antes de gravar, para os dois não ficarem diferentes
         if (im.NomeDrive is { } nome && nome != antes.NomeDrive && im.DrivePastaId is { } pasta && armazenamento.Habilitado)

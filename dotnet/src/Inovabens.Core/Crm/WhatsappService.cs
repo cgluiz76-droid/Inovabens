@@ -294,7 +294,8 @@ public sealed partial class WhatsappService(
         termos.AddRange(Palavras().Matches(texto).Select(x => x.Value).Where(p => p.Any(char.IsDigit)).Take(20));
         foreach (var t in termos.Select(t => t.Trim('.', ',', ';', ':', '!', '?', '(', ')').ToUpperInvariant()).Where(t => t.Length >= 2).Distinct())
         {
-            var im = await ativos.Where(i => i.Codigo.ToUpper() == t || (i.Referencia != null && i.Referencia.ToUpper() == t))
+            var im = await ativos.Where(i => i.Codigo.ToUpper() == t || (i.Referencia != null && i.Referencia.ToUpper() == t)
+                || (i.CodigoAntigo != null && i.CodigoAntigo.ToUpper() == t))
                 .FirstOrDefaultAsync(ct);
             if (im is not null) return im;
         }

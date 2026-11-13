@@ -74,6 +74,10 @@ public class Imovel
     public string? NomeDrive { get; set; }
     /// <summary>Id da pasta principal no Drive; null enquanto ainda não foi criada.</summary>
     public string? DrivePastaId { get; set; }
+    /// <summary>A pasta do Drive ainda tem o nome antigo (código trocado na migração 0027); a aplicação renomeia.</summary>
+    public bool DriveRenomear { get; set; }
+    /// <summary>Código anterior (IMV-000012), antes do padrão do Imobibrasil; só para busca.</summary>
+    public string? CodigoAntigo { get; set; }
     /// <summary>jsonb livre (atributos extras).</summary>
     public string? Atributos { get; set; } = "{}";
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
@@ -165,6 +169,8 @@ public class TipoImovel
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Nome { get; set; } = "";
     public bool Ativo { get; set; } = true;
+    /// <summary>Duas letras do código dos imóveis deste tipo (CA0108, TE0044...).</summary>
+    public string PrefixoCodigo { get; set; } = "OU";
 }
 
 [Table("imovel_envolvidos")]

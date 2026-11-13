@@ -247,7 +247,7 @@ public class CrmProximoPassoTests : IAsyncLifetime
 
         var c1 = await Cartao(l1, casa);
         Assert.Equal(480_000, c1.Valor);
-        Assert.StartsWith("IMV-", c1.ImovelCodigo);
+        Assert.Matches(@"^CA\d{4}$", c1.ImovelCodigo);
         Assert.Equal(0, c1.OutrosImoveis);
         var c2 = await Cartao(l2, casa);
         Assert.Equal(650_000, c2.Valor); // o maior dos imóveis de interesse

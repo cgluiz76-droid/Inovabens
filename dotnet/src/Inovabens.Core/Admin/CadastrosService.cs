@@ -4,6 +4,7 @@ using System.Text;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
+using Inovabens.Core.Imoveis;
 using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
 using P = Inovabens.Core.Dominio.Permissoes;
@@ -17,6 +18,10 @@ public sealed class TipoImovelForm
     public string Nome { get; set; } = "";
 
     public bool Ativo { get; set; } = true;
+
+    /// <summary>Duas letras do código dos imóveis (CA0108). Vazio no cadastro: sugerido pelo nome.</summary>
+    [RegularExpression("^[A-Za-z]{2}$", ErrorMessage = "O prefixo do código tem 2 letras (ex.: CA).")]
+    public string? PrefixoCodigo { get; set; }
 }
 
 public sealed class PerfilPessoaForm
@@ -49,7 +54,8 @@ public sealed class CadastrosService(IDbContextFactory<InovabensDb> fabrica, Aud
         await using var db = await fabrica.CreateDbContextAsync();
         var nome = form.Nome.Trim();
         await ExigirNomeLivre(db.TiposImovel.Where(t => t.Nome.ToLower() == nome.ToLower()), "Já existe um tipo com esse nome.");
-        var t = new TipoImovel { Nome = nome, Ativo = form.Ativo };
+        var t = new TipoImovel { Nome = nome, Ativo = form.Ativo,
+            PrefixoCodigo = form.PrefixoCodigo?.Trim().ToUpperInvariant() is { Length: 2 } px ? px : RegrasImovel.PrefixoSugerido(nome) };
         db.TiposImovel.Add(t);
         audit.Registrar(db, u.Id, "tipos_imovel", t.Id, "CRIAR", depois: t);
         await db.SaveChangesAsync();
@@ -65,9 +71,11 @@ public sealed class CadastrosService(IDbContextFactory<InovabensDb> fabrica, Aud
         var t = await db.TiposImovel.SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Tipo de imóvel não encontrado.");
         var nome = form.Nome.Trim();
         await ExigirNomeLivre(db.TiposImovel.Where(x => x.Id != id && x.Nome.ToLower() == nome.ToLower()), "Já existe um tipo com esse nome.");
-        var antes = new TipoImovel { Id = t.Id, Nome = t.Nome, Ativo = t.Ativo };
+        var antes = new TipoImovel { Id = t.Id, Nome = t.Nome, Ativo = t.Ativo, PrefixoCodigo = t.PrefixoCodigo };
         t.Nome = nome;
         t.Ativo = form.Ativo;
+        // o prefixo só vale para imóveis novos: os códigos já dados não mudam
+        if (form.PrefixoCodigo?.Trim().ToUpperInvariant() is { Length: 2 } px) t.PrefixoCodigo = px;
         audit.Registrar(db, u.Id, "tipos_imovel", id, "ATUALIZAR", antes, t);
         await db.SaveChangesAsync();
     }

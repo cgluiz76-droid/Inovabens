@@ -178,7 +178,7 @@ public class DocumentosTests : IAsyncLifetime
         if (arq.Tipo == Docx.Tipo)
         {
             var texto = DocxTests.Texto(DocxTests.Parte(arq.Conteudo, "word/document.xml"));
-            Assert.Contains($"Eu, Cliente Documento {sufixo}, ofereço R$ 350.000,00 (trezentos e cinquenta mil reais) pelo IMV-", texto);
+            Assert.Contains($"Eu, Cliente Documento {sufixo}, ofereço R$ 350.000,00 (trezentos e cinquenta mil reais) pelo CA", texto);
             Assert.Contains("{{campo.inventado}}", texto);
         }
         else Assert.Equal("application/pdf", arq.Tipo);

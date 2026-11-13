@@ -105,7 +105,7 @@ public class FluxosTests(Aplicacao app)
         await p.GetByRole(AriaRole.Button).Filter(new() { HasText = $"Cliente E2E {s}" }).ClickAsync();
         var painel = p.Locator(".painel-lateral");
         await painel.GetByRole(AriaRole.Tab, new() { Name = "Imóveis", Exact = false }).ClickAsync();
-        await Expect(painel.GetByRole(AriaRole.Link, new() { Name = "IMV-", Exact = false })).ToHaveCountAsync(1);
+        await Expect(painel.GetByRole(AriaRole.Link, new() { NameRegex = new System.Text.RegularExpressions.Regex(@"^[A-Z]{2}\d{4}") })).ToHaveCountAsync(1);
         await painel.GetByRole(AriaRole.Tab, new() { Name = "Dados" }).ClickAsync();
         await Expect(painel.GetByLabel("Observações")).ToHaveValueAsync("Prefere andar alto");
     }

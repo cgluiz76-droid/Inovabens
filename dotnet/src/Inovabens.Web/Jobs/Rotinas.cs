@@ -177,6 +177,19 @@ public sealed class PostsRedesJob(IServiceScopeFactory e, InovabensOpcoes o, ILo
 }
 
 /// <summary>A cada minuto: publica no R2 as fotos marcadas como públicas e retira as que deixaram de ser (só com R2 configurado).</summary>
+/// <summary>A cada 10 min: pastas do Drive que ainda têm o nome antigo do imóvel (troca de código) são renomeadas.</summary>
+public sealed class RenomearPastasDriveJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<RenomearPastasDriveJob> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "renomear pastas do Drive";
+    protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 10);
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<PastasDriveService>().RenomearPendentesAsync(ct);
+        if (n > 0) Log.LogInformation("Drive: {Qtd} pasta(s) de imóvel renomeada(s)", n);
+    }
+}
+
 public sealed class PublicacaoFotosJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<PublicacaoFotosJob> log) : Rotina(e, o, log)
 {
     protected override string Nome => "publicação de fotos (R2)";

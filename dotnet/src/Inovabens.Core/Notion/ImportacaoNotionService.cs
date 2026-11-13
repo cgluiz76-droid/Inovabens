@@ -244,12 +244,13 @@ public sealed partial class ImportacaoNotionService(
 
     private static async Task<Dictionary<string, Guid>> MapaImoveisAsync(InovabensDb db, CancellationToken ct)
     {
-        var lista = await db.Imoveis.Where(i => i.ExcluidoEm == null).Select(i => new { i.Id, i.Codigo, i.Referencia }).ToListAsync(ct);
+        var lista = await db.Imoveis.Where(i => i.ExcluidoEm == null).Select(i => new { i.Id, i.Codigo, i.Referencia, i.CodigoAntigo }).ToListAsync(ct);
         var r = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
         foreach (var i in lista)
         {
             r[i.Codigo] = i.Id;
             if (i.Referencia is { Length: > 0 } re) r.TryAdd(re, i.Id);
+            if (i.CodigoAntigo is { Length: > 0 } ant) r.TryAdd(ant, i.Id); // mapeamento antigo "IMV-000019"
         }
         return r;
     }

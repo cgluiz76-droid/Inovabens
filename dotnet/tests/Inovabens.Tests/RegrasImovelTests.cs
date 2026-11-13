@@ -46,7 +46,24 @@ public class RegrasImovelTests
         Assert.Throws<RegraNegocioException>(() => RegrasImovel.ValidarProprietarios([new ProprietarioEntrada { Percentual = 100 }], Hoje));
 
     [Fact]
-    public void Codigo_sequencial_tem_6_digitos() => Assert.Equal("IMV-000123", RegrasImovel.FormatarCodigo(123));
+    public void Codigo_tem_prefixo_do_tipo_e_4_digitos()
+    {
+        Assert.Equal("CA0109", RegrasImovel.FormatarCodigo("ca", 109));
+        Assert.True(RegrasImovel.CodigoValido("TE0044"));
+        Assert.False(RegrasImovel.CodigoValido("IMV-000001"));
+        Assert.False(RegrasImovel.CodigoValido("CA109"));
+        Assert.Equal("LO", RegrasImovel.PrefixoSugerido("Loja"));
+        Assert.Equal("AR", RegrasImovel.PrefixoSugerido("Área"));
+    }
+
+    [Theory]
+    [InlineData("Casa São Francisco", "CA0060 - Casa São Francisco")]
+    [InlineData("CA0060 - Casa São Francisco", "CA0060 - Casa São Francisco")]
+    [InlineData("IMV-000006 - Casa São Francisco", "CA0060 - Casa São Francisco")]
+    [InlineData("TE0001 Casa", "CA0060 - Casa")]
+    [InlineData("", "CA0060")]
+    public void Pasta_do_drive_comeca_pelo_codigo(string nome, string esperado) =>
+        Assert.Equal(esperado, RegrasImovel.NomeDriveComCodigo("CA0060", nome));
 }
 
 public class ArquivoSeguroTests

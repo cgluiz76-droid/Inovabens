@@ -159,7 +159,7 @@ public class ExtratoComprovantesTests : IAsyncLifetime
         var d1 = await comprovantes.EnviarAsync(admin, OrigemComprovante.DoLancamento(lanc.LancamentoId), new MemoryStream([5, 6]), "boleto.pdf", "application/pdf", 2);
 
         // pasta do imóvel > 07 - Financeiro > ano da receita / do pagamento
-        var raiz = _drive.Filhos(null).Single(i => i.Nome == nome);
+        var raiz = _drive.Filhos(null).Single(i => i.Nome.EndsWith(" - " + nome));
         var financeiro = _drive.Filhos(raiz.Id).Single(i => i.Nome == SubpastasDrive.Financeiro);
         Assert.Equal(new[] { "2025", "2026" }, _drive.Filhos(financeiro.Id).Select(i => i.Nome).Order());
         var ano2025 = _drive.Filhos(financeiro.Id).Single(i => i.Nome == "2025");

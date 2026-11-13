@@ -25,6 +25,8 @@ public class Pessoa
     public string? Uf { get; set; }
     public string? Observacoes { get; set; }
     public DateTime? LgpdConsentimentoEm { get; set; }
+    /// <summary>Código da pessoa no painel do Imobibrasil (importação); reimportar atualiza em vez de duplicar.</summary>
+    public long? ImobibrasilId { get; set; }
     public Guid? CriadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
@@ -106,6 +108,8 @@ public class Compromisso
     public string? GoogleEventId { get; set; }
     public string? GoogleEtag { get; set; }
     public DateTime? SincronizadoEm { get; set; }
+    /// <summary>Id do compromisso na agenda do painel do Imobibrasil (importação).</summary>
+    public long? ImobibrasilId { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
     public DateTime? ExcluidoEm { get; set; }
@@ -253,6 +257,8 @@ public class Lead
     public string? Observacoes { get; set; }
     /// <summary>Imóvel citado na primeira mensagem do WhatsApp; o usuário confirma o vínculo.</summary>
     public Guid? ImovelSugeridoId { get; set; }
+    /// <summary>Origem no Imobibrasil: "lead:1154924" (caixa de entrada) ou "negocio:576282" (funil).</summary>
+    public string? ImobibrasilRef { get; set; }
     public int Ordem { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;

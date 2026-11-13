@@ -81,11 +81,11 @@ public static partial class MapeamentoGoogle
             inicio, fim < inicio ? inicio : fim);
     }
 
-    /// <summary>Evento criado direto no Google é importado se citar o código do imóvel (ex.: "Visita #IMV-000012").</summary>
+    /// <summary>Evento criado direto no Google é importado se citar o código do imóvel (ex.: "Visita #CA0060"; o antigo "#IMV-000012" também vale).</summary>
     public static string? CodigoImovelNoTexto(EventoGoogle ev) =>
         CodigoRegex().Match($"{ev.Summary} {ev.Description}") is { Success: true } m ? m.Groups[1].Value.ToUpperInvariant() : null;
 
-    [GeneratedRegex(@"#(IMV-\d{4,})", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"#([A-Z]{2}\d{4}|IMV-\d{4,})\b", RegexOptions.IgnoreCase)]
     private static partial Regex CodigoRegex();
 }
 
@@ -371,7 +371,7 @@ public sealed class GoogleService(IDbContextFactory<InovabensDb> fabrica, Inovab
         }
 
         if (MapeamentoGoogle.CodigoImovelNoTexto(ev) is not { } codigo) return '-'; // evento pessoal: ignorado
-        var imovelId = await db.Imoveis.Where(i => i.Codigo == codigo && i.ExcluidoEm == null).Select(i => (Guid?)i.Id).SingleOrDefaultAsync(ct);
+        var imovelId = await db.Imoveis.Where(i => (i.Codigo == codigo || i.CodigoAntigo == codigo) && i.ExcluidoEm == null).Select(i => (Guid?)i.Id).SingleOrDefaultAsync(ct);
         if (imovelId is null) return '-';
         var tipo = Regex.IsMatch(dados.Titulo, "visita", RegexOptions.IgnoreCase) ? TipoCompromisso.VISITA
             : Regex.IsMatch(dados.Titulo, "reuni", RegexOptions.IgnoreCase) ? TipoCompromisso.REUNIAO : TipoCompromisso.TAREFA;

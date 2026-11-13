@@ -26,9 +26,9 @@
             <ValidationMessage For="() => Form.Tipo" />
         </label>
         <label class="campo">
-            <span>Referência</span>
-            <InputText class="input" @bind-Value="Form.Referencia" placeholder="Ex.: CA0060" />
-            <ValidationMessage For="() => Form.Referencia" />
+            <span>Código</span>
+            @* gerado pelo tipo ao salvar (prefixo + sequencial do Imobibrasil); é o mesmo no site, portais e Drive *@
+            <input class="input" readonly value="@(Form.Referencia ?? "Gerado ao salvar (pelo tipo)")" />
         </label>
         <label class="campo">
             <span>Corretor responsável</span>

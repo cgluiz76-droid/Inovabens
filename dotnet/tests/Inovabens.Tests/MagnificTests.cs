@@ -179,16 +179,19 @@ public class MelhoriaFotosIntegracaoTests : IAsyncLifetime
         var id = await imoveis.CriarAsync(admin, new ImovelForm { NomeDrive = $"  {nome}  ", Titulo = "Casa com pastas", Tipo = "casa" });
         var detalhe = await imoveis.DetalheAsync(admin, id);
         var raiz = detalhe.Dados.DrivePastaId!;
-        Assert.Equal(nome, detalhe.Dados.NomeDrive);
-        Assert.Equal(nome, _drive.Itens[raiz].Nome);
+        var codigo = detalhe.Dados.Codigo;
+        // a pasta leva o código do imóvel na frente: "CA0109 - Residencial Teste ..."
+        Assert.Equal($"{codigo} - {nome}", detalhe.Dados.NomeDrive);
+        Assert.Equal($"{codigo} - {nome}", _drive.Itens[raiz].Nome);
         Assert.Equal(ArmazenamentoMemoria.Raiz, _drive.Itens[raiz].Pai);
         Assert.Equal(SubpastasDrive.Todas.Select(s => s.Nome), _drive.Filhos(raiz).Select(i => i.Nome).Order());
         Assert.NotNull(detalhe.LinkDrive);
 
-        // mesmo nome em outro imóvel: recusado (sem diferenciar maiúsculas)
-        var e = await Assert.ThrowsAsync<RegraNegocioException>(() =>
-            imoveis.CriarAsync(admin, new ImovelForm { NomeDrive = nome.ToUpperInvariant(), Titulo = "Outra casa", Tipo = "casa" }));
-        Assert.Contains(nameof(ImovelForm.NomeDrive), e.Erros.Keys);
+        // mesmo nome digitado em outro imóvel: a pasta dele fica com o próprio código, sem conflito
+        var outro = await imoveis.CriarAsync(admin, new ImovelForm { NomeDrive = nome.ToUpperInvariant(), Titulo = "Outra casa", Tipo = "casa" });
+        var nomeOutro = (await imoveis.DetalheAsync(admin, outro)).Dados.NomeDrive;
+        Assert.NotEqual(detalhe.Dados.NomeDrive, nomeOutro, StringComparer.OrdinalIgnoreCase);
+        Assert.EndsWith(nome.ToUpperInvariant(), nomeOutro);
 
         // imagem na pasta de matrícula é documento; na 04 é foto da galeria
         using (var scan = new MemoryStream(Imagens.Gerar(100, 100)))
@@ -218,7 +221,7 @@ public class MelhoriaFotosIntegracaoTests : IAsyncLifetime
         var form = ImovelForm.De(detalhe.Dados);
         form.NomeDrive = nome + " (renomeado)";
         await imoveis.AtualizarAsync(admin, id, form);
-        Assert.Equal(nome + " (renomeado)", _drive.Itens[raiz].Nome);
+        Assert.Equal($"{codigo} - {nome} (renomeado)", _drive.Itens[raiz].Nome);
 
         // subpasta apagada no Drive é recriada no próximo envio
         var protocolos = _drive.Filhos(raiz).Single(i => i.Nome == "06 - Protocolos");

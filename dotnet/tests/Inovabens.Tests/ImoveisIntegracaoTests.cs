@@ -47,8 +47,13 @@ public class ImoveisIntegracaoTests
         var id2 = await s.CriarAsync(admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Terreno 50% à vista", Tipo = "terreno" });
         var d1 = await s.DetalheAsync(admin, id1);
         var d2 = await s.DetalheAsync(admin, id2);
-        Assert.Matches(@"^IMV-\d{6}$", d1.Dados.Codigo);
-        Assert.Equal(int.Parse(d1.Dados.Codigo[4..]) + 1, int.Parse(d2.Dados.Codigo[4..]));
+        // código pelo tipo, continuando do último usado no Imobibrasil (AP0037, TE0044)
+        Assert.Matches(@"^AP\d{4}$", d1.Dados.Codigo);
+        Assert.True(int.Parse(d1.Dados.Codigo[2..]) > 37);
+        Assert.Matches(@"^TE\d{4}$", d2.Dados.Codigo);
+        Assert.True(int.Parse(d2.Dados.Codigo[2..]) > 44);
+        Assert.Equal(d1.Dados.Codigo, d1.Dados.Referencia);
+        Assert.StartsWith(d1.Dados.Codigo + " - ", d1.Dados.NomeDrive);
         Assert.Equal("SP", d1.Dados.Uf);
         Assert.Equal(SituacaoImovel.EM_AQUISICAO, d1.Dados.Situacao);
         Assert.Equal("Administrador", d1.CorretorNome);

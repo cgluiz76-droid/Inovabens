@@ -49,8 +49,9 @@ public class ImportacaoNotionIntegracaoTests
         var servico = escopo.ServiceProvider.GetRequiredService<N>();
 
         // sistema antes: um imóvel e uma pessoa com observação própria
-        var referencia = "NT" + Random.Shared.Next(100000, 999999);
-        var imovelId = await imoveis.CriarAsync(admin, new ImovelForm { Titulo = "Área do teste", Tipo = "área", NomeDrive = NovoId(), Referencia = referencia });
+        var imovelId = await imoveis.CriarAsync(admin, new ImovelForm { Titulo = "Área do teste", Tipo = "área", NomeDrive = NovoId() });
+        // o mapeamento projeto → imóvel usa o código (AR0008...), que também é a referência dos portais
+        var referencia = (await imoveis.DetalheAsync(admin, imovelId)).Dados.Codigo;
         var celular = "1799" + Random.Shared.Next(1000000, 9999999);
         var pessoaExistente = Guid.NewGuid();
         await using (var db = await fabrica.CreateDbContextAsync())

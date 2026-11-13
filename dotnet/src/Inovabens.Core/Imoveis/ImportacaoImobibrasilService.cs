@@ -34,7 +34,7 @@ public sealed class ImportacaoImobibrasilService(
     public static string TipoSistema(string tipoOriginal) => tipoOriginal.Trim().ToLowerInvariant() switch
     {
         "casa" or "sobrado" => "casa",
-        "casa em condomínio" => "casa em condomínio",
+        "casa em condomínio" or "sobrado em condomínio" => "casa em condomínio",
         "apartamento" or "cobertura" or "flat" or "kitnet" or "studio" => "apartamento",
         "terreno" or "lote" => "terreno",
         "área" => "área",
@@ -108,7 +108,7 @@ public sealed class ImportacaoImobibrasilService(
 
         Guid id;
         if (existente is { } e) { await imoveis.AtualizarAsync(u, e, form); id = e; }
-        else id = await imoveis.CriarAsync(u, form);
+        else id = await imoveis.CriarAsync(u, form, codigoExterno: a.Referencia);
 
         await using (var db = await fabrica.CreateDbContextAsync(ct))
             await db.Imoveis.Where(i => i.Id == id).ExecuteUpdateAsync(s => s.SetProperty(i => i.ImobibrasilId, a.Id), ct);

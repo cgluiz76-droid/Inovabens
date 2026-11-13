@@ -12,6 +12,8 @@ public class AgendaRotinasTests
         var ev = new EventoGoogle { Summary = "Visita #imv-000123", Description = "cliente", Start = new() { Date = "2026-11-10" }, End = new() { Date = "2026-11-11" } };
         Assert.Equal("IMV-000123", MapeamentoGoogle.CodigoImovelNoTexto(ev));
         Assert.Null(MapeamentoGoogle.CodigoImovelNoTexto(new EventoGoogle { Summary = "Reunião #IMV-12" }));
+        Assert.Equal("CA0060", MapeamentoGoogle.CodigoImovelNoTexto(new EventoGoogle { Summary = "Visita #ca0060 às 10h" }));
+        Assert.Null(MapeamentoGoogle.CodigoImovelNoTexto(new EventoGoogle { Summary = "Visita #CA00601" }));
         var (titulo, _, inicio, fim) = MapeamentoGoogle.DeEvento(ev)!.Value;
         Assert.Equal("Visita #imv-000123", titulo);
         Assert.Equal(new DateTime(2026, 11, 10, 3, 0, 0, DateTimeKind.Utc), inicio); // dia inteiro em Brasília
@@ -19,9 +21,9 @@ public class AgendaRotinasTests
         Assert.Null(MapeamentoGoogle.DeEvento(new EventoGoogle { Summary = "sem datas" }));
 
         var c = new Compromisso { Id = Guid.NewGuid(), Titulo = "Visita", InicioEm = new DateTime(2026, 11, 10, 13, 0, 0), FimEm = new DateTime(2026, 11, 10, 14, 0, 0), Status = StatusCompromisso.CONCLUIDO };
-        var json = System.Text.Json.JsonSerializer.Serialize(MapeamentoGoogle.ParaEvento(c, "IMV-000001", ["a@x.com"]));
+        var json = System.Text.Json.JsonSerializer.Serialize(MapeamentoGoogle.ParaEvento(c, "CA0001", ["a@x.com"]));
         Assert.Contains("\"dateTime\":\"2026-11-10T13:00:00.0000000Z\"", json);
-        Assert.Contains("#IMV-000001", json);
+        Assert.Contains("#CA0001", json);
         Assert.Contains(c.Id.ToString(), json);
         Assert.Contains("\"colorId\":\"2\"", json);
     }

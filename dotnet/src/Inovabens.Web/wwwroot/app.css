@@ -250,6 +250,7 @@ fieldset.campo { border: 0; padding: 0; margin-left: 0; margin-right: 0; margin-
 .resumo-validacao { flex-basis: 100%; color: var(--erro); font-size: .75rem; margin: 0; padding-left: 1rem; }
 .w-tipo { width: 9rem; }
 .w-desc { width: 16rem; }
+.w-prefixo { width: 4.5rem; text-transform: uppercase; }
 .w-valor { width: 9rem; }
 .w-mes { width: 10rem; }
 .w-indice { width: 7rem; }

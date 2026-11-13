@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dominio;
 
@@ -7,7 +8,7 @@ namespace Inovabens.Core.Imoveis;
 public sealed record ArquivoArmazenado(string Extensao, string ContentType, bool Download, TipoMidia Tipo);
 
 /// <summary>Regras de negócio puras do módulo (sem banco), fáceis de testar.</summary>
-public static class RegrasImovel
+public static partial class RegrasImovel
 {
     /// <summary>Status do projeto (como no Notion).</summary>
     public static readonly IReadOnlyList<string> ProjetoStatus = ["Não iniciada", "Em andamento", "Concluído"];
@@ -49,8 +50,35 @@ public static class RegrasImovel
     public static string TipoInformado(string? contentType) =>
         (contentType ?? "").Split(';')[0].Trim().ToLowerInvariant() is { Length: > 0 } ct && ct.Contains('/') ? ct : "application/octet-stream";
 
-    /// <summary>Próximo código sequencial no formato IMV-000123.</summary>
-    public static string FormatarCodigo(int numero) => $"IMV-{numero:D6}";
+    /// <summary>Código no padrão do Imobibrasil: prefixo do tipo + 4 dígitos (CA0108).</summary>
+    public static string FormatarCodigo(string prefixo, int numero) => $"{prefixo.ToUpperInvariant()}{numero:D4}";
+
+    /// <summary>Código no padrão AR0001 (duas letras maiúsculas e quatro dígitos).</summary>
+    public static bool CodigoValido(string? codigo) => codigo is not null && CodigoPadrao().IsMatch(codigo);
+
+    /// <summary>Prefixo sugerido para um tipo novo: duas primeiras letras sem acento ("Loja" → LO).</summary>
+    public static string PrefixoSugerido(string nomeTipo)
+    {
+        var letras = nomeTipo.Normalize(System.Text.NormalizationForm.FormD).Where(char.IsAsciiLetter).Take(2).ToArray();
+        return letras.Length == 2 ? new string(letras).ToUpperInvariant() : "OU";
+    }
+
+    /// <summary>
+    /// A pasta do imóvel no Drive sempre começa pelo código: "CA0060 - Casa São Francisco". Se o nome digitado já
+    /// começar por um código (o mesmo, outro ou o IMV antigo), ele é trocado pelo código do imóvel.
+    /// </summary>
+    public static string NomeDriveComCodigo(string codigo, string? nome)
+    {
+        var resto = CodigoNoInicio().Replace(NomePasta(nome) ?? "", "").Trim();
+        var completo = resto.Length == 0 ? codigo : $"{codigo} - {resto}";
+        return completo.Length <= 120 ? completo : completo[..120].TrimEnd();
+    }
+
+    [GeneratedRegex(@"^[A-Z]{2}\d{4}$")]
+    private static partial Regex CodigoPadrao();
+
+    [GeneratedRegex(@"^([A-Za-z]{2}\d{4}|IMV-\d+)\s*-?\s*")]
+    private static partial Regex CodigoNoInicio();
 
     /// <summary>Limite de fotos por imóvel (vídeos, plantas e documentos não contam). Anúncios do Imobibrasil chegam a 56.</summary>
     public const int MaximoFotos = 60;

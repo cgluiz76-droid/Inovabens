@@ -111,6 +111,32 @@ public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, I
 
     public string? Link(string? pastaId) => armazenamento.LinkPasta(pastaId);
 
+    public bool Habilitado => armazenamento.Habilitado;
+
+    /// <summary>
+    /// Pastas que ficaram com o nome antigo depois da troca de código (migração 0027): ganham o nome do cadastro
+    /// ("CA0060 - Casa São Francisco"). Uma pasta que falhar fica marcada e é tentada de novo na próxima rodada.
+    /// </summary>
+    public async Task<int> RenomearPendentesAsync(CancellationToken ct = default)
+    {
+        if (!armazenamento.Habilitado) return 0;
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var pendentes = await db.Imoveis.Where(i => i.DriveRenomear).ToListAsync(ct);
+        var feitos = 0;
+        foreach (var im in pendentes)
+        {
+            if (im.DrivePastaId is { } pasta && Texto.Limpo(im.NomeDrive) is { } nome)
+            {
+                try { await armazenamento.RenomearAsync(pasta, nome, ct); }
+                catch (Exception e) when (e is not OperationCanceledException) { continue; }
+            }
+            im.DriveRenomear = false;
+            feitos++;
+        }
+        await db.SaveChangesAsync(ct);
+        return feitos;
+    }
+
     private void ExigirHabilitado()
     {
         if (!armazenamento.Habilitado)

@@ -14,6 +14,8 @@
                     {
                         <tr>
                             <td><input class="input" value="@t.Nome" @onchange="e => SalvarTipo(t, e.Value?.ToString() ?? string.Empty, t.Ativo)" /></td>
+                            <td><input class="input w-prefixo" maxlength="2" value="@t.PrefixoCodigo" aria-label="Prefixo do código de @t.Nome" title="Prefixo do código (ex.: CA0108)"
+                                       @onchange="e => SalvarTipo(t, t.Nome, t.Ativo, e.Value?.ToString())" /></td>
                             <td class="acoes-linha">
                                 <label class="check">
                                     <input type="checkbox" checked="@t.Ativo" @onchange="e => SalvarTipo(t, t.Nome, (bool)e.Value!)" /> Ativo
@@ -28,7 +30,8 @@
             <input class="input w-desc" placeholder="Novo tipo de imóvel" @bind="novoTipo" />
             <button class="btn-primary" disabled="@Ocupado" @onclick="CriarTipo">Adicionar</button>
         </div>
-        <p class="pequeno mudo">Renomear um tipo altera também os imóveis já cadastrados com ele. Tipo fora de uso: desative-o.</p>
+        <p class="pequeno mudo">Renomear um tipo altera também os imóveis já cadastrados com ele. Tipo fora de uso: desative-o.
+            O prefixo (2 letras) forma o código dos imóveis novos desse tipo, no padrão do Imobibrasil: CA0109, TE0045…</p>
     </section>
 
     <section class="card">
@@ -78,9 +81,9 @@
 
     private Task CarregarPerfis() => Executar(async () => perfis = await Servico.PerfisPessoaAsync(incluirInativos: true));
 
-    private async Task SalvarTipo(TipoImovel t, string nome, bool ativo)
+    private async Task SalvarTipo(TipoImovel t, string nome, bool ativo, string? prefixo = null)
     {
-        var ok = await Executar(() => Servico.AtualizarTipoImovelAsync(Usuario, t.Id, new TipoImovelForm { Nome = nome, Ativo = ativo }));
+        var ok = await Executar(() => Servico.AtualizarTipoImovelAsync(Usuario, t.Id, new TipoImovelForm { Nome = nome, Ativo = ativo, PrefixoCodigo = prefixo }));
         var erro = Erro;
         await CarregarTipos();
         if (!ok) Erro = erro;
