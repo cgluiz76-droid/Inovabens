@@ -76,7 +76,7 @@
 {
     <p class="filtro-ativo">
         Mostrando só os leads do imóvel <a href="imoveis/@fi">@(OpcoesFiltro.FirstOrDefault(o => o.Id == fi)?.Nome ?? "selecionado")</a>
-        <button class="btn-ghost mini" @onclick="() => AplicarFiltro(null)">✕ Limpar filtro</button>
+        <button class="btn-ghost mini" @onclick="() => AplicarFiltro(null)"><Icone Nome="x" />Limpar filtro</button>
     </p>
 }
 

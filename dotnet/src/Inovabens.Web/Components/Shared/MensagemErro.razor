@@ -1,8 +1,18 @@
 @attribute [AllowAnonymous]
 
+@* Erro: fica no lugar, junto do formulário (role="alert").
+   Sucesso: aviso flutuante no canto (CSS .msg-sucesso), some sozinho e não empurra a tela.
+   @key pelo texto: uma nova confirmação recria o aviso e a animação recomeça. *@
 @if (!string.IsNullOrEmpty(Texto))
 {
-    <p class="@(Sucesso ? "msg-sucesso" : "msg-erro")" role="@(Sucesso ? "status" : "alert")">@Texto</p>
+    if (Sucesso)
+    {
+        <p @key="Texto" class="msg-sucesso" role="status">@Texto</p>
+    }
+    else
+    {
+        <p class="msg-erro" role="alert">@Texto</p>
+    }
 }
 
 @code {

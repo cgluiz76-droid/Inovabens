@@ -100,7 +100,7 @@
                             @if (PodeDecidir)
                             {
                                 <button type="button" class="btn-primary mini" @onclick="() => AbrirDecisao(d, Decisao.Aceitar)">✔ Aceitar</button>
-                                <button type="button" class="btn-ghost mini" @onclick="() => AbrirDecisao(d, Decisao.Recusar)">✕ Recusar</button>
+                                <button type="button" class="btn-ghost mini" @onclick="() => AbrirDecisao(d, Decisao.Recusar)"><Icone Nome="x" />Recusar</button>
                             }
                             @if (PodeEditar)
                             {

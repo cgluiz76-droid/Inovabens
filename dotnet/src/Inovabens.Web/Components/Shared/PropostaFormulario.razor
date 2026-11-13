@@ -37,7 +37,7 @@
                 <div class="item-proposta" @key="item">
                     <div class="item-proposta-topo">
                         <strong>@PropostasService.Rotulo(item.Tipo)</strong>
-                        <button type="button" class="btn-ghost mini" aria-label="Remover @PropostasService.Rotulo(item.Tipo)" @onclick="() => Form.Itens.Remove(item)">✕</button>
+                        <button type="button" class="btn-ghost mini" aria-label="Remover @PropostasService.Rotulo(item.Tipo)" @onclick="() => Form.Itens.Remove(item)"><Icone Nome="x" /></button>
                     </div>
                     <div class="grade-4">
                         <label class="campo">

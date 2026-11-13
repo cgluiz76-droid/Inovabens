@@ -86,7 +86,7 @@
                                 <td class="acoes-linha">
                                     @if (Editar)
                                     {
-                                        <button class="btn-ghost mini" title="Remover" disabled="@Ocupado" @onclick="() => ExcluirItem(i.Id)">✕</button>
+                                        <button class="btn-ghost mini" title="Remover" aria-label="Remover" disabled="@Ocupado" @onclick="() => ExcluirItem(i.Id)"><Icone Nome="x" /></button>
                                     }
                                 </td>
                             </tr>

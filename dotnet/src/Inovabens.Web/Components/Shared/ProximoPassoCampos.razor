@@ -22,7 +22,7 @@
         <div class="tipos-atividade" role="group" aria-label="Tipo da atividade">
             @foreach (var t in Tipos)
             {
-                <button type="button" class="chip @(Form.Tipo == t ? "ativo" : "")" @onclick="() => Form.Tipo = t">@Icone(t) @Texto.Rotulo(t)</button>
+                <button type="button" class="chip @(Form.Tipo == t ? "ativo" : "")" @onclick="() => Form.Tipo = t"><span class="ico-inline"><Icone Nome="@NomeIcone(t)" /></span>@Texto.Rotulo(t)</button>
             }
         </div>
         <div class="grade-4">
@@ -82,13 +82,31 @@
 
     private static readonly int[] Duracoes = [15, 30, 60, 90, 120, 240];
 
-    public static string Icone(TipoCompromisso t) => t switch
+    /// <summary>Nome do ícone SVG (Icone.razor) do tipo de atividade.</summary>
+    public static string NomeIcone(TipoCompromisso t) => t switch
     {
-        TipoCompromisso.LIGACAO => "📞",
-        TipoCompromisso.MENSAGEM => "💬",
-        TipoCompromisso.VISITA => "🏠",
-        TipoCompromisso.REUNIAO => "🤝",
-        _ => "✔️",
+        TipoCompromisso.LIGACAO => "telefone",
+        TipoCompromisso.MENSAGEM => "mensagem",
+        TipoCompromisso.VISITA => "imoveis",
+        TipoCompromisso.REUNIAO => "reuniao",
+        _ => "check",
+    };
+
+    /// <summary>A linha do tempo do lead vem do núcleo com emoji; aqui vira o ícone SVG correspondente.</summary>
+    public static string NomeIcone(string emoji) => emoji switch
+    {
+        "📞" => "telefone",
+        "💬" => "mensagem",
+        "✉️" or "✉" => "email",
+        "🏠" => "imoveis",
+        "🤝" => "reuniao",
+        "💰" => "dinheiro",
+        "🗓️" or "🗓" or "📅" => "agenda",
+        "✔️" or "✔" or "✅" => "check",
+        "✖️" or "✖" or "❌" => "x",
+        "➡️" or "➡" => "seta",
+        "✏️" or "✏" => "lapis",
+        _ => "nota",
     };
 
     private string Sugestao => Form.Tipo switch

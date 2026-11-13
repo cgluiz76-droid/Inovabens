@@ -32,7 +32,7 @@
                     <li>
                         <a href="financeiro/comprovantes/@c.Id" target="_blank" rel="noopener">@c.Nome</a>
                         <span class="pequeno mudo">@Tamanho(c.Tamanho) · @Texto.DataHora(c.CriadoEm)</span>
-                        <button type="button" class="btn-ghost mini" title="Remover" disabled="@Ocupado" @onclick="() => Remover(c)">✕</button>
+                        <button type="button" class="btn-ghost mini" title="Remover" aria-label="Remover" disabled="@Ocupado" @onclick="() => Remover(c)"><Icone Nome="x" /></button>
                     </li>
                 }
             </ul>

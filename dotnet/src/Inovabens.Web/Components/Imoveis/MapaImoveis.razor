@@ -21,7 +21,7 @@
             <button class="@(baseAtual == "satelite" ? "ativa" : "")" @onclick='() => TrocarBase("satelite")'>Satélite</button>
             <button class="@(baseAtual == "ruas" ? "ativa" : "")" @onclick='() => TrocarBase("ruas")'>Ruas</button>
         </div>
-        <button class="mapa-fechar" title="Fechar o mapa (Esc)" aria-label="Fechar o mapa" @onclick="AoFechar">✕</button>
+        <button class="mapa-fechar" title="Fechar o mapa (Esc)" aria-label="Fechar o mapa" @onclick="AoFechar"><Icone Nome="x" /></button>
     </header>
 
     <div class="mapa-area" @ref="elemento"></div>

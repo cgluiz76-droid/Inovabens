@@ -12,7 +12,7 @@
         <div class="painel-topo">
             <div class="painel-titulo">
                 <h2>Lead</h2>
-                <button type="button" class="btn-ghost mini" aria-label="Fechar" @onclick="AoFechar">✕</button>
+                <button type="button" class="btn-ghost mini" aria-label="Fechar" @onclick="AoFechar"><Icone Nome="x" /></button>
             </div>
         </div>
         <MensagemErro Texto="@Erro" />
@@ -34,7 +34,7 @@
                 <div class="painel-nav">
                     <button type="button" class="btn-ghost mini" aria-label="Lead anterior" title="Lead anterior da coluna" disabled="@(Anterior is null)" @onclick="() => AoNavegar.InvokeAsync(Anterior!.Value)">‹</button>
                     <button type="button" class="btn-ghost mini" aria-label="Próximo lead" title="Próximo lead da coluna" disabled="@(Proximo is null)" @onclick="() => AoNavegar.InvokeAsync(Proximo!.Value)">›</button>
-                    <button type="button" class="btn-ghost mini" aria-label="Fechar" title="Fechar (Esc)" @onclick="AoFechar">✕</button>
+                    <button type="button" class="btn-ghost mini" aria-label="Fechar" title="Fechar (Esc)" @onclick="AoFechar"><Icone Nome="x" /></button>
                 </div>
             </div>
             <div class="painel-contato">
@@ -100,7 +100,7 @@
                 {
                     <div>
                         <span class="situacao situacao-@Situacao.ToString().ToLowerInvariant()">@RotuloSituacao(Situacao)</span>
-                        <p class="forte">@ProximoPassoCampos.Icone(pa.Tipo) @pa.Titulo</p>
+                        <p class="forte"><span class="ico-inline"><Icone Nome="@ProximoPassoCampos.NomeIcone(pa.Tipo)" /></span>@pa.Titulo</p>
                         <p class="pequeno mudo">@Texto.DataHora(pa.InicioEm)</p>
                     </div>
                     @if (PodeEditar)
@@ -186,7 +186,7 @@
                             @foreach (var e in lista)
                             {
                                 <li class="evento evento-@e.Tipo.ToString().ToLowerInvariant()">
-                                    <span class="evento-icone" aria-hidden="true">@e.Icone</span>
+                                    <span class="evento-icone" aria-hidden="true"><Icone Nome="@ProximoPassoCampos.NomeIcone(e.Icone)" /></span>
                                     <div>
                                         <p class="evento-titulo">@e.Titulo</p>
                                         @if (e.Detalhe is { } d)
@@ -222,7 +222,7 @@
                                     {
                                         <span class="badge status-@c.Status">@Texto.Rotulo(c.Status)</span>
                                     }
-                                    @ProximoPassoCampos.Icone(c.Tipo) @c.Titulo <span class="pequeno mudo">· @Texto.DataHora(c.InicioEm)</span>
+                                    <span class="ico-inline"><Icone Nome="@ProximoPassoCampos.NomeIcone(c.Tipo)" /></span>@c.Titulo <span class="pequeno mudo">· @Texto.DataHora(c.InicioEm)</span>
                                     @if (pendente && PodeEditar)
                                     {
                                         <button type="button" class="btn-ghost mini" @onclick="() => AbrirCompositor(c)">Concluir</button>

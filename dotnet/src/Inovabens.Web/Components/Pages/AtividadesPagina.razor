@@ -45,7 +45,7 @@ else
                                 <span class="pequeno mudo">@Dia(a)</span>
                             </div>
                             <div class="atividade-corpo">
-                                <p class="forte">@ProximoPassoCampos.Icone(a.Tipo) @a.Titulo</p>
+                                <p class="forte"><span class="ico-inline"><Icone Nome="@ProximoPassoCampos.NomeIcone(a.Tipo)" /></span>@a.Titulo</p>
                                 <p class="pequeno mudo">
                                     @if (a.LeadId is { } lid)
                                     {

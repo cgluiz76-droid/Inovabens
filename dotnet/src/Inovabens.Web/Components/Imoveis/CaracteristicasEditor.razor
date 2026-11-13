@@ -21,7 +21,7 @@
             <label class="check"><input type="checkbox" disabled="@(!Editar)" @bind="it.Publico" /> Público</label>
             @if (Editar)
             {
-                <button class="btn-ghost" title="Remover" @onclick="() => itens.Remove(it)">✕</button>
+                <button class="btn-ghost" title="Remover" aria-label="Remover" @onclick="() => itens.Remove(it)"><Icone Nome="x" /></button>
             }
         </div>
     }

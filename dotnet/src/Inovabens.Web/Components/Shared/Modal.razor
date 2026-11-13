@@ -3,7 +3,7 @@
     <div class="modal @(Largo ? "largo" : "")" role="dialog" aria-modal="true" aria-labelledby="@idTitulo" @onmousedown:stopPropagation>
         <div class="modal-topo">
             <h2 id="@idTitulo">@Titulo</h2>
-            <button type="button" class="btn-ghost mini" aria-label="Fechar" @onclick="AoFechar">✕</button>
+            <button type="button" class="btn-ghost mini" aria-label="Fechar" @onclick="AoFechar"><Icone Nome="x" /></button>
         </div>
         @ChildContent
     </div>

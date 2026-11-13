@@ -45,13 +45,43 @@
         });
     }
 
+    // 3) Tabelas → cartões no celular: tabelas com 4+ colunas ganham .tabela-cartoes e cada célula recebe o rótulo
+    //    da coluna (data-label), usado pelo CSS abaixo de 640px. Sem mexer no HTML das telas.
+    function rotularTabelas() {
+        var tabelas = document.querySelectorAll(".tabela-container > .tabela, .tabela-rolagem > .tabela");
+        for (var i = 0; i < tabelas.length; i++) {
+            var t = tabelas[i];
+            var cab = t.tHead && t.tHead.rows.length ? t.tHead.rows[t.tHead.rows.length - 1].cells : null;
+            if (!cab || cab.length < 4) continue;
+            var rotulos = [];
+            for (var c = 0; c < cab.length; c++) {
+                var r = (cab[c].textContent || "").trim();
+                for (var s = 0; s < (cab[c].colSpan || 1); s++) rotulos.push(r);
+            }
+            if (!t.classList.contains("tabela-cartoes")) t.classList.add("tabela-cartoes");
+            for (var b = 0; b < t.tBodies.length; b++) {
+                var linhas = t.tBodies[b].rows;
+                for (var l = 0; l < linhas.length; l++) {
+                    var celulas = linhas[l].cells, pos = 0;
+                    for (var k = 0; k < celulas.length; k++) {
+                        var rot = celulas[k].colSpan > 1 ? "" : (rotulos[pos] || "");
+                        if (celulas[k].getAttribute("data-label") !== rot) celulas[k].setAttribute("data-label", rot);
+                        pos += celulas[k].colSpan || 1;
+                    }
+                }
+            }
+        }
+    }
+
     // o Blazor altera o DOM o tempo todo: agrupa as mudanças em uma verificação por quadro
     var agendado = false;
-    new MutationObserver(function () {
+    function aoMudar() {
         if (agendado) return;
         agendado = true;
-        requestAnimationFrame(function () { agendado = false; sincronizar(); });
-    }).observe(document.body, { childList: true, subtree: true });
+        requestAnimationFrame(function () { agendado = false; sincronizar(); rotularTabelas(); });
+    }
+    new MutationObserver(aoMudar).observe(document.body, { childList: true, subtree: true });
+    aoMudar();
 
     document.addEventListener("keydown", function (e) {
         var topo = pilha.length ? pilha[pilha.length - 1].modal : null;

@@ -37,7 +37,7 @@
                             <td class="acoes-linha">
                                 @if (Editar)
                                 {
-                                    <button class="btn-ghost mini" title="Excluir" disabled="@Ocupado" @onclick="() => Excluir(r.Id)">✕</button>
+                                    <button class="btn-ghost mini" title="Excluir" aria-label="Excluir" disabled="@Ocupado" @onclick="() => Excluir(r.Id)"><Icone Nome="x" /></button>
                                 }
                             </td>
                         </tr>
