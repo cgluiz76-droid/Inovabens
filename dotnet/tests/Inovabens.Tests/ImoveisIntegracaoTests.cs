@@ -113,7 +113,7 @@ public class ImoveisIntegracaoTests
         var lista = await s.ListarAsync(admin, new FiltroImoveis { Termo = "gonzaga" });
         Assert.Equal(25, lista.TamanhoPagina);
         var item = Assert.Single(lista.Itens, i => i.Id == id1);
-        Assert.EndsWith("/drive-capa", item.CapaUrl);
+        Assert.Contains("/drive-capa?l=", item.CapaUrl); // miniatura da capa
 
         // --- mídias: sem Google Drive configurado, envio é recusado de forma controlada ---
         await Assert.ThrowsAsync<ServicoIndisponivelException>(() =>

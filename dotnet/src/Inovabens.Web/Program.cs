@@ -106,6 +106,18 @@ using (var escopo = app.Services.CreateScope())
     await escopo.ServiceProvider.GetRequiredService<Inovabens.Core.Admin.ConfiguracoesService>().CarregarAsync();
 if (args.Contains("migrar")) return;
 
+// `dotnet Inovabens.Web.dll localizar-imoveis`: preenche as coordenadas dos imóveis sem localização (para o mapa).
+if (args.Contains("localizar-imoveis"))
+{
+    using var escopo = app.Services.CreateScope();
+    var r = await escopo.ServiceProvider.GetRequiredService<Inovabens.Core.Imoveis.LocalizacaoLoteService>()
+        .LocalizarPendentesAsync(Console.WriteLine);
+    Console.WriteLine($"Concluído: {r.Pendentes} sem coordenadas; {r.PeloEndereco} pelo endereço, {r.PelaRua} pela rua, " +
+                      $"{r.PeloBairro} pelo bairro; {r.NaoEncontrados.Count} não encontrados" +
+                      (r.NaoEncontrados.Count > 0 ? $" ({string.Join(", ", r.NaoEncontrados)})." : "."));
+    return;
+}
+
 // `dotnet Inovabens.Web.dll importar-imobibrasil [--usuario=email] [--site=https://...] [--sem-fotos]`
 // traz os anúncios ativos do site atual (Imobibrasil); rodar de novo atualiza sem duplicar.
 if (args.Contains("importar-imobibrasil"))
