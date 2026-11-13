@@ -50,6 +50,11 @@
 
     <div class="principal">
         <header class="topo">
+            @* troca de tema feita por interface.js (funciona sem o circuito do Blazor) *@
+            <button type="button" class="sino alternar-tema" data-alternar-tema aria-label="Alternar tema claro/escuro" title="Alternar tema">
+                <span class="tema-escuro"><Icone Nome="lua" /></span>
+                <span class="tema-claro"><Icone Nome="sol" /></span>
+            </button>
             <a class="sino" href="alertas" title="Alertas" aria-label="@(alertas > 0 ? $"Alertas {(alertas > 99 ? "99+" : alertas.ToString())}" : "Alertas")">
                 <Icone Nome="sino" />
                 @if (alertas > 0)

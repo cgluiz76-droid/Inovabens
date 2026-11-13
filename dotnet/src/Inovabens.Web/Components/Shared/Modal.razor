@@ -1,7 +1,8 @@
+@* Foco, Tab preso e Esc: wwwroot/interface.js (todo role="dialog" aria-modal="true"). *@
 <div class="modal-fundo" @onmousedown="Fundo" @onmousedown:stopPropagation>
-    <div class="modal @(Largo ? "largo" : "")" role="dialog" aria-modal="true" @onmousedown:stopPropagation>
+    <div class="modal @(Largo ? "largo" : "")" role="dialog" aria-modal="true" aria-labelledby="@idTitulo" @onmousedown:stopPropagation>
         <div class="modal-topo">
-            <h2>@Titulo</h2>
+            <h2 id="@idTitulo">@Titulo</h2>
             <button type="button" class="btn-ghost mini" aria-label="Fechar" @onclick="AoFechar">✕</button>
         </div>
         @ChildContent
@@ -13,6 +14,8 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public EventCallback AoFechar { get; set; }
     [Parameter] public bool Largo { get; set; }
+
+    private readonly string idTitulo = "modal-" + Guid.NewGuid().ToString("N")[..8];
 
     private Task Fundo() => AoFechar.InvokeAsync();
 }

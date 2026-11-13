@@ -122,7 +122,7 @@
             <span><b>@feito</b>@(meta > 0 ? $" / {meta}" : "")</span>
             @if (pct is { } p)
             {
-                <span class="barra-trilho" title="@p% da meta"><span class="barra" style="width:@(Math.Min(100, p))%;background:@(p >= 100 ? "#16a34a" : p >= 60 ? "#f59e0b" : "#dc2626")"></span></span>
+                <span class="barra-trilho" title="@p% da meta"><span class="barra @(p >= 100 ? "meta-ok" : p >= 60 ? "meta-media" : "meta-baixa")" style="width:@(Math.Min(100, p))%"></span></span>
             }
         </div>
     };
