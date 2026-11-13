@@ -8,6 +8,8 @@
     <MensagemErro Texto="@Erro" />
     <MensagemErro Texto="@Sucesso" Sucesso />
 
+    <fieldset class="secao-form">
+    <legend>Identificação</legend>
     <div class="grade-4">
         <label class="campo col-2">
             <span>Título *</span>
@@ -68,7 +70,10 @@
             <span class="pequeno mudo">Nome da pasta do imóvel no Google Drive (com as subpastas 01 a 06). Mudar aqui renomeia a pasta.</span>
         </label>
     </div>
+    </fieldset>
 
+    <fieldset class="secao-form">
+    <legend>Localização e registro</legend>
     <div class="grade-4">
         <CampoCep @bind-Valor="Form.Cep" AoEncontrar="PreencherEndereco" />
         <label class="campo"><span>Logradouro</span><InputText class="input" @bind-Value="Form.Logradouro" /><ValidationMessage For="() => Form.Logradouro" /></label>
@@ -114,7 +119,10 @@
         <label class="campo"><span>Cartório</span><InputText class="input" @bind-Value="Form.Cartorio" /><ValidationMessage For="() => Form.Cartorio" /></label>
         <label class="campo"><span>Inscrição municipal</span><InputText class="input" @bind-Value="Form.InscricaoMunicipal" /><ValidationMessage For="() => Form.InscricaoMunicipal" /></label>
     </div>
+    </fieldset>
 
+    <fieldset class="secao-form">
+    <legend>Áreas e cômodos</legend>
     <div class="grade-4">
         <label class="campo"><span>Área total (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaTotalM2" /><ValidationMessage For="() => Form.AreaTotalM2" /></label>
         <label class="campo"><span>Área construída (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaConstruidaM2" /><ValidationMessage For="() => Form.AreaConstruidaM2" /></label>
@@ -131,6 +139,12 @@
         <label class="campo"><span>Vagas</span><InputNumber class="input" @bind-Value="Form.Vagas" /><ValidationMessage For="() => Form.Vagas" /></label>
         <label class="campo"><span>Pavimento</span><InputText class="input" @bind-Value="Form.Pavimento" placeholder="Ex.: térreo, 2 pavimentos" /><ValidationMessage For="() => Form.Pavimento" /></label>
         <label class="campo"><span>Ano de construção</span><InputNumber class="input" @bind-Value="Form.AnoConstrucao" /><ValidationMessage For="() => Form.AnoConstrucao" /></label>
+    </div>
+    </fieldset>
+
+    <fieldset class="secao-form">
+    <legend>Valores e mídia</legend>
+    <div class="grade-4">
         <label class="campo"><span>Preço de venda (R$)</span><InputNumber class="input" step="0.01" @bind-Value="Form.PrecoVenda" /><ValidationMessage For="() => Form.PrecoVenda" /></label>
         <label class="campo"><span>Preço de locação (R$)</span><InputNumber class="input" step="0.01" @bind-Value="Form.PrecoLocacao" /><ValidationMessage For="() => Form.PrecoLocacao" /></label>
         <label class="campo"><span>Condomínio (R$/mês)</span><InputNumber class="input" step="0.01" @bind-Value="Form.ValorCondominio" /><ValidationMessage For="() => Form.ValorCondominio" /></label>
@@ -141,7 +155,10 @@
             <ValidationMessage For="() => Form.VideoUrl" />
         </label>
     </div>
+    </fieldset>
 
+    <fieldset class="secao-form">
+    <legend>Descrição e divulgação</legend>
     <label class="campo">
         <span>Descrição pública</span>
         <InputTextArea class="input" rows="3" @bind-Value="Form.DescricaoPublica" />
@@ -151,8 +168,16 @@
         <InputTextArea class="input" rows="3" @bind-Value="Form.DescricaoInterna" />
     </label>
 
-    <fieldset class="campo">
-        <span>Projeto (acompanhamento da engenharia)</span>
+    <div class="checks">
+        <label><InputCheckbox @bind-Value="Form.DivulgarSite" /> Divulgar no site</label>
+        <label><InputCheckbox @bind-Value="Form.EnderecoPublico" /> Endereço público</label>
+        <label><InputCheckbox @bind-Value="Form.AceitaPermuta" /> Aceita permuta</label>
+        <label><InputCheckbox @bind-Value="Form.EmCondominio" /> Em condomínio</label>
+    </div>
+    </fieldset>
+
+    <fieldset class="secao-form">
+        <legend>Projeto <span class="pequeno mudo">(acompanhamento da engenharia)</span></legend>
         <div class="grade-4">
             <label class="campo">
                 <span>Status</span>
@@ -181,14 +206,10 @@
         </div>
     </fieldset>
 
-    <div class="checks">
-        <label><InputCheckbox @bind-Value="Form.DivulgarSite" /> Divulgar no site</label>
-        <label><InputCheckbox @bind-Value="Form.EnderecoPublico" /> Endereço público</label>
-        <label><InputCheckbox @bind-Value="Form.AceitaPermuta" /> Aceita permuta</label>
-        <label><InputCheckbox @bind-Value="Form.EmCondominio" /> Em condomínio</label>
+    @* barra fixa: salvar sem rolar até o fim do formulário *@
+    <div class="barra-acoes-form">
+        <button type="submit" class="btn-primary" disabled="@Ocupado">@(Ocupado ? "Salvando…" : RotuloBotao)</button>
     </div>
-
-    <button type="submit" class="btn-primary" disabled="@Ocupado">@(Ocupado ? "Salvando…" : RotuloBotao)</button>
 </EditForm>
 
 @code {

@@ -55,6 +55,42 @@
     });
     celular.addEventListener("change", function () { if (!celular.matches) gaveta(false, false); });
 
+    // CRM no celular: o seletor de etapas rola o quadro até a coluna; ao rolar o quadro, marca a etapa visível.
+    document.addEventListener("click", function (e) {
+        var chip = e.target.closest && e.target.closest("[data-ir-coluna]");
+        if (!chip) return;
+        var col = document.getElementById(chip.getAttribute("data-ir-coluna"));
+        if (!col) return;
+        var quadro = col.parentElement;
+        var reduzir = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        quadro.scrollTo({ left: col.offsetLeft - quadro.offsetLeft - parseFloat(getComputedStyle(quadro).paddingLeft || "0"), behavior: reduzir ? "auto" : "smooth" });
+    });
+    var etapaAgendada = false;
+    function marcarEtapa() {
+        etapaAgendada = false;
+        var chips = document.querySelectorAll(".seletor-etapas [data-ir-coluna]");
+        if (!chips.length || chips[0].offsetParent === null) return;
+        var quadro = (document.getElementById(chips[0].getAttribute("data-ir-coluna")) || {}).parentElement;
+        if (!quadro) return;
+        var esquerda = quadro.getBoundingClientRect().left, melhor = null, menor = Infinity;
+        for (var i = 0; i < chips.length; i++) {
+            var col = document.getElementById(chips[i].getAttribute("data-ir-coluna"));
+            if (!col) continue;
+            var d = Math.abs(col.getBoundingClientRect().left - esquerda);
+            if (d < menor) { menor = d; melhor = chips[i]; }
+        }
+        for (var j = 0; j < chips.length; j++) {
+            var ativo = chips[j] === melhor;
+            if ((chips[j].getAttribute("aria-current") === "true") !== ativo) chips[j].setAttribute("aria-current", ativo ? "true" : "false");
+        }
+        if (melhor) melhor.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    document.addEventListener("scroll", function (e) {
+        if (etapaAgendada || !e.target.classList || !e.target.classList.contains("kanban")) return;
+        etapaAgendada = true;
+        requestAnimationFrame(marcarEtapa);
+    }, true);
+
     var FOCAVEIS ='a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
     var pilha = []; // { modal, origem }
 
@@ -112,7 +148,7 @@
     function aoMudar() {
         if (agendado) return;
         agendado = true;
-        requestAnimationFrame(function () { agendado = false; sincronizar(); rotularTabelas(); });
+        requestAnimationFrame(function () { agendado = false; sincronizar(); rotularTabelas(); marcarEtapa(); });
     }
     new MutationObserver(aoMudar).observe(document.body, { childList: true, subtree: true });
     aoMudar();

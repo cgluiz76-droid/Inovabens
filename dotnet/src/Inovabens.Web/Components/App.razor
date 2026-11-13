@@ -23,8 +23,12 @@
     <Routes @rendermode="ModoPagina" IpCliente="@IpCliente" />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
-    <script src="@Assets["mascaras.js"]"></script>
-    <script src="@Assets["kanban.js"]"></script>
+    @* máscaras e arraste do kanban só nas páginas do sistema (o login é estático e não usa) *@
+    @if (ModoPagina is not null)
+    {
+        <script src="@Assets["mascaras.js"]" defer></script>
+        <script src="@Assets["kanban.js"]" defer></script>
+    }
     <script src="@Assets["interface.js"]" defer></script>
 </body>
 

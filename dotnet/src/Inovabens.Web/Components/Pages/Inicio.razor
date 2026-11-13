@@ -1,14 +1,27 @@
 @page "/"
 @inherits ComponenteBase
 @inject PainelService Servico
+@inject CrmService Crm
+@inject AgendaService Agenda
 
 <PageTitle>Painel · Inovabens</PageTitle>
 
 <div class="titulo">
     <h1>Painel</h1>
+    <div class="acoes-topo">
+        @if (Usuario.Pode(Permissoes.ImoveisCriar))
+        {
+            <a class="btn-ghost" href="imoveis/novo">+ Imóvel</a>
+        }
+        @if (Usuario.Pode(Permissoes.CrmCriar))
+        {
+            <a class="btn-primary" href="crm?novo=1">+ Lead</a>
+        }
+    </div>
 </div>
 
 <MensagemErro Texto="@Erro" />
+<MensagemErro Texto="@Sucesso" Sucesso />
 
 @if (resumo is null)
 {
@@ -19,89 +32,188 @@
 }
 else
 {
+    @* "o que fazer agora": atrasadas, hoje e propostas esperando decisão *@
+    @if (atividades is not null || resumo.PropostasEmAnalise is not null)
+    {
+        <section class="faixa-hoje" aria-label="Hoje">
+            @if (atividades is not null)
+            {
+                var atrasadas = atividades.Count(a => a.Situacao == SituacaoProximoPasso.Atrasado);
+                var hoje = atividades.Where(a => a.Situacao == SituacaoProximoPasso.Hoje).ToList();
+                <a class="bloco-hoje @(atrasadas > 0 ? "hoje-perigo" : "hoje-neutro")" href="atividades">
+                    <span class="numero-hoje">@atrasadas</span>
+                    <span class="rotulo-hoje">@(atrasadas == 1 ? "atividade atrasada" : "atividades atrasadas")</span>
+                    <span class="detalhe-hoje">@(atrasadas > 0 ? "Resolver agora" : "Nada atrasado") <Icone Nome="seta" /></span>
+                </a>
+                <a class="bloco-hoje @(hoje.Count > 0 ? "hoje-alerta" : "hoje-neutro")" href="atividades">
+                    <span class="numero-hoje">@hoje.Count</span>
+                    <span class="rotulo-hoje">@(hoje.Count == 1 ? "atividade hoje" : "atividades hoje")</span>
+                    <span class="detalhe-hoje">
+                        @if (hoje.FirstOrDefault() is { } prox)
+                        {
+                            @($"{Hora(prox)} · {prox.Titulo}")
+                        }
+                        else
+                        {
+                            @("Agenda livre")
+                        }
+                    </span>
+                </a>
+            }
+            @if (resumo.PropostasEmAnalise is { } propostas)
+            {
+                <a class="bloco-hoje @(propostas > 0 ? "hoje-info" : "hoje-neutro")" href="crm">
+                    <span class="numero-hoje">@propostas</span>
+                    <span class="rotulo-hoje">@(propostas == 1 ? "proposta em análise" : "propostas em análise")</span>
+                    <span class="detalhe-hoje">@(propostas > 0 ? "Aguardando decisão" : "Nenhuma pendente") <Icone Nome="seta" /></span>
+                </a>
+            }
+        </section>
+    }
+
     <div class="kpis">
-        <a class="kpi link-kpi" href="alertas">
-            <span class="rotulo-kpi">Alertas em aberto</span>
-            <span class="valor-kpi @(resumo.AlertasAbertos > 0 ? "texto-erro" : "")">@resumo.AlertasAbertos</span>
-        </a>
-        @if (resumo.LancamentosNaoPagos is { } naoPagos)
+        @if (Usuario.Pode(Permissoes.CrmVer))
         {
-            <div class="kpi">
-                <span class="rotulo-kpi">Despesas não pagas</span>
-                <span class="valor-kpi @(naoPagos > 0 ? "texto-erro" : "")">@naoPagos</span>
-            </div>
+            <a class="kpi link-kpi" href="crm">
+                <span class="rotulo-kpi">Leads ativos</span>
+                <span class="valor-kpi">@resumo.LeadsPorEstagio.Sum(x => x.Total)</span>
+                <span class="contexto-kpi">@Novos(resumo.LeadsNovosSemana)</span>
+            </a>
         }
         @if (Usuario.Pode(Permissoes.ImoveisVer))
         {
             <a class="kpi link-kpi" href="imoveis">
                 <span class="rotulo-kpi">Imóveis</span>
                 <span class="valor-kpi">@resumo.ImoveisPorSituacao.Sum(x => x.Total)</span>
+                <span class="contexto-kpi">@Disponiveis() disponíveis</span>
             </a>
         }
-        @if (Usuario.Pode(Permissoes.CrmVer))
+        @if (resumo.LancamentosNaoPagos is { } naoPagos)
         {
-            <a class="kpi link-kpi" href="crm">
-                <span class="rotulo-kpi">Leads ativos</span>
-                <span class="valor-kpi">@resumo.LeadsPorEstagio.Sum(x => x.Total)</span>
-            </a>
+            <div class="kpi">
+                <span class="rotulo-kpi">Despesas não pagas</span>
+                <span class="valor-kpi @(naoPagos > 0 ? "texto-erro" : "")">@naoPagos</span>
+                <span class="contexto-kpi">@(naoPagos > 0 ? "lançamentos em aberto" : "tudo em dia")</span>
+            </div>
         }
+        <a class="kpi link-kpi" href="alertas">
+            <span class="rotulo-kpi">Alertas em aberto</span>
+            <span class="valor-kpi @(resumo.AlertasAbertos > 0 ? "texto-erro" : "")">@resumo.AlertasAbertos</span>
+            <span class="contexto-kpi">@(resumo.AlertasAbertos > 0 ? "Ver alertas" : "nenhum pendente")</span>
+        </a>
     </div>
 
     <div class="grade-2 espaco-topo">
-        @if (Usuario.Pode(Permissoes.ImoveisVer))
-        {
-            <section class="card">
-                <h2>Imóveis por situação</h2>
-                <Barras Itens="@resumo.ImoveisPorSituacao.Select(x => (Texto.Rotulo(x.Situacao), (string?)null, x.Total)).ToList()" />
-            </section>
-        }
         @if (Usuario.Pode(Permissoes.CrmVer))
         {
             <section class="card">
-                <h2>Leads por estágio</h2>
+                <div class="titulo-secao">
+                    <h2>Funil de vendas</h2>
+                    <a class="btn-ghost mini" href="crm">Abrir CRM</a>
+                </div>
                 <Barras Itens="@resumo.LeadsPorEstagio.Select(x => (x.Estagio, x.Cor, x.Total)).ToList()" />
             </section>
         }
+        @if (atividades is not null)
+        {
+            <section class="card">
+                <div class="titulo-secao">
+                    <h2>Próximas atividades</h2>
+                    <a class="btn-ghost mini" href="atividades">Ver todas</a>
+                </div>
+                @if (atividades.Count == 0)
+                {
+                    <p class="vazio">Nenhuma atividade pendente nos próximos 30 dias.</p>
+                }
+                else
+                {
+                    <ul class="lista-simples lista-proximas">
+                        @foreach (var a in atividades.Take(5))
+                        {
+                            <li class="@(a.Situacao == SituacaoProximoPasso.Atrasado ? "vencido" : "")" @key="a.Id">
+                                <span class="quando-proxima">
+                                    <strong>@Hora(a)</strong>
+                                    <span class="pequeno mudo">@Dia(a)</span>
+                                </span>
+                                <span class="corpo-proxima">
+                                    <span class="forte"><span class="ico-inline"><Icone Nome="@ProximoPassoCampos.NomeIcone(a.Tipo)" /></span>@a.Titulo</span>
+                                    <span class="pequeno mudo">
+                                        @if (a.LeadId is { } ld)
+                                        {
+                                            <a href="crm?lead=@ld">@a.LeadNome</a>
+                                        }
+                                        @if (a.ImovelId is { } im)
+                                        {
+                                            @if (a.LeadId is not null) { <span> · </span> }
+                                            <a href="imoveis/@im">@a.ImovelCodigo</a>
+                                        }
+                                    </span>
+                                </span>
+                                @if (a.LeadId is null && Usuario.Pode(Permissoes.AgendaEditar))
+                                {
+                                    <button type="button" class="btn-icone" title="Concluir" aria-label="Concluir: @a.Titulo"
+                                            disabled="@Ocupado" @onclick="() => Concluir(a)"><Icone Nome="check" /></button>
+                                }
+                                else if (a.LeadId is { } lead)
+                                {
+                                    <a class="btn-icone" href="crm?lead=@lead" title="Registrar no lead" aria-label="Registrar no lead: @a.Titulo"><Icone Nome="seta" /></a>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+        }
+        @if (Usuario.Pode(Permissoes.ImoveisVer))
+        {
+            <section class="card">
+                <div class="titulo-secao">
+                    <h2>Imóveis por situação</h2>
+                    <a class="btn-ghost mini" href="imoveis">Abrir imóveis</a>
+                </div>
+                <Barras Itens="@resumo.ImoveisPorSituacao.OrderBy(x => x.Situacao).Select(x => (Texto.Rotulo(x.Situacao), (string?)null, x.Total)).ToList()" />
+            </section>
+        }
     </div>
-
-    @if (Usuario.Pode(Permissoes.AgendaVer))
-    {
-        <section class="card espaco-topo">
-            <div class="titulo-secao">
-                <h2>Próximos compromissos</h2>
-                <a class="btn-ghost" href="agenda">Abrir agenda</a>
-            </div>
-            @if (resumo.ProximosCompromissos.Count == 0)
-            {
-                <p class="vazio">Nenhum compromisso pendente.</p>
-            }
-            else
-            {
-                <ul class="lista-simples">
-                    @foreach (var c in resumo.ProximosCompromissos)
-                    {
-                        <li class="@(c.Vencido ? "vencido" : "")">
-                            <span class="forte">@Texto.DataHora(c.Dados.InicioEm)</span>
-                            · @Texto.Rotulo(c.Dados.Tipo): @c.Dados.Titulo
-                            @if (c.Dados.ImovelId is { } im)
-                            {
-                                <a class="pequeno" href="imoveis/@im">@c.ImovelCodigo</a>
-                            }
-                            else if (c.Dados.LeadId is { } ld)
-                            {
-                                <a class="pequeno" href="crm?lead=@ld">👤 @c.LeadNome</a>
-                            }
-                            <span class="pequeno mudo">· @c.ResponsavelNome</span>
-                        </li>
-                    }
-                </ul>
-            }
-        </section>
-    }
 }
 
 @code {
     private ResumoPainel? resumo;
+    private IReadOnlyList<AtividadeItem>? atividades;
 
-    protected override Task OnInitializedAsync() => Executar(async () => resumo = await Servico.ResumoAsync(Usuario));
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () =>
+    {
+        resumo = await Servico.ResumoAsync(Usuario);
+        if (Usuario.Pode(Permissoes.AgendaVer)) atividades = await Crm.AtividadesAsync(Usuario);
+    });
+
+    private async Task Concluir(AtividadeItem a)
+    {
+        if (!await Executar(() => Agenda.ConcluirAsync(Usuario, a.Id))) return;
+        await Carregar();
+        Sucesso = "Atividade concluída.";
+    }
+
+    private int Disponiveis() => resumo!.ImoveisPorSituacao.Where(x => x.Situacao == SituacaoImovel.DISPONIVEL).Sum(x => x.Total);
+
+    private static string Novos(int? n) => n switch
+    {
+        null or 0 => "nenhum novo na semana",
+        1 => "+1 novo na semana",
+        _ => $"+{n} novos na semana",
+    };
+
+    private static string Hora(AtividadeItem a) => DatasBR.DeUtc(a.InicioEm).ToString("HH:mm");
+
+    private static string Dia(AtividadeItem a)
+    {
+        var d = DateOnly.FromDateTime(DatasBR.DeUtc(a.InicioEm));
+        var hoje = DatasBR.Hoje();
+        if (d == hoje) return "hoje";
+        if (d == hoje.AddDays(1)) return "amanhã";
+        if (d == hoje.AddDays(-1)) return "ontem";
+        return d.ToString("ddd dd/MM", Texto.PtBr);
+    }
 }

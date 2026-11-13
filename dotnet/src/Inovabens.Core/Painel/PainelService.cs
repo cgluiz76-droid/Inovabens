@@ -14,7 +14,8 @@ public sealed record ContagemEstagio(string Estagio, string? Cor, int Total);
 
 public sealed record ResumoPainel(
     IReadOnlyList<ContagemSituacao> ImoveisPorSituacao, IReadOnlyList<ContagemEstagio> LeadsPorEstagio,
-    int AlertasAbertos, int? LancamentosNaoPagos, IReadOnlyList<CompromissoDetalhe> ProximosCompromissos);
+    int AlertasAbertos, int? LancamentosNaoPagos, IReadOnlyList<CompromissoDetalhe> ProximosCompromissos,
+    int? PropostasEmAnalise = null, int? LeadsNovosSemana = null);
 
 /// <summary>Resumo da página inicial respeitando escopo e permissões (port de dashboard.module.ts).</summary>
 public sealed class PainelService(IDbContextFactory<InovabensDb> fabrica, AgendaService agenda, AlertasService alertas)
@@ -31,12 +32,16 @@ public sealed class PainelService(IDbContextFactory<InovabensDb> fabrica, Agenda
         }
 
         IReadOnlyList<ContagemEstagio> leads = [];
+        int? propostas = null, novosSemana = null;
         if (u.Pode(P.CrmVer))
         {
             var ql = db.Leads.Where(l => l.ExcluidoEm == null).VisiveisPara(u);
             leads = await db.FunilEstagios.Where(e => e.Funil == Funil.VENDA && e.Ativo).OrderBy(e => e.Ordem)
                 .Select(e => new ContagemEstagio(e.Nome, e.Cor, ql.Count(l => l.EstagioId == e.Id)))
                 .ToListAsync();
+            propostas = await db.Propostas.CountAsync(p => p.Status == StatusProposta.EM_ANALISE && ql.Any(l => l.Id == p.LeadId));
+            var semana = DateTime.UtcNow.AddDays(-7);
+            novosSemana = await ql.CountAsync(l => l.CriadoEm >= semana);
         }
 
         int? naoPagos = u.Pode(P.FinanceiroVer)
@@ -47,6 +52,6 @@ public sealed class PainelService(IDbContextFactory<InovabensDb> fabrica, Agenda
             ? [.. (await agenda.ListarAsync(u, new FiltroAgenda(De: DateTime.UtcNow, Status: StatusCompromisso.PENDENTE))).Take(5)]
             : [];
 
-        return new ResumoPainel(imoveis, leads, await alertas.ContagemAsync(u), naoPagos, proximos);
+        return new ResumoPainel(imoveis, leads, await alertas.ContagemAsync(u), naoPagos, proximos, propostas, novosSemana);
     }
 }

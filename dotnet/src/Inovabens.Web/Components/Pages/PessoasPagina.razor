@@ -93,6 +93,8 @@ else
     <Modal Titulo="@(editandoId is null ? "Nova pessoa" : "Pessoa")" Largo AoFechar="() => form = null">
         <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
             <DataAnnotationsValidator />
+            <fieldset class="secao-form">
+            <legend>Dados e contato</legend>
             <div class="grade-4">
                 <label class="campo">
                     <span>Tipo</span>
@@ -140,6 +142,12 @@ else
                     <InputText class="input" type="tel" @bind-Value="form.Whatsapp" data-mascara="telefone" maxlength="15" placeholder="(11) 98765-4321" />
                     <ValidationMessage For="() => form.Whatsapp" />
                 </label>
+            </div>
+            </fieldset>
+
+            <fieldset class="secao-form">
+            <legend>Endereço</legend>
+            <div class="grade-4">
                 <CampoCep @bind-Valor="form.Cep" AoEncontrar="PreencherEndereco" />
                 <label class="campo col-2">
                     <span>Logradouro</span>
@@ -174,8 +182,10 @@ else
                 </label>
             </div>
 
-            <fieldset class="campo">
-                <span>Perfis</span>
+            </fieldset>
+
+            <fieldset class="secao-form">
+                <legend>Perfis</legend>
                 <div class="checks">
                     @foreach (var p in perfis.Where(p => p.Ativo || TemPapel(p.Codigo)))
                     {
@@ -185,7 +195,6 @@ else
                         </label>
                     }
                 </div>
-            </fieldset>
             @foreach (var papelForm in form.Papeis)
             {
                 <label class="campo">
@@ -193,9 +202,10 @@ else
                     <InputText class="input" placeholder="Ex.: topógrafo, construtor, cartório, engenheiro" @bind-Value="papelForm.Especialidade" />
                 </label>
             }
+            </fieldset>
 
-            <fieldset class="campo">
-                <span>Imóveis vinculados (@(form.Imoveis?.Count ?? 0))</span>
+            <fieldset class="secao-form">
+                <legend>Imóveis vinculados (@(form.Imoveis?.Count ?? 0))</legend>
                 @if (imoveis.Count == 0)
                 {
                     <p class="pequeno mudo">Nenhum imóvel disponível.</p>

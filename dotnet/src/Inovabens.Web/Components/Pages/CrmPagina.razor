@@ -149,7 +149,17 @@ else
     }
     else
     {
-        @Quadro(ColunasVisiveis())
+        var visiveis = ColunasVisiveis();
+        @* celular: uma etapa por vez; o seletor rola o quadro até a coluna (interface.js) *@
+        <nav class="seletor-etapas" aria-label="Etapas do funil">
+            @foreach (var col in visiveis)
+            {
+                <button type="button" class="chip-etapa" data-ir-coluna="col-@col.Estagio.Id" style="--cor-etapa:@(col.Estagio.Cor ?? "#64748b")">
+                    @col.Estagio.Nome <b>@col.Leads.Count</b>
+                </button>
+            }
+        </nav>
+        @Quadro(visiveis, true)
     }
 }
 
@@ -270,10 +280,10 @@ else
 
 @code {
     /// <summary>Quadro do funil (colunas e cartões); nas raias, um por responsável.</summary>
-    private RenderFragment Quadro(IReadOnlyList<ColunaFunil> cols) => @<div class="kanban @(leadAberto is null ? "" : "com-painel")">
+    private RenderFragment Quadro(IReadOnlyList<ColunaFunil> cols, bool comIds = false) => @<div class="kanban @(leadAberto is null ? "" : "com-painel")">
         @foreach (var col in cols)
         {
-            <div class="coluna @(arrastando is not null && colunaAlvo == col.Estagio.Id ? "alvo" : "")" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")"
+            <div id="@(comIds ? $"col-{col.Estagio.Id}" : null)" class="coluna @(arrastando is not null && colunaAlvo == col.Estagio.Id ? "alvo" : "")" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")"
                  @ondragenter="() => colunaAlvo = col.Estagio.Id" @ondragover:preventDefault @ondrop="() => Soltar(col.Estagio, null)">
                 <div class="coluna-topo">
                     <strong>@col.Estagio.Nome</strong>
