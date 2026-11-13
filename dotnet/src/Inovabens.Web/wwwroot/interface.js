@@ -55,6 +55,35 @@
     });
     celular.addEventListener("change", function () { if (!celular.matches) gaveta(false, false); });
 
+    // Busca global: Ctrl+K (⌘K no Mac) clica na lupa do topo; o Blazor abre a janela. Até o campo aparecer
+    // (ida e volta ao servidor), as teclas digitadas ficam guardadas e são passadas para ele.
+    var buscaPendente = null, buscaLimite = 0;
+    function entregarBusca() {
+        if (buscaPendente === null) return;
+        var campo = document.querySelector(".busca-input");
+        if (!campo) { if (Date.now() > buscaLimite) buscaPendente = null; return; }
+        campo.focus({ preventScroll: true });
+        if (buscaPendente) {
+            campo.value = buscaPendente;
+            campo.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        buscaPendente = null;
+    }
+    document.addEventListener("click", function (e) {
+        if (e.target.closest && e.target.closest("[data-abrir-busca]")) { buscaPendente = ""; buscaLimite = Date.now() + 4000; }
+    });
+    document.addEventListener("keydown", function (e) {
+        if (buscaPendente !== null && !document.querySelector(".busca-input")) {
+            if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { buscaPendente += e.key; e.preventDefault(); }
+            return;
+        }
+        if ((e.key !== "k" && e.key !== "K") || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+        var lupa = document.querySelector("[data-abrir-busca]");
+        if (!lupa) return;
+        e.preventDefault();
+        if (!document.querySelector(".busca-global")) lupa.click();
+    }, true);
+
     // CRM no celular: o seletor de etapas rola o quadro até a coluna; ao rolar o quadro, marca a etapa visível.
     document.addEventListener("click", function (e) {
         var chip = e.target.closest && e.target.closest("[data-ir-coluna]");
@@ -148,7 +177,7 @@
     function aoMudar() {
         if (agendado) return;
         agendado = true;
-        requestAnimationFrame(function () { agendado = false; sincronizar(); rotularTabelas(); marcarEtapa(); });
+        requestAnimationFrame(function () { agendado = false; sincronizar(); entregarBusca(); rotularTabelas(); marcarEtapa(); });
     }
     new MutationObserver(aoMudar).observe(document.body, { childList: true, subtree: true });
     aoMudar();

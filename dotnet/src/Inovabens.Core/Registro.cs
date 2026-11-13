@@ -71,6 +71,7 @@ public static class Registro
         services.AddSingleton<ConversorPdf>();
         services.AddScoped<WhatsappService>();
         services.AddScoped<PainelService>();
+        services.AddScoped<Busca.BuscaGlobalService>();
         services.AddScoped<UsuariosService>();
         services.AddScoped<PerfisService>();
         services.AddScoped<CadastrosService>();

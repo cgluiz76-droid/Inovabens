@@ -538,23 +538,36 @@ else
             if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
         });
         await Carregar();
-        // vindo do alerta "novo lead" (crm?lead=<id>): abre o lead no funil dele
-        if (consulta.TryGetValue("lead", out var lid) && Guid.TryParse(lid, out var leadId) && !await MostrarNaFila(leadId))
-        {
-            LeadDetalhe? d = null;
-            await Executar(async () => d = await Servico.ObterAsync(Usuario, leadId));
-            if (d is not null)
-            {
-                if (CrmService.FunilDa(d.Dados.Finalidade) != funil)
-                {
-                    funil = CrmService.FunilDa(d.Dados.Finalidade);
-                    await Carregar();
-                }
-                leadAberto = leadId;
-            }
-        }
+        // vindo do alerta "novo lead" ou da busca global (crm?lead=<id>): abre o lead no funil dele
+        if (consulta.TryGetValue("lead", out var lid) && Guid.TryParse(lid, out var leadId)) await AbrirLeadDaUrl(leadId);
+        iniciado = true;
         // vindo da ficha do imóvel (crm?novo=1&imovel=<id>): novo lead já interessado no imóvel
         if (consulta.ContainsKey("novo") && Usuario.Pode(Permissoes.CrmCriar)) NovoLead(imovelFiltro);
+    }
+
+    [SupplyParameterFromQuery(Name = "lead")] public Guid? LeadDaUrl { get; set; }
+    private Guid? leadAbertoPelaUrl;
+    private bool iniciado;
+
+    /// <summary>Já na tela do CRM, a busca global troca só o ?lead= da URL: abre o novo lead sem recarregar.</summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (iniciado && LeadDaUrl is { } id && id != leadAbertoPelaUrl) await AbrirLeadDaUrl(id);
+    }
+
+    private async Task AbrirLeadDaUrl(Guid leadId)
+    {
+        leadAbertoPelaUrl = leadId;
+        if (await MostrarNaFila(leadId)) return;
+        LeadDetalhe? d = null;
+        await Executar(async () => d = await Servico.ObterAsync(Usuario, leadId));
+        if (d is null) return;
+        if (CrmService.FunilDa(d.Dados.Finalidade) != funil)
+        {
+            funil = CrmService.FunilDa(d.Dados.Finalidade);
+            await Carregar();
+        }
+        leadAberto = leadId;
     }
 
     /// <summary>

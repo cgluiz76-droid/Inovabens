@@ -1,0 +1,151 @@
+@* Busca global: aberta pela lupa do topo (MainLayout) ou Ctrl+K (⌘K no Mac, via interface.js).
+   Setas escolhem, Enter abre, Esc fecha. Fica fora do topo (sticky) para o véu cobrir a tela toda. *@
+@implements IDisposable
+@inject BuscaGlobalService Busca
+@inject NavigationManager Nav
+
+@if (aberta)
+{
+    <div class="modal-fundo busca-fundo" @onclick="Fechar">
+        <div class="busca-global" role="dialog" aria-modal="true" aria-label="Buscar imóvel, pessoa ou lead" @onclick:stopPropagation>
+            <div class="busca-campo">
+                <Icone Nome="busca" />
+                <input class="busca-input" type="search" placeholder="Código, nome, endereço ou telefone…" autocomplete="off" spellcheck="false"
+                       role="combobox" aria-expanded="@(itens.Count > 0 ? "true" : "false")" aria-controls="busca-resultados"
+                       aria-autocomplete="list" aria-activedescendant="@(selecionado >= 0 && itens.Count > 0 ? $"busca-item-{selecionado}" : null)"
+                       value="@termo" @oninput="AoDigitar" @onkeydown="Tecla" />
+                <button type="button" class="btn-ghost mini" aria-label="Fechar" @onclick="Fechar">Esc</button>
+            </div>
+            <div id="busca-resultados" class="busca-resultados" role="listbox" aria-label="Resultados">
+                @if (BuscaGlobalService.Normalizar(termo).Length < BuscaGlobalService.MinimoCaracteres)
+                {
+                    <p class="busca-dica">Digite ao menos 2 letras. Ex.: <b>CA0060</b>, <b>Maria</b>, <b>99916</b> ou <b>Jardim Tarraf</b>.</p>
+                }
+                else if (buscando && itens.Count == 0)
+                {
+                    <p class="busca-dica">Buscando…</p>
+                }
+                else if (itens.Count == 0)
+                {
+                    <p class="busca-dica">Nada encontrado para “@termo”.</p>
+                }
+                else
+                {
+                    var i = 0;
+                    @foreach (var (titulo, grupo) in Grupos())
+                    {
+                        <div class="busca-grupo" role="group" aria-label="@titulo">
+                            <p class="busca-grupo-titulo" aria-hidden="true">@titulo</p>
+                            @foreach (var item in grupo)
+                            {
+                                var indice = i++;
+                                <a id="busca-item-@indice" href="@item.Url" role="option" aria-selected="@(indice == selecionado ? "true" : "false")"
+                                   class="busca-item @(indice == selecionado ? "ativo" : "")" @onclick="Fechar" @onmouseenter="() => selecionado = indice">
+                                    <span class="busca-icone"><Icone Nome="@Icone(item.Tipo)" /></span>
+                                    <span class="busca-texto">
+                                        <span class="busca-titulo">@item.Titulo</span>
+                                        @if (item.Detalhe is { } d)
+                                        {
+                                            <span class="busca-detalhe">@d</span>
+                                        }
+                                    </span>
+                                    @if (item.Etiqueta is { } e)
+                                    {
+                                        <span class="badge">@e</span>
+                                    }
+                                </a>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            <p class="busca-rodape" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd> escolher · <kbd>Enter</kbd> abrir · <kbd>Esc</kbd> fechar</p>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public UsuarioAtual? Usuario { get; set; }
+
+    private bool aberta, buscando;
+    private string termo = "";
+    private int selecionado;
+    private List<ItemBusca> itens = [];
+    private ResultadoBusca resultado = ResultadoBusca.Vazio;
+    private CancellationTokenSource? espera;
+
+    public void Abrir()
+    {
+        aberta = true;
+        termo = "";
+        itens = [];
+        resultado = ResultadoBusca.Vazio;
+        selecionado = 0;
+        StateHasChanged();
+    }
+
+    private void Fechar()
+    {
+        espera?.Cancel();
+        aberta = false;
+    }
+
+    private async Task AoDigitar(ChangeEventArgs e)
+    {
+        termo = e.Value?.ToString() ?? "";
+        espera?.Cancel();
+        if (BuscaGlobalService.Normalizar(termo).Length < BuscaGlobalService.MinimoCaracteres || Usuario is null)
+        {
+            itens = [];
+            resultado = ResultadoBusca.Vazio;
+            return;
+        }
+        var cts = espera = new CancellationTokenSource();
+        buscando = true;
+        try
+        {
+            await Task.Delay(250, cts.Token);
+            var r = await Busca.BuscarAsync(Usuario, termo, cts.Token);
+            if (cts.IsCancellationRequested) return;
+            resultado = r;
+            itens = [.. r.Todos];
+            selecionado = 0;
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (!cts.IsCancellationRequested) buscando = false;
+        }
+    }
+
+    private void Tecla(KeyboardEventArgs e)
+    {
+        if (itens.Count == 0) return;
+        switch (e.Key)
+        {
+            case "ArrowDown": selecionado = (selecionado + 1) % itens.Count; break;
+            case "ArrowUp": selecionado = (selecionado - 1 + itens.Count) % itens.Count; break;
+            case "Enter":
+                var url = itens[Math.Clamp(selecionado, 0, itens.Count - 1)].Url;
+                Fechar();
+                Nav.NavigateTo(url);
+                break;
+        }
+    }
+
+    private IEnumerable<(string, IReadOnlyList<ItemBusca>)> Grupos()
+    {
+        if (resultado.Imoveis.Count > 0) yield return ("Imóveis", resultado.Imoveis);
+        if (resultado.Pessoas.Count > 0) yield return ("Pessoas", resultado.Pessoas);
+        if (resultado.Leads.Count > 0) yield return ("Leads", resultado.Leads);
+    }
+
+    private static string Icone(TipoResultadoBusca t) => t switch
+    {
+        TipoResultadoBusca.Imovel => "imoveis",
+        TipoResultadoBusca.Pessoa => "pessoas",
+        _ => "crm",
+    };
+
+    public void Dispose() => espera?.Cancel();
+}

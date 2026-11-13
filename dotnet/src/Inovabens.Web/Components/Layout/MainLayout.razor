@@ -61,6 +61,12 @@
                 <img src="img/marca.svg" alt="" />
                 <span class="marca-nome">INOVA<b>BENS</b></span>
             </a>
+            @if (usuario is not null)
+            {
+                <button type="button" class="sino" data-abrir-busca aria-label="Buscar (Ctrl+K)" title="Buscar (Ctrl+K)" @onclick="() => busca?.Abrir()">
+                    <Icone Nome="busca" />
+                </button>
+            }
             @* troca de tema feita por interface.js (funciona sem o circuito do Blazor) *@
             <button type="button" class="sino alternar-tema" data-alternar-tema aria-label="Alternar tema claro/escuro" title="Alternar tema">
                 <span class="tema-escuro"><Icone Nome="lua" /></span>
@@ -116,6 +122,11 @@
     </nav>
 </div>
 
+@if (usuario is not null)
+{
+    <BuscaGlobal @ref="busca" Usuario="usuario" />
+}
+
 <div id="blazor-error-ui" data-nosnippet>
     Ocorreu um erro inesperado.
     <a href="." class="reload">Recarregar</a>
@@ -127,6 +138,7 @@
     private Task<AuthenticationState>? AuthState { get; set; }
 
     private UsuarioAtual? usuario;
+    private BuscaGlobal? busca;
     private int alertas;
 
     protected override void OnInitialized() => Nav.LocationChanged += AoNavegar;

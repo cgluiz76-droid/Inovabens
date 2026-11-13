@@ -129,6 +129,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        mb.HasDbFunction(typeof(FuncoesBusca).GetMethod(nameof(FuncoesBusca.Normalizar))!).HasName("busca_normalizar");
+        mb.HasDbFunction(typeof(FuncoesBusca).GetMethod(nameof(FuncoesBusca.Digitos))!).HasName("busca_digitos");
         mb.Entity<Imovel>(e =>
         {
             e.Property(x => x.Atributos).HasColumnType("jsonb");

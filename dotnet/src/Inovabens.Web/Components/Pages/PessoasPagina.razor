@@ -269,6 +269,18 @@ else
 
     private bool PodeEditar => Usuario.Pode(Permissoes.PessoasEditar);
 
+    /// <summary>pessoas?id=&lt;id&gt; (busca global): abre o cadastro da pessoa.</summary>
+    [SupplyParameterFromQuery(Name = "id")] public Guid? AbrirId { get; set; }
+    private Guid? abertaPelaUrl;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AbrirId is not { } id || id == abertaPelaUrl) return;
+        abertaPelaUrl = id;
+        Pessoa? p = null;
+        if (await Executar(async () => p = await Servico.ObterAsync(Usuario, id)) && p is not null) await Editar(p);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         perfis = await Cadastros.PerfisPessoaAsync(incluirInativos: true);

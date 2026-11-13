@@ -20,7 +20,7 @@ public static class Texto
         ["captacao"] = "captação", ["aquisicao"] = "aquisição", ["regularizacao"] = "regularização", ["locacao"] = "locação",
         ["negociacao"] = "negociação", ["documentacao"] = "documentação", ["retificacao"] = "retificação", ["area"] = "área",
         ["nao"] = "não", ["concluido"] = "concluído", ["concluida"] = "concluída", ["reuniao"] = "reunião", ["acao"] = "ação",
-        ["estrategica"] = "estratégica", ["email"] = "e-mail", ["ligacao"] = "ligação",
+        ["estrategica"] = "estratégica", ["email"] = "e-mail", ["ligacao"] = "ligação", ["disponivel"] = "disponível",
     };
 
     /// <summary>EM_AQUISICAO -> "Em aquisição" (mesma regra do rotulo() da interface web).</summary>
