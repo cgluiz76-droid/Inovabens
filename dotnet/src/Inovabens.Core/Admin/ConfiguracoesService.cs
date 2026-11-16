@@ -137,7 +137,7 @@ public sealed partial class ConfiguracoesService(
                 case CatalogoConfiguracoes.Meta:
                     return await meta.TestarAsync(ct);
                 case CatalogoConfiguracoes.GoogleMaps:
-                    if (i.GoogleMapsApiKey is not { } chave) return "Sem chave: a localização usa o OpenStreetMap.";
+                    if (i.GoogleMapsApiKey is not { } chave) throw Falta("Informe a chave da Geocoding API.");
                     using (var doc = JsonDocument.Parse(await Http.GetStringAsync(
                         "https://maps.googleapis.com/maps/api/geocode/json?address=" +
                         Uri.EscapeDataString("São José do Rio Preto, SP") + "&key=" + Uri.EscapeDataString(chave), ct)))

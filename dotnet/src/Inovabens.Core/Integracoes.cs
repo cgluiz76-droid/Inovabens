@@ -60,8 +60,10 @@ public static class CatalogoConfiguracoes
             "instagram_basic e instagram_content_publish. As imagens e vídeos vão pelo endereço público do R2.", Testavel: true),
         new(GoogleAgenda, "Google Calendar (agenda)",
             "Credenciais OAuth do Google Cloud. Cada usuário conecta a própria agenda em Agenda → Conectar Google Calendar."),
-        new(GoogleMaps, "Google Maps (localização pelo endereço)",
-            "Sem a chave, a localização usa o OpenStreetMap (gratuito, menos preciso).", Testavel: true),
+        new(GoogleMaps, "Google Maps (mapa e localização pelo endereço)",
+            "O sistema usa só o Google Maps. No Google Cloud (APIs e serviços), ative a Geocoding API e a Maps JavaScript API e crie " +
+            "duas chaves: a da Geocoding API (fica só no servidor; restrinja à Geocoding API) e a do mapa (vai para o navegador; " +
+            "restrinja à Maps JavaScript API e aos sites https://SEU-SITE/*). Sem elas, o mapa e o botão Localizar não funcionam.", Testavel: true),
         new(Site, "Site da Inovabens", "Dados de contato exibidos no site e usados nos anúncios."),
         new(Whatsapp, "WhatsApp Business (leads no CRM)",
             "Cada mensagem recebida no WhatsApp da empresa cria um lead na primeira coluna do funil (ou entra no histórico do lead " +
@@ -116,6 +118,8 @@ public static class CatalogoConfiguracoes
             Variavel: "GOOGLE_WEBHOOK_URL", Tipo: TipoCampoConfig.Url),
 
         new("google_maps.api_key", GoogleMaps, "Chave da Geocoding API", Secreto: true, Variavel: "GOOGLE_MAPS_API_KEY"),
+        new("google_maps.chave_mapa", GoogleMaps, "Chave do mapa (Maps JavaScript API)",
+            "Aparece no navegador de quem abre o mapa: restrinja no Google Cloud aos endereços do sistema.", Variavel: "GOOGLE_MAPS_CHAVE_MAPA"),
 
         new("site.url", Site, "Endereço do site", Variavel: "SITE_URL", Tipo: TipoCampoConfig.Url, Padrao: "https://www.inovabens.com.br"),
         new("site.whatsapp", Site, "WhatsApp", "Com DDD, só números (ex.: 17999990000).", Variavel: "SITE_WHATSAPP", Tipo: TipoCampoConfig.Telefone),
@@ -203,6 +207,8 @@ public sealed class Integracoes(IReadOnlyDictionary<string, string> valores)
 
     public string? MagnificApiKey => this["magnific.api_key"];
     public string? GoogleMapsApiKey => this["google_maps.api_key"];
+    /// <summary>Chave da Maps JavaScript API (pública, restrita por site no Google Cloud) para desenhar o mapa.</summary>
+    public string? GoogleMapsChaveMapa => this["google_maps.chave_mapa"];
 
     public string? ClaudeApiKey => this["claude.api_key"];
     public string ClaudeModelo => this["claude.modelo"] ?? "claude-opus-5-5";

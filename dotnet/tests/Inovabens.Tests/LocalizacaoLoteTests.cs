@@ -17,6 +17,15 @@ public class LocalizacaoLoteTests
         ], t);
     }
 
+    [Theory]
+    [InlineData("ROOFTOP", PrecisaoLocal.Exata)]
+    [InlineData("RANGE_INTERPOLATED", PrecisaoLocal.Exata)]
+    [InlineData("GEOMETRIC_CENTER", PrecisaoLocal.Rua)]
+    [InlineData("APPROXIMATE", PrecisaoLocal.Aproximada)]
+    [InlineData(null, PrecisaoLocal.Aproximada)]
+    public void Precisao_do_Google(string? tipo, PrecisaoLocal esperada) =>
+        Assert.Equal(esperada, GeocodificacaoService.PrecisaoGoogle(tipo));
+
     [Fact]
     public void Mantem_o_numero_e_pula_o_que_falta()
     {

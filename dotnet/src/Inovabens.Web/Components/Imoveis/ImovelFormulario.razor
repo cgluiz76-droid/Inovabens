@@ -106,7 +106,7 @@
             }
             <div class="acoes-mapa">
                 <button type="button" class="btn-ghost mini" disabled="@(localizando || Endereco is null)" @onclick="Localizar"
-                        title="Busca as coordenadas pelo endereço preenchido acima (@Geo.Provedor)">
+                        title="Busca as coordenadas pelo endereço preenchido acima (Google Maps)">
                     @(localizando ? "Localizando…" : "⌖ Localizar pelo endereço")
                 </button>
                 @if (LinkMapa is { } link)
@@ -289,7 +289,8 @@
         erroCoordenadas = null;
         try
         {
-            if (await Geo.LocalizarAsync(endereco) is { } c) DefinirCoordenadas(RegrasImovel.FormatarCoordenadas(c.Latitude, c.Longitude));
+            if (!Geo.Configurado) erroCoordenadas = "Falta a chave do Google Maps (Administração → Configurações → Google Maps).";
+            else if (await Geo.LocalizarAsync(endereco) is { } c) DefinirCoordenadas(RegrasImovel.FormatarCoordenadas(c.Latitude, c.Longitude));
             else erroCoordenadas = "Endereço não encontrado no mapa. Confira o endereço ou cole as coordenadas do Google Maps.";
         }
         finally { localizando = false; }

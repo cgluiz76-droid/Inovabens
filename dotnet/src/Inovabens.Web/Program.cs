@@ -110,8 +110,15 @@ if (args.Contains("migrar")) return;
 if (args.Contains("localizar-imoveis"))
 {
     using var escopo = app.Services.CreateScope();
-    var r = await escopo.ServiceProvider.GetRequiredService<Inovabens.Core.Imoveis.LocalizacaoLoteService>()
-        .LocalizarPendentesAsync(Console.WriteLine);
+    var lote = escopo.ServiceProvider.GetRequiredService<Inovabens.Core.Imoveis.LocalizacaoLoteService>();
+    // --refinar=CA0001,TE0002: refaz esses pelo endereço completo e só troca quando o ponto novo é exato
+    if (args.FirstOrDefault(a => a.StartsWith("--refinar=")) is { } refinar)
+    {
+        var codigos = refinar["--refinar=".Length..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var rr = await lote.RefinarAsync(codigos, Console.WriteLine);
+        Console.WriteLine($"Refino concluído: {rr.Refinados} de {rr.Total} com ponto exato; mantidos: {rr.Mantidos.Count}.");
+    }
+    var r = await lote.LocalizarPendentesAsync(Console.WriteLine);
     Console.WriteLine($"Concluído: {r.Pendentes} sem coordenadas; {r.PeloEndereco} pelo endereço, {r.PelaRua} pela rua, " +
                       $"{r.PeloBairro} pelo bairro; {r.NaoEncontrados.Count} não encontrados" +
                       (r.NaoEncontrados.Count > 0 ? $" ({string.Join(", ", r.NaoEncontrados)})." : "."));

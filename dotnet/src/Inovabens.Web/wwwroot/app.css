@@ -988,15 +988,25 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
     box-shadow: 0 0 0 6px rgb(29 78 216 / .28), 0 4px 10px rgb(0 0 0 / .4); transition: transform var(--dur) var(--curva); }
 .grupo-alfinetes:hover { transform: scale(1.1); }
 
-/* balões do MapLibre */
-.resumo-imovel .maplibregl-popup-content { padding: 0; overflow: hidden; border-radius: 14px; box-shadow: 0 10px 30px rgb(0 0 0 / .35); }
+/* camada dos alfinetes sobre o Google Maps: cada marca é posicionada pelo JS (translate) e ancorada aqui */
+.camada-alfinetes { position: absolute; left: 0; top: 0; }
+.posicao-alfinete, .posicao-grupo, .posicao-resumo { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.posicao-alfinete > .alfinete { position: absolute; left: 0; bottom: 0; transform: translateX(-50%); }
+.posicao-alfinete > .alfinete:hover, .posicao-alfinete > .alfinete:focus-visible { transform: translateX(-50%) scale(1.12); transform-origin: 50% 100%; }
+.posicao-alfinete:hover, .posicao-alfinete:focus-within { z-index: 10; }
+.posicao-grupo > .grupo-alfinetes { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); }
+.posicao-grupo > .grupo-alfinetes:hover { transform: translate(-50%, -50%) scale(1.1); }
+.posicao-resumo { z-index: 20; pointer-events: none; }
+/* resumo ao passar o mouse: acima do pino */
+.resumo-imovel { position: absolute; left: 0; bottom: 48px; transform: translateX(-50%); width: 280px; background: #fff; color: var(--texto);
+    overflow: hidden; border-radius: 14px; box-shadow: 0 10px 30px rgb(0 0 0 / .35); }
 .resumo-imovel img { display: block; width: 100%; height: 130px; object-fit: cover; }
 .resumo-corpo { display: grid; gap: 2px; padding: var(--e-3) var(--e-3) var(--e-3); font-size: var(--t-sm); }
 .resumo-ref { font-size: var(--t-xs); font-weight: var(--p-medio); color: var(--acento); letter-spacing: var(--l-12); }
 .resumo-local { color: var(--mudo); }
 .resumo-corpo strong { font-size: var(--t-base); }
 .resumo-dica { margin-top: 2px; font-size: var(--t-xs); color: var(--mudo); }
-.lista-imoveis .maplibregl-popup-content { padding: var(--e-2); border-radius: var(--raio); }
+.lista-imoveis { padding: var(--e-1) 0; color: var(--texto); font-family: var(--fonte); }
 .lista-titulo { padding: 2px var(--e-1) var(--e-2); font-size: var(--t-xs); font-weight: 600; color: var(--mudo); }
 .lista-imoveis a { display: flex; gap: var(--e-2); align-items: center; padding: var(--e-1); border-radius: var(--raio-p); color: inherit; font-size: var(--t-sm); }
 .lista-imoveis a:hover { background: var(--acento-suave); text-decoration: none; }

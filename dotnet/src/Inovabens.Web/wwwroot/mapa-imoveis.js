@@ -1,52 +1,42 @@
-// Mapa de imóveis em tela cheia (menu Imóveis → Mapa).
-// MapLibre GL JS (WebGL: zoom e arraste suaves, sem chave de API) + Supercluster para agrupar alfinetes próximos.
-// Base "Satélite" = Esri World Imagery com nomes de lugares; base "Ruas" = OpenFreeMap (vetorial, gratuito).
-// Cada imóvel é um alfinete HTML com a referência e o preço; passar o mouse mostra o resumo, clicar abre a página
-// do imóvel no site. Os alfinetes são HTML (não camadas do estilo), por isso continuam ao trocar a base.
+// Mapa de imóveis em tela cheia (menu Imóveis → Mapa), com o Google Maps JavaScript API.
+// Base "Satélite" = hybrid (satélite com nomes de ruas); base "Ruas" = roadmap. Supercluster agrupa alfinetes próximos.
+// Cada imóvel é um alfinete HTML (referência + preço) numa camada própria (OverlayView, sem precisar de Map ID);
+// passar o mouse mostra o resumo, clicar abre a página do imóvel no site.
 
-const CDN = "https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.15.0/";
 const SUPERCLUSTER = "https://cdn.jsdelivr.net/npm/supercluster@8.0.1/dist/supercluster.min.js";
+const ZOOM_MAXIMO = 20;
 
 /** Sem filtro: São José do Rio Preto, raio de ~20 km (o usuário amplia depois). */
 const RIO_PRETO = { lat: -20.8197, lng: -49.3794, raioKm: 20 };
 
-const ESTILO_SATELITE = {
-    version: 8,
-    sources: {
-        satelite: {
-            type: "raster", tileSize: 256, maxzoom: 19,
-            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-            attribution: "Imagens © Esri, Maxar, Earthstar Geographics",
-        },
-        rotulos: {
-            type: "raster", tileSize: 256, maxzoom: 19,
-            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"],
-        },
-    },
-    layers: [
-        { id: "satelite", type: "raster", source: "satelite" },
-        { id: "rotulos", type: "raster", source: "rotulos" },
-    ],
-};
-const ESTILO_RUAS = "https://tiles.openfreemap.org/styles/liberty";
+const mapas = new Map();
+
+function script(src) {
+    return new Promise((ok, erro) => {
+        const s = document.createElement("script");
+        s.src = src; s.async = true; s.onload = ok;
+        s.onerror = () => erro(new Error("Não foi possível carregar o mapa do Google. Confira a conexão."));
+        document.head.appendChild(s);
+    });
+}
 
 let carregando;
-function carregarBibliotecas() {
-    if (window.maplibregl && window.Supercluster) return Promise.resolve();
+function carregarBibliotecas(chave) {
+    if (window.google?.maps?.OverlayView && window.Supercluster) return Promise.resolve();
     carregando ??= (async () => {
-        if (!document.querySelector(`link[href="${CDN}maplibre-gl.min.css"]`)) {
-            const l = document.createElement("link");
-            l.rel = "stylesheet"; l.href = CDN + "maplibre-gl.min.css";
-            document.head.appendChild(l);
+        if (!window.Supercluster) await script(SUPERCLUSTER);
+        if (!window.google?.maps?.OverlayView) {
+            const pronto = new Promise((ok) => { window.__inovabensMapaPronto = ok; });
+            // chave recusada (restrição de site, API não ativada, sem faturamento): o Google chama esta função
+            window.gm_authFailure = () => {
+                for (const e of mapas.values())
+                    e.dotnet.invokeMethodAsync("MapaFalhou", "O Google recusou a chave do mapa. Confira em Administração → Configurações → Google Maps (Maps JavaScript API ativada e o endereço do sistema liberado na chave).").catch(() => { });
+            };
+            await script("https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(chave)
+                + "&v=weekly&language=pt-BR&region=BR&loading=async&callback=__inovabensMapaPronto");
+            await pronto;
         }
-        for (const src of [CDN + "maplibre-gl.min.js", SUPERCLUSTER]) {
-            await new Promise((ok, erro) => {
-                const s = document.createElement("script");
-                s.src = src; s.onload = ok; s.onerror = () => erro(new Error("Não foi possível carregar o mapa (" + src + ")."));
-                document.head.appendChild(s);
-            });
-        }
-    })();
+    })().catch((e) => { carregando = null; throw e; });
     return carregando;
 }
 
@@ -63,42 +53,73 @@ function precoCurto(v) {
 function caixaDoRaio({ lat, lng, raioKm }) {
     const dLat = raioKm / 111.32;
     const dLng = raioKm / (111.32 * Math.cos(lat * Math.PI / 180));
-    return [[lng - dLng, lat - dLat], [lng + dLng, lat + dLat]];
+    return { south: lat - dLat, north: lat + dLat, west: lng - dLng, east: lng + dLng };
 }
 
-const mapas = new Map();
+/** Camada com os alfinetes e o resumo em HTML, posicionados pela projeção do mapa a cada movimento. */
+function criarCamada() {
+    const g = window.google.maps;
+    return new (class extends g.OverlayView {
+        constructor() {
+            super();
+            this.marcas = [];
+            this.div = document.createElement("div");
+            this.div.className = "camada-alfinetes";
+            g.OverlayView.preventMapHitsAndGesturesFrom(this.div);
+        }
+        onAdd() { this.getPanes().overlayMouseTarget.appendChild(this.div); }
+        onRemove() { this.div.remove(); }
+        draw() {
+            const proj = this.getProjection();
+            if (!proj) return;
+            for (const m of this.marcas) {
+                const p = proj.fromLatLngToDivPixel(m.pos);
+                if (p) m.el.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px)`;
+            }
+        }
+        /** marcas: [{ chave, el, pos }] — mantém os elementos que continuam e troca o resto. */
+        definir(marcas) {
+            const novas = new Set(marcas.map((m) => m.el));
+            for (const m of this.marcas) if (!novas.has(m.el)) m.el.remove();
+            for (const m of marcas) if (m.el.parentNode !== this.div) this.div.appendChild(m.el);
+            this.marcas = marcas;
+            this.draw();
+        }
+    })();
+}
 
-export async function iniciar(elemento, dotnet) {
-    await carregarBibliotecas();
-    const ml = window.maplibregl;
-    const mapa = new ml.Map({
-        container: elemento,
-        style: ESTILO_SATELITE,
-        bounds: caixaDoRaio(RIO_PRETO),
-        maxZoom: 19,
-        attributionControl: { compact: true },
-        cooperativeGestures: false,
+export async function iniciar(elemento, dotnet, chave) {
+    await carregarBibliotecas(chave);
+    const g = window.google.maps;
+    const mapa = new g.Map(elemento, {
+        mapTypeId: "hybrid",
+        maxZoom: ZOOM_MAXIMO,
+        gestureHandling: "greedy",
+        clickableIcons: false,
+        disableDefaultUI: true,
+        zoomControl: true,
+        zoomControlOptions: { position: g.ControlPosition.RIGHT_BOTTOM },
+        scaleControl: true,
+        tilt: 0,
     });
-    mapa.addControl(new ml.NavigationControl({ visualizePitch: true }), "bottom-right");
-    mapa.addControl(new ml.ScaleControl({ unit: "metric" }), "bottom-left");
+    mapa.fitBounds(caixaDoRaio(RIO_PRETO), 0);
 
+    const camada = criarCamada();
+    camada.setMap(mapa);
     const estado = {
-        mapa, dotnet, itens: [], porId: new Map(), indice: null, marcas: new Map(),
-        resumo: new ml.Popup({ closeButton: false, closeOnClick: false, offset: [0, -48], maxWidth: "280px", className: "resumo-imovel" }),
-        lista: new ml.Popup({ closeButton: true, closeOnClick: true, offset: 18, maxWidth: "300px", className: "lista-imoveis" }),
+        mapa, dotnet, camada, itens: [], porId: new Map(), indice: null, elementos: new Map(), resumo: null,
+        lista: new g.InfoWindow({ maxWidth: 300 }),
     };
-    mapa.on("moveend", () => atualizar(estado));
+    estado.ouvinte = mapa.addListener("idle", () => atualizar(estado));
+    mapa.addListener("click", () => estado.lista.close());
     estado.tecla = (e) => { if (e.key === "Escape") dotnet.invokeMethodAsync("Fechar").catch(() => { }); };
     document.addEventListener("keydown", estado.tecla);
-    estado.observador = new ResizeObserver(() => mapa.resize());
-    estado.observador.observe(elemento);
     mapas.set(elemento, estado);
 }
 
-/** Troca a base (Satélite / Ruas). Os alfinetes são HTML e continuam no lugar. */
+/** Troca a base (Satélite / Ruas). */
 export function base(elemento, nome) {
-    const estado = mapas.get(elemento);
-    estado?.mapa.setStyle(nome === "ruas" ? ESTILO_RUAS : ESTILO_SATELITE);
+    mapas.get(elemento)?.mapa.setMapTypeId(nome === "ruas" ? "roadmap" : "hybrid");
 }
 
 /**
@@ -110,53 +131,61 @@ export function desenhar(elemento, itens, focoPadrao) {
     if (!estado) return;
     estado.itens = itens;
     estado.porId = new Map(itens.map((i) => [i.id, i]));
-    estado.indice = new window.Supercluster({ radius: 56, maxZoom: 20 }).load(itens.map((i) => ({
+    estado.indice = new window.Supercluster({ radius: 56, maxZoom: ZOOM_MAXIMO }).load(itens.map((i) => ({
         type: "Feature", geometry: { type: "Point", coordinates: [i.lng, i.lat] }, properties: { id: i.id },
     })));
-    for (const m of estado.marcas.values()) m.remove();
-    estado.marcas.clear();
-    estado.resumo.remove();
-    estado.lista.remove();
+    estado.elementos.clear();
+    esconderResumo(estado);
+    estado.lista.close();
 
     if (focoPadrao || itens.length === 0) {
-        estado.mapa.fitBounds(caixaDoRaio(RIO_PRETO), { duration: 0 });
+        estado.mapa.fitBounds(caixaDoRaio(RIO_PRETO), 0);
     } else if (itens.length === 1) {
-        estado.mapa.jumpTo({ center: [itens[0].lng, itens[0].lat], zoom: 16 });
+        estado.mapa.setCenter({ lat: itens[0].lat, lng: itens[0].lng });
+        estado.mapa.setZoom(16);
     } else {
         const lngs = itens.map((i) => i.lng), lats = itens.map((i) => i.lat);
-        estado.mapa.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-            { padding: { top: 90, bottom: 60, left: 60, right: 60 }, maxZoom: 16, duration: 0 });
+        estado.mapa.fitBounds({ south: Math.min(...lats), north: Math.max(...lats), west: Math.min(...lngs), east: Math.max(...lngs) },
+            { top: 90, bottom: 60, left: 60, right: 60 });
+        limitarZoom(estado.mapa, 16);
     }
     atualizar(estado);
 }
 
-/** Recalcula grupos e alfinetes para o trecho visível (só cria o que mudou). */
+/** Depois de enquadrar, não aproxima além de z (um grupo pequeno não vira um close no telhado). */
+function limitarZoom(mapa, z) {
+    window.google.maps.event.addListenerOnce(mapa, "idle", () => { if (mapa.getZoom() > z) mapa.setZoom(z); });
+}
+
+/** Recalcula grupos e alfinetes para o trecho visível (reaproveita os elementos que continuam). */
 function atualizar(estado) {
-    if (!estado.indice) return;
-    const ml = window.maplibregl;
     const b = estado.mapa.getBounds();
+    if (!estado.indice || !b) return;
+    const sw = b.getSouthWest(), ne = b.getNorthEast();
     const zoom = Math.floor(estado.mapa.getZoom());
-    const grupos = estado.indice.getClusters([b.getWest() - 0.05, b.getSouth() - 0.05, b.getEast() + 0.05, b.getNorth() + 0.05], zoom);
-    const vistos = new Set();
-    for (const g of grupos) {
-        const p = g.properties;
+    const grupos = estado.indice.getClusters([sw.lng() - 0.05, sw.lat() - 0.05, ne.lng() + 0.05, ne.lat() + 0.05], zoom);
+    const marcas = [];
+    const usados = new Map();
+    for (const gr of grupos) {
+        const p = gr.properties;
         const chave = p.cluster ? "g" + p.cluster_id + "_" + zoom : "i" + p.id;
-        vistos.add(chave);
-        if (estado.marcas.has(chave)) continue;
-        const [lng, lat] = g.geometry.coordinates;
-        const el = p.cluster ? elementoGrupo(estado, g) : elementoAlfinete(estado, estado.porId.get(p.id));
-        const marca = new ml.Marker({ element: el, anchor: p.cluster ? "center" : "bottom" }).setLngLat([lng, lat]).addTo(estado.mapa);
-        estado.marcas.set(chave, marca);
+        const el = estado.elementos.get(chave)
+            ?? (p.cluster ? elementoGrupo(estado, gr) : elementoAlfinete(estado, estado.porId.get(p.id)));
+        usados.set(chave, el);
+        const [lng, lat] = gr.geometry.coordinates;
+        marcas.push({ chave, el, pos: new window.google.maps.LatLng(lat, lng) });
     }
-    for (const [chave, m] of estado.marcas) {
-        if (!vistos.has(chave)) { m.remove(); estado.marcas.delete(chave); }
-    }
+    if (estado.resumo) marcas.push(estado.resumo);
+    estado.elementos = usados;
+    estado.camada.definir(marcas);
     // avisa a tela quantos estão no trecho visível
-    const ids = estado.itens.filter((i) => b.contains([i.lng, i.lat])).length;
-    estado.dotnet.invokeMethodAsync("AreaMudou", ids).catch(() => { });
+    const n = estado.itens.filter((i) => b.contains({ lat: i.lat, lng: i.lng })).length;
+    estado.dotnet.invokeMethodAsync("AreaMudou", n).catch(() => { });
 }
 
 function elementoAlfinete(estado, i) {
+    const pos = document.createElement("div");
+    pos.className = "posicao-alfinete";
     const el = document.createElement("button");
     el.type = "button";
     el.className = "alfinete " + (i.cor || "");
@@ -164,13 +193,16 @@ function elementoAlfinete(estado, i) {
     el.innerHTML = `<span class="alfinete-etiqueta"><b>${esc(i.rotulo)}</b><span>${esc(precoCurto(i.preco))}</span></span>`
         + `<svg class="alfinete-icone" viewBox="0 0 24 34" aria-hidden="true"><path d="M12 0C5.4 0 0 5.3 0 11.9 0 20.8 12 34 12 34s12-13.2 12-22.1C24 5.3 18.6 0 12 0z"/><circle cx="12" cy="12" r="4.6"/></svg>`;
     el.addEventListener("mouseenter", () => mostrarResumo(estado, i));
-    el.addEventListener("mouseleave", () => estado.resumo.remove());
-    el.addEventListener("click", (e) => { e.stopPropagation(); abrirSite(i); });
-    return el;
+    el.addEventListener("mouseleave", () => esconderResumo(estado));
+    el.addEventListener("click", (e) => { e.stopPropagation(); window.open(i.site, "_blank", "noopener"); });
+    pos.appendChild(el);
+    return pos;
 }
 
-function elementoGrupo(estado, g) {
-    const n = g.properties.point_count;
+function elementoGrupo(estado, gr) {
+    const n = gr.properties.point_count;
+    const pos = document.createElement("div");
+    pos.className = "posicao-grupo";
     const el = document.createElement("button");
     el.type = "button";
     el.className = "grupo-alfinetes";
@@ -180,40 +212,54 @@ function elementoGrupo(estado, g) {
     el.setAttribute("aria-label", n + " imóveis — aproximar");
     el.addEventListener("click", (e) => {
         e.stopPropagation();
-        const id = g.properties.cluster_id;
+        const id = gr.properties.cluster_id;
         const zoom = estado.indice.getClusterExpansionZoom(id);
-        if (zoom > estado.mapa.getMaxZoom()) {
+        const [lng, lat] = gr.geometry.coordinates;
+        if (zoom > ZOOM_MAXIMO) {
             // mesmo ponto (ex.: lotes no mesmo endereço): lista para escolher
             const folhas = estado.indice.getLeaves(id, Infinity).map((f) => estado.porId.get(f.properties.id));
-            estado.lista.setLngLat(g.geometry.coordinates).setHTML(
-                `<div class="lista-titulo">${n} imóveis neste ponto</div>` + folhas.map((i) =>
-                    `<a href="${esc(i.site)}" target="_blank" rel="noopener">${i.capa ? `<img src="${esc(i.capa)}" alt="">` : "<span class=\"sem-capa\"></span>"}`
-                    + `<span><b>${esc(i.rotulo)}</b> · ${esc(precoCurto(i.preco))}<br><small>${esc(i.titulo)}</small></span></a>`).join(""),
-            ).addTo(estado.mapa);
+            const div = document.createElement("div");
+            div.className = "lista-imoveis";
+            div.innerHTML = `<div class="lista-titulo">${n} imóveis neste ponto</div>` + folhas.map((i) =>
+                `<a href="${esc(i.site)}" target="_blank" rel="noopener">${i.capa ? `<img src="${esc(i.capa)}" alt="">` : "<span class=\"sem-capa\"></span>"}`
+                + `<span><b>${esc(i.rotulo)}</b> · ${esc(precoCurto(i.preco))}<br><small>${esc(i.titulo)}</small></span></a>`).join("");
+            estado.lista.setContent(div);
+            estado.lista.setPosition({ lat, lng });
+            estado.lista.open({ map: estado.mapa });
         } else {
-            estado.mapa.easeTo({ center: g.geometry.coordinates, zoom });
+            estado.mapa.panTo({ lat, lng });
+            estado.mapa.setZoom(zoom);
         }
     });
-    return el;
+    pos.appendChild(el);
+    return pos;
 }
 
 function mostrarResumo(estado, i) {
+    const el = document.createElement("div");
+    el.className = "posicao-resumo";
     const capa = i.capa ? `<img src="${esc(i.capa)}" alt="" loading="lazy">` : "";
-    estado.resumo.setLngLat([i.lng, i.lat]).setHTML(
-        `${capa}<div class="resumo-corpo"><span class="resumo-ref">${esc(i.rotulo)} · ${esc(i.situacao)}</span>`
+    el.innerHTML = `<div class="resumo-imovel">${capa}<div class="resumo-corpo"><span class="resumo-ref">${esc(i.rotulo)} · ${esc(i.situacao)}</span>`
         + `<b>${esc(i.titulo)}</b><span class="resumo-local">${esc(i.local)}</span><strong>${esc(i.precoCheio)}</strong>`
-        + `<span class="resumo-dica">Clique para abrir no site</span></div>`).addTo(estado.mapa);
+        + `<span class="resumo-dica">Clique para abrir no site</span></div></div>`;
+    estado.resumo = { chave: "resumo", el, pos: new window.google.maps.LatLng(i.lat, i.lng) };
+    estado.camada.definir([...estado.camada.marcas.filter((m) => m.chave !== "resumo"), estado.resumo]);
 }
 
-function abrirSite(i) {
-    window.open(i.site, "_blank", "noopener");
+function esconderResumo(estado) {
+    if (!estado.resumo) return;
+    estado.resumo.el.remove();
+    estado.camada.marcas = estado.camada.marcas.filter((m) => m.chave !== "resumo");
+    estado.resumo = null;
 }
 
 export function destruir(elemento) {
     const estado = mapas.get(elemento);
     if (!estado) return;
     document.removeEventListener("keydown", estado.tecla);
-    estado.observador.disconnect();
-    estado.mapa.remove();
+    estado.ouvinte.remove();
+    estado.lista.close();
+    estado.camada.setMap(null);
+    window.google.maps.event.clearInstanceListeners(estado.mapa);
     mapas.delete(elemento);
 }

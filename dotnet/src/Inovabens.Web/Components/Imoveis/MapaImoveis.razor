@@ -1,8 +1,9 @@
-@* Mapa de imóveis em tela cheia (menu Imóveis → Mapa), desenhado por wwwroot/mapa-imoveis.js (MapLibre GL).
+@* Mapa de imóveis em tela cheia (menu Imóveis → Mapa), desenhado por wwwroot/mapa-imoveis.js (Google Maps JavaScript API).
    Recebe os imóveis já filtrados pela página; os filtros ficam na barra do topo; ✕ ou Esc fecha.
    Clicar num alfinete abre a página do imóvel no site. Sem filtro ativo, abre em Rio Preto (raio de 20 km). *@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject InovabensOpcoes Op
 
 <div class="mapa-tela-cheia" role="dialog" aria-modal="true" aria-label="Mapa de imóveis">
     <header class="mapa-topo">
@@ -75,9 +76,15 @@
         {
             if (primeira)
             {
+                if (Op.Integracoes.GoogleMapsChaveMapa is not { } chave)
+                {
+                    erro = "Falta a chave do mapa do Google Maps (Administração → Configurações → Google Maps).";
+                    StateHasChanged();
+                    return;
+                }
                 modulo = await JS.InvokeAsync<IJSObjectReference>("import", "./mapa-imoveis.js");
                 referencia = DotNetObjectReference.Create(this);
-                await modulo.InvokeVoidAsync("iniciar", elemento, referencia);
+                await modulo.InvokeVoidAsync("iniciar", elemento, referencia, chave);
             }
             if (modulo is not null && !ReferenceEquals(desenhados, Itens))
             {
@@ -124,6 +131,9 @@
         naArea = quantos;
         return InvokeAsync(StateHasChanged);
     }
+
+    [JSInvokable]
+    public Task MapaFalhou(string mensagem) => InvokeAsync(() => { erro = mensagem; StateHasChanged(); });
 
     [JSInvokable]
     public Task Fechar() => InvokeAsync(() => AoFechar.InvokeAsync());
