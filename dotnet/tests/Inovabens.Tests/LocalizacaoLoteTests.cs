@@ -27,6 +27,11 @@ public class LocalizacaoLoteTests
         Assert.Equal(esperada, GeocodificacaoService.PrecisaoGoogle(tipo));
 
     [Fact]
+    public void Recusa_por_falta_de_faturamento_vira_mensagem_clara() =>
+        Assert.Contains("faturamento", GeocodificacaoService.MensagemRecusa("REQUEST_DENIED",
+            "You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable"));
+
+    [Fact]
     public void Mantem_o_numero_e_pula_o_que_falta()
     {
         var t = LocalizacaoLoteService.Tentativas("Nove de Julho", "1504", null, "Mirassol", "SP", null).ToList();

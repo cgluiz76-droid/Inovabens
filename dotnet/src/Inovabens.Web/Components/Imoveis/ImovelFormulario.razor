@@ -289,10 +289,17 @@
         erroCoordenadas = null;
         try
         {
-            if (!Geo.Configurado) erroCoordenadas = "Falta a chave do Google Maps (Administração → Configurações → Google Maps).";
-            else if (await Geo.LocalizarAsync(endereco) is { } c) DefinirCoordenadas(RegrasImovel.FormatarCoordenadas(c.Latitude, c.Longitude));
+            if (await Geo.LocalizarComPrecisaoAsync(endereco) is { } c)
+            {
+                DefinirCoordenadas(RegrasImovel.FormatarCoordenadas(c.Latitude, c.Longitude));
+                if (c.Precisao != PrecisaoLocal.Exata)
+                    erroCoordenadas = c.Precisao == PrecisaoLocal.Rua
+                        ? "O Google achou a rua, mas não o número: o ponto ficou no meio da rua. Confira no mapa."
+                        : "O Google achou só a região (bairro/cidade): confira o endereço ou cole as coordenadas do Google Maps.";
+            }
             else erroCoordenadas = "Endereço não encontrado no mapa. Confira o endereço ou cole as coordenadas do Google Maps.";
         }
+        catch (ServicoIndisponivelException e) { erroCoordenadas = e.Message; }
         finally { localizando = false; }
     }
 
