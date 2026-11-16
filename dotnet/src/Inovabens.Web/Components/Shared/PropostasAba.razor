@@ -3,7 +3,6 @@
 @inherits ComponenteBase
 @inject PropostasService Servico
 @inject DocumentosService Documentos
-@inject IJSRuntime JS
 
 @{
     var propostas = Propostas;
@@ -111,8 +110,8 @@
                     }
                     @if (PodeExcluir)
                     {
-                        <button type="button" class="btn-ghost mini texto-erro" disabled="@Ocupado" title="Excluir esta proposta"
-                                aria-label="Excluir a proposta nº @p.Numero" @onclick="() => Excluir(d)"><Icone Nome="lixeira" /></button>
+                        <button type="button" class="btn-perigo mini" disabled="@Ocupado" title="Excluir esta proposta"
+                                aria-label="Excluir a proposta nº @p.Numero" @onclick="() => Excluir(d)"><Icone Nome="lixeira" />Excluir</button>
                     }
                     </div>
                 </li>
@@ -158,6 +157,9 @@
     </Modal>
 }
 
+
+<ConfirmarExclusao @ref="confirmar" />
+
 @code {
     private enum Decisao { Aceitar, Recusar, Cancelar }
 
@@ -181,6 +183,7 @@
     private bool PodeDecidir => Usuario.Pode(Permissoes.CrmPropostasDecidir);
     /// <summary>Excluir proposta (perfil Administrador); fica registrado na Auditoria.</summary>
     private bool PodeExcluir => Usuario.Pode(Permissoes.CrmExcluir);
+    private ConfirmarExclusao confirmar = default!;
 
     private string TituloDecisao => decisao switch
     {
@@ -259,7 +262,7 @@
 
     private async Task Excluir(PropostaDetalhe d)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir a proposta nº {d.Dados.Numero} ({d.ImovelCodigo})? A exclusão fica registrada na Auditoria.")) return;
+        if (!await confirmar.PerguntarAsync($"a proposta nº {d.Dados.Numero} ({d.ImovelCodigo}, {Texto.Moeda(d.Dados.ValorTotal)})", "Os itens da proposta também são excluídos.")) return;
         if (await Executar(() => Servico.ExcluirAsync(Usuario, d.Dados.Id))) await Alterado();
     }
 }

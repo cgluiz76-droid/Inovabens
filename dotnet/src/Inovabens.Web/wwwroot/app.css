@@ -765,8 +765,7 @@ select.input.mini { padding-right: 1.6rem; background-position: right .45rem cen
 .evento-titulo { font-size: var(--t-sm); }
 .evento-estagio .evento-titulo, .evento-dados .evento-titulo { color: var(--mudo); }
 .evento > div { flex: 1; min-width: 0; }
-.evento-excluir { align-self: flex-start; opacity: .55; }
-.evento:hover .evento-excluir, .evento-excluir:focus-visible { opacity: 1; }
+.evento-excluir { align-self: flex-start; flex: none; }
 .lista-simples li.encerrada { color: var(--mudo); }
 .lista-imoveis-lead { list-style: none; margin: 0 0 var(--e-4); padding: 0; }
 .lista-imoveis-lead li { display: flex; justify-content: space-between; align-items: center; gap: var(--e-3); padding: var(--e-2) 0; border-bottom: 1px solid var(--borda); }

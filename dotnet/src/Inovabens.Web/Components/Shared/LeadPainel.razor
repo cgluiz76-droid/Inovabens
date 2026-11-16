@@ -32,6 +32,10 @@
                     <h2>@p.NomeRazao</h2>
                 </div>
                 <div class="painel-nav">
+                    @if (PodeExcluir)
+                    {
+                        <button type="button" class="btn-perigo mini" title="Excluir este lead" disabled="@Ocupado" @onclick="ExcluirLead"><Icone Nome="lixeira" />Excluir lead</button>
+                    }
                     <button type="button" class="btn-ghost mini" aria-label="Lead anterior" title="Lead anterior da coluna" disabled="@(Anterior is null)" @onclick="() => AoNavegar.InvokeAsync(Anterior!.Value)">‹</button>
                     <button type="button" class="btn-ghost mini" aria-label="Próximo lead" title="Próximo lead da coluna" disabled="@(Proximo is null)" @onclick="() => AoNavegar.InvokeAsync(Proximo!.Value)">›</button>
                     <button type="button" class="btn-ghost mini" aria-label="Fechar" title="Fechar (Esc)" @onclick="AoFechar"><Icone Nome="x" /></button>
@@ -197,8 +201,8 @@
                                     </div>
                                     @if (PodeExcluir && e.AcaoId is { } acaoId)
                                     {
-                                        <button type="button" class="btn-ghost mini texto-erro evento-excluir" disabled="@Ocupado" title="Excluir esta ação"
-                                                aria-label="Excluir a ação @e.Titulo" @onclick="() => ExcluirAcao(acaoId)"><Icone Nome="lixeira" /></button>
+                                        <button type="button" class="btn-perigo mini evento-excluir" disabled="@Ocupado" title="Excluir esta ação"
+                                                aria-label="Excluir a ação @e.Titulo" @onclick="() => ExcluirAcao(acaoId)"><Icone Nome="lixeira" />Excluir</button>
                                     }
                                 </li>
                             }
@@ -234,8 +238,8 @@
                                     }
                                     @if (PodeExcluir)
                                     {
-                                        <button type="button" class="btn-ghost mini texto-erro" disabled="@Ocupado" title="Excluir esta atividade"
-                                                aria-label="Excluir a atividade @c.Titulo" @onclick="() => ExcluirAtividade(c)"><Icone Nome="lixeira" /></button>
+                                        <button type="button" class="btn-perigo mini" disabled="@Ocupado" title="Excluir esta atividade"
+                                                aria-label="Excluir a atividade @c.Titulo" @onclick="() => ExcluirAtividade(c)"><Icone Nome="lixeira" />Excluir</button>
                                     }
                                 </li>
                             }
@@ -290,7 +294,7 @@
                         {
                             <div class="acoes">
                                 <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
-                                @if (Usuario.Pode(Permissoes.CrmExcluir))
+                                @if (PodeExcluir)
                                 {
                                     <button type="button" class="btn-ghost texto-erro" disabled="@Ocupado" @onclick="ExcluirLead">Excluir lead</button>
                                 }
@@ -347,6 +351,9 @@
     }
 </aside>
 
+
+<ConfirmarExclusao @ref="confirmar" />
+
 @code {
     private enum Aba { Linha, Atividades, Imoveis, Propostas, Dados }
 
@@ -366,6 +373,7 @@
     [Parameter] public EventCallback<Guid> AoNavegar { get; set; }
 
     private ElementReference raiz;
+    private ConfirmarExclusao confirmar = default!;
     private Guid carregado;
     private Aba aba = Aba.Linha;
     private TipoEventoLead? filtro;
@@ -512,19 +520,20 @@
 
     private async Task ExcluirAcao(Guid acaoId)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Excluir esta ação da linha do tempo? A exclusão fica registrada na Auditoria.")) return;
+        var texto = eventos.FirstOrDefault(e => e.AcaoId == acaoId)?.Titulo ?? "";
+        if (!await confirmar.PerguntarAsync("esta ação da linha do tempo", $"“{texto}”")) return;
         if (await Executar(() => Servico.ExcluirAcaoAsync(Usuario, LeadId, acaoId))) await Alterado();
     }
 
     private async Task ExcluirAtividade(Compromisso c)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir a atividade \"{c.Titulo}\"? Ela sai da agenda. A exclusão fica registrada na Auditoria.")) return;
+        if (!await confirmar.PerguntarAsync($"a atividade “{c.Titulo}” ({Texto.DataHora(c.InicioEm)})", "Ela também sai da agenda e do Google Agenda.")) return;
         if (await Executar(() => Servico.ExcluirAtividadeAsync(Usuario, LeadId, c.Id))) await Alterado();
     }
 
     private async Task ExcluirLead()
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Excluir este lead? A exclusão fica registrada na Auditoria.")) return;
+        if (!await confirmar.PerguntarAsync($"o lead de {detalhe?.Pessoa.NomeRazao ?? "este cliente"}", "Saem do CRM o lead, as ações e o funil dele.")) return;
         if (!await Executar(() => Servico.ExcluirAsync(Usuario, LeadId))) return;
         await AoAlterar.InvokeAsync();
         await AoFechar.InvokeAsync();

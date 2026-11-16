@@ -1,0 +1,43 @@
+@* Janela de confirmação antes de excluir definitivamente. Uso: <ConfirmarExclusao @ref="confirmar" /> e
+   if (!await confirmar.PerguntarAsync("Lead de Fulano")) return; *@
+
+@if (pergunta is not null)
+{
+    <Modal Titulo="Excluir definitivamente?" AoFechar="() => Responder(false)">
+        <p>Você vai excluir: <strong>@pergunta</strong></p>
+        @if (detalhe is not null)
+        {
+            <p>@detalhe</p>
+        }
+        <p class="pequeno mudo">Depois de excluído, o registro some do sistema. Fica guardado na Auditoria quem excluiu, quando e o que foi excluído.</p>
+        <div class="acoes">
+            <button type="button" class="btn-perigo" @onclick="() => Responder(true)"><Icone Nome="lixeira" />Excluir definitivamente</button>
+            <button type="button" class="btn-ghost" @onclick="() => Responder(false)">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@code {
+    private string? pergunta;
+    private string? detalhe;
+    private TaskCompletionSource<bool>? resposta;
+
+    /// <summary>Abre a janela e espera a resposta: true = excluir, false = cancelou.</summary>
+    public Task<bool> PerguntarAsync(string oQue, string? detalhe = null)
+    {
+        resposta?.TrySetResult(false);
+        resposta = new TaskCompletionSource<bool>();
+        pergunta = oQue;
+        this.detalhe = detalhe;
+        StateHasChanged();
+        return resposta.Task;
+    }
+
+    private void Responder(bool excluir)
+    {
+        pergunta = null;
+        detalhe = null;
+        resposta?.TrySetResult(excluir);
+        resposta = null;
+    }
+}

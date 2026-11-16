@@ -278,6 +278,9 @@ else
                 AoMover="MoverPeloPainel" AoAgendar="AgendarPeloPainel" AoNavegar="Abrir" />
 }
 
+
+<ConfirmarExclusao @ref="confirmar" />
+
 @code {
     /// <summary>Quadro do funil (colunas e cartões); nas raias, um por responsável.</summary>
     private RenderFragment Quadro(IReadOnlyList<ColunaFunil> cols, bool comIds = false) => @<div class="kanban @(leadAberto is null ? "" : "com-painel")">
@@ -362,23 +365,30 @@ else
                         }
                         <div class="cartao-rodape">
                             <span class="pequeno mudo">@(l.NaFila ? "🙋 Fila aberta" : $"👤 {l.ResponsavelNome}")@(l.Origem is null ? "" : $" · {l.Origem}")</span>
-                            @if (PodeMover && abre)
+                            @if ((PodeMover || PodeExcluir) && abre)
                             {
                                 <span class="cartao-botoes">
-                                    @if (!perdido)
+                                    @if (PodeMover && !perdido)
                                     {
                                         <button class="btn-icone" title="Agendar atividade" aria-label="Agendar atividade" @onclick="() => AbrirAgendar(l)">+</button>
                                     }
                                     <details class="menu-cartao">
                                         <summary class="btn-icone" title="Mais ações" aria-label="Mais ações">⋯</summary>
                                         <div class="menu-cartao-itens">
-                                            <label class="pequeno">Mover para</label>
-                                            <select class="input mini" value="@col.Estagio.Id" @onchange="e => Mover(l, e.Value?.ToString())" aria-label="Mover para">
-                                                @foreach (var e in colunas!)
-                                                {
-                                                    <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
-                                                }
-                                            </select>
+                                            @if (PodeMover)
+                                            {
+                                                <label class="pequeno">Mover para</label>
+                                                <select class="input mini" value="@col.Estagio.Id" @onchange="e => Mover(l, e.Value?.ToString())" aria-label="Mover para">
+                                                    @foreach (var e in colunas!)
+                                                    {
+                                                        <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
+                                                    }
+                                                </select>
+                                            }
+                                            @if (PodeExcluir)
+                                            {
+                                                <button type="button" class="btn-perigo mini" disabled="@Ocupado" @onclick="() => ExcluirLead(l)"><Icone Nome="lixeira" />Excluir lead</button>
+                                            }
                                         </div>
                                     </details>
                                 </span>
@@ -640,6 +650,17 @@ else
     /* ---- arrastar e soltar: o cartão vai para a coluna (ou para antes do cartão) onde for solto ---- */
 
     private bool PodeMover => Usuario.Pode(Permissoes.CrmEditar);
+    /// <summary>Excluir lead pelo menu do cartão (perfil Administrador); fica registrado na Auditoria.</summary>
+    private bool PodeExcluir => Usuario.Pode(Permissoes.CrmExcluir);
+    private ConfirmarExclusao confirmar = default!;
+
+    private async Task ExcluirLead(LeadCartao l)
+    {
+        if (!await confirmar.PerguntarAsync($"o lead de {l.PessoaNome}", "Saem do CRM o lead, as ações e o funil dele.")) return;
+        if (!await Executar(() => Servico.ExcluirAsync(Usuario, l.Id))) return;
+        if (leadAberto == l.Id) FecharPainel();
+        await Carregar();
+    }
     private LeadCartao? arrastando;
     private Guid? colunaAlvo;
 
