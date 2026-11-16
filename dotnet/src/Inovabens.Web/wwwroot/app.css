@@ -599,6 +599,7 @@ tr.cancelado td { color: var(--mudo); text-decoration: line-through; }
 .status-PENDENTE { background: var(--acento-suave); color: var(--acento-forte); }
 .status-CONCLUIDO { background: var(--ok-fundo); color: var(--ok); border-color: var(--ok-borda); }
 .status-CANCELADO { background: var(--neutro-fundo); color: var(--mudo); border-color: var(--borda); }
+.badge-exclusao { background: var(--erro-fundo); color: var(--erro); border-color: var(--erro-borda); }
 
 /* ================= Agenda ================= */
 .mes { min-width: 11rem; text-align: center; text-transform: capitalize; font-weight: 600; color: var(--titulo); }
@@ -763,6 +764,9 @@ select.input.mini { padding-right: 1.6rem; background-position: right .45rem cen
     display: inline-flex; align-items: center; justify-content: center; font-size: var(--t-xs); }
 .evento-titulo { font-size: var(--t-sm); }
 .evento-estagio .evento-titulo, .evento-dados .evento-titulo { color: var(--mudo); }
+.evento > div { flex: 1; min-width: 0; }
+.evento-excluir { align-self: flex-start; opacity: .55; }
+.evento:hover .evento-excluir, .evento-excluir:focus-visible { opacity: 1; }
 .lista-simples li.encerrada { color: var(--mudo); }
 .lista-imoveis-lead { list-style: none; margin: 0 0 var(--e-4); padding: 0; }
 .lista-imoveis-lead li { display: flex; justify-content: space-between; align-items: center; gap: var(--e-3); padding: var(--e-2) 0; border-bottom: 1px solid var(--borda); }

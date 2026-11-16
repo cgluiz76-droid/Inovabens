@@ -3,6 +3,7 @@
 @inherits ComponenteBase
 @inject PropostasService Servico
 @inject DocumentosService Documentos
+@inject IJSRuntime JS
 
 @{
     var propostas = Propostas;
@@ -108,6 +109,11 @@
                                 <button type="button" class="btn-ghost mini texto-erro" @onclick="() => AbrirDecisao(d, Decisao.Cancelar)">Cancelar</button>
                             }
                     }
+                    @if (PodeExcluir)
+                    {
+                        <button type="button" class="btn-ghost mini texto-erro" disabled="@Ocupado" title="Excluir esta proposta"
+                                aria-label="Excluir a proposta nº @p.Numero" @onclick="() => Excluir(d)"><Icone Nome="lixeira" /></button>
+                    }
                     </div>
                 </li>
             }
@@ -173,6 +179,8 @@
 
     private bool PodeEditar => Usuario.Pode(Permissoes.CrmEditar);
     private bool PodeDecidir => Usuario.Pode(Permissoes.CrmPropostasDecidir);
+    /// <summary>Excluir proposta (perfil Administrador); fica registrado na Auditoria.</summary>
+    private bool PodeExcluir => Usuario.Pode(Permissoes.CrmExcluir);
 
     private string TituloDecisao => decisao switch
     {
@@ -248,4 +256,10 @@
     }
 
     private Task Alterado() => AoAlterar.InvokeAsync();
+
+    private async Task Excluir(PropostaDetalhe d)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir a proposta nº {d.Dados.Numero} ({d.ImovelCodigo})? A exclusão fica registrada na Auditoria.")) return;
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, d.Dados.Id))) await Alterado();
+    }
 }

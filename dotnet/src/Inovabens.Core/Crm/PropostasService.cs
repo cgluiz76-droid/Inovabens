@@ -241,6 +241,24 @@ public sealed class PropostasService(IDbContextFactory<InovabensDb> fabrica, Aud
     }
 
     /// <summary>Retira a proposta (o cliente desistiu dela, valores errados…). Qualquer um que edita o CRM.</summary>
+    /// <summary>
+    /// Exclui a proposta e os itens dela (só quem tem crm:excluir). A proposta completa fica guardada na auditoria;
+    /// as ações do lead que citam a proposta continuam na linha do tempo.
+    /// </summary>
+    public async Task ExcluirAsync(UsuarioAtual u, Guid id)
+    {
+        u.Exigir(P.CrmExcluir);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var p = await db.Propostas.Include(x => x.Itens).SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Proposta não encontrada.");
+        var nome = await Leads(db, u).Where(l => l.Id == p.LeadId).Select(l => l.Pessoa!.NomeRazao).SingleOrDefaultAsync()
+            ?? throw new NaoEncontradoException("Proposta não encontrada.");
+        var codigo = await db.Imoveis.Where(i => i.Id == p.ImovelId).Select(i => i.Codigo).SingleOrDefaultAsync();
+        audit.RegistrarExclusao(db, u.Id, "propostas", id,
+            $"Proposta nº {p.Numero} ({codigo}, {Texto.Moeda(p.ValorTotal)}, {Rotulo(p.Status).ToLowerInvariant()}) do lead de {nome}", p);
+        db.Propostas.Remove(p);
+        await db.SaveChangesAsync();
+    }
+
     public async Task CancelarAsync(UsuarioAtual u, Guid id, string? motivo, ProximoPassoForm proximo)
     {
         u.Exigir(P.CrmEditar);

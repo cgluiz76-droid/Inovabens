@@ -39,4 +39,11 @@ public sealed class AuditService(ContextoConexao conexao)
             Ip = conexao.Ip is { Length: > 64 } ip ? ip[..64] : conexao.Ip,
         });
     }
+
+    /// <summary>
+    /// Exclusão: grava em "antes" uma descrição legível do que foi excluído (mostrada na tela Auditoria) e o registro
+    /// completo, para consulta e eventual recuperação manual.
+    /// </summary>
+    public void RegistrarExclusao(InovabensDb db, Guid? usuarioId, string entidade, Guid? entidadeId, string descricao, object dados) =>
+        Registrar(db, usuarioId, entidade, entidadeId, "EXCLUIR", new { descricao, dados });
 }

@@ -7,10 +7,11 @@
             <option value="">Todas as entidades</option>
             @foreach (var e in entidades)
             {
-                <option value="@e">@e</option>
+                <option value="@e">@AuditoriaService.NomeEntidade(e)</option>
             }
         </select>
         <input class="input busca" placeholder="ID do registro (opcional)" @bind="entidadeId" @bind:after="Filtrar" />
+        <label class="check"><input type="checkbox" @bind="soExclusoes" @bind:after="Filtrar" /> Só exclusões</label>
     </div>
     <MensagemErro Texto="@Erro" />
     @if (lista is null)
@@ -25,15 +26,18 @@
     {
         <div class="tabela-container">
             <table class="tabela">
-                <thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Entidade</th><th>IP</th><th></th></tr></thead>
+                <thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>O quê</th><th>IP</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var a in lista.Itens)
                     {
                         <tr>
                             <td class="sem-quebra">@Texto.DataHora(a.Dados.CriadoEm)</td>
-                            <td>@(a.UsuarioNome ?? "—")</td>
-                            <td><span class="badge">@a.Dados.Acao</span></td>
-                            <td>@a.Dados.Entidade <p class="pequeno mudo">@a.Dados.EntidadeId</p></td>
+                            <td>@(a.UsuarioNome ?? (a.Dados.UsuarioId is null ? "sistema" : "—"))</td>
+                            <td><span class="badge @(a.Dados.Acao == "EXCLUIR" ? "badge-exclusao" : "")">@a.Dados.Acao</span></td>
+                            <td>
+                                @AuditoriaService.NomeEntidade(a.Dados.Entidade)@(a.Resumo is { } r ? $": {r}" : "")
+                                <p class="pequeno mudo">@a.Dados.EntidadeId</p>
+                            </td>
                             <td class="pequeno">@a.Dados.Ip</td>
                             <td class="acoes-linha">
                                 @if (a.Dados.ValoresAntes is not null || a.Dados.ValoresDepois is not null)
@@ -52,7 +56,14 @@
 
 @if (aberto is not null)
 {
-    <Modal Titulo="@($"{aberto.Dados.Acao} · {aberto.Dados.Entidade}")" Largo AoFechar="() => aberto = null">
+    <Modal Titulo="@($"{aberto.Dados.Acao} · {AuditoriaService.NomeEntidade(aberto.Dados.Entidade)}")" Largo AoFechar="() => aberto = null">
+        <p>
+            <strong>@(aberto.UsuarioNome ?? "sistema")</strong> · @Texto.DataHora(aberto.Dados.CriadoEm)@(aberto.Dados.Ip is { } ip ? $" · IP {ip}" : "")
+            @if (aberto.Resumo is { } r)
+            {
+                <br />@r
+            }
+        </p>
         <div class="grade-2">
             <div>
                 <h3>Antes</h3>
@@ -71,6 +82,7 @@
     private IReadOnlyList<string> entidades = [];
     private string entidade = "";
     private string entidadeId = "";
+    private bool soExclusoes;
     private int pagina = 1;
     private AuditoriaItem? aberto;
 
@@ -81,7 +93,7 @@
     }
 
     private Task Carregar() => Executar(async () =>
-        lista = await Servico.ListarAsync(Usuario, Texto.Limpo(entidade), Guid.TryParse(entidadeId.Trim(), out var id) ? id : null, pagina));
+        lista = await Servico.ListarAsync(Usuario, Texto.Limpo(entidade), Guid.TryParse(entidadeId.Trim(), out var id) ? id : null, pagina, soExclusoes: soExclusoes));
 
     private Task Filtrar()
     {

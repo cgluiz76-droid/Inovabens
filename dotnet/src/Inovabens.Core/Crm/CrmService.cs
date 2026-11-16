@@ -81,7 +81,8 @@ public sealed record ImovelInteresse(Guid Id, string Codigo, string Titulo, Situ
 public enum TipoEventoLead { Acao, Atividade, Estagio, Dados }
 
 /// <summary>Item da linha do tempo do lead (ações, atividades, mudanças de estágio e de dados).</summary>
-public sealed record EventoLead(DateTime Em, TipoEventoLead Tipo, string Icone, string Titulo, string? Detalhe, string? Usuario);
+/// <param name="AcaoId">Id da ação (lead_interacoes) quando o evento é uma ação; permite excluí-la.</param>
+public sealed record EventoLead(DateTime Em, TipoEventoLead Tipo, string Icone, string Titulo, string? Detalhe, string? Usuario, Guid? AcaoId = null);
 
 public sealed record HistoricoEstagio(Guid Id, DateTime CriadoEm, string? EstagioAnterior, string EstagioNovo, string? Usuario);
 
@@ -472,10 +473,55 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         await using var db = await fabrica.CreateDbContextAsync();
         var l = await Visiveis(db, u).SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Lead não encontrado.");
         var antes = l.Copia();
+        var nome = await NomeDoLead(db, u, id);
         l.ExcluidoEm = DateTime.UtcNow;
-        audit.Registrar(db, u.Id, "leads", id, "EXCLUIR", antes);
+        audit.RegistrarExclusao(db, u.Id, "leads", id, $"Lead de {nome} ({Texto.Rotulo(l.Finalidade)})", antes);
         await db.SaveChangesAsync();
     }
+
+    /// <summary>Exclui uma ação da linha do tempo do lead. O texto da ação fica guardado na auditoria.</summary>
+    public async Task ExcluirAcaoAsync(UsuarioAtual u, Guid leadId, Guid acaoId)
+    {
+        u.Exigir(P.CrmExcluir);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var nome = await NomeDoLead(db, u, leadId);
+        var a = await db.LeadInteracoes.SingleOrDefaultAsync(x => x.Id == acaoId && x.LeadId == leadId)
+            ?? throw new NaoEncontradoException("Ação não encontrada.");
+        audit.RegistrarExclusao(db, u.Id, "lead_interacoes", acaoId, $"Ação “{Encurtar(a.Resumo)}” do lead de {nome}", a);
+        db.LeadInteracoes.Remove(a);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Exclui uma atividade do lead (sai da agenda e do Google Agenda). A data da próxima ação do lead é recalculada.
+    /// </summary>
+    public async Task ExcluirAtividadeAsync(UsuarioAtual u, Guid leadId, Guid compromissoId)
+    {
+        u.Exigir(P.CrmExcluir);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var nome = await NomeDoLead(db, u, leadId);
+        var c = await db.Compromissos.SingleOrDefaultAsync(x => x.Id == compromissoId && x.LeadId == leadId && x.ExcluidoEm == null)
+            ?? throw new NaoEncontradoException("Atividade não encontrada.");
+        var antes = c.Copia();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        c.ExcluidoEm = DateTime.UtcNow;
+        audit.RegistrarExclusao(db, u.Id, "compromissos", compromissoId,
+            $"Atividade “{Encurtar(c.Titulo)}” ({Texto.DataHora(c.InicioEm)}) do lead de {nome}", antes);
+        await db.SaveChangesAsync();
+        var proxima = await db.Compromissos.Where(x => x.LeadId == leadId && x.Status == StatusCompromisso.PENDENTE && x.ExcluidoEm == null)
+            .MinAsync(x => (DateTime?)x.InicioEm);
+        await db.Leads.Where(l => l.Id == leadId).ExecuteUpdateAsync(s => s.SetProperty(l => l.ProximaAcaoEm, proxima));
+        await AlertasService.ResolverDoCompromisso(db, compromissoId);
+        await tx.CommitAsync();
+        google.RemoverDoGoogle(antes.ResponsavelId, antes.GoogleEventId);
+    }
+
+    /// <summary>Nome do cliente do lead (confere se o usuário vê o lead).</summary>
+    private static async Task<string> NomeDoLead(InovabensDb db, UsuarioAtual u, Guid leadId) =>
+        await Visiveis(db, u).Where(l => l.Id == leadId).Select(l => l.Pessoa!.NomeRazao).SingleOrDefaultAsync()
+        ?? throw new NaoEncontradoException("Lead não encontrado.");
+
+    internal static string Encurtar(string texto, int max = 80) => texto.Length <= max ? texto : texto[..(max - 1)] + "…";
 
     /// <summary>
     /// Move o lead no funil e registra o histórico. REGRAS: Perdido exige motivo, não tem próximo passo e cancela as
@@ -650,7 +696,7 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
             if (i.CompromissoConcluidoId is { } cc && compromissos.TryGetValue(cc, out var feito))
                 detalhe = $"Concluiu: {feito.Titulo}" + (detalhe is null ? "" : $" · {detalhe}");
             eventos.Add(new EventoLead(i.CriadoEm, TipoEventoLead.Acao, i.PropostaId is null ? IconeCanal(i.Canal) : "💰", i.Resumo, detalhe,
-                Nome(i.UsuarioId) ?? (i.Canal == CanalInteracao.WHATSAPP ? "automático" : null)));
+                Nome(i.UsuarioId) ?? (i.Canal == CanalInteracao.WHATSAPP ? "automático" : null), i.Id));
         }
 
         // atividades agendadas fora de uma ação ("+" do cartão, agenda) e as encerradas sem ação de resultado

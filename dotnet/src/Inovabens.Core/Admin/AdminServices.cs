@@ -196,17 +196,50 @@ public sealed class PerfisService(IDbContextFactory<InovabensDb> fabrica, AuditS
 
 /* ------------------------------ Auditoria ------------------------------ */
 
-public sealed record AuditoriaItem(AuditLog Dados, string? UsuarioNome);
+/// <param name="Resumo">O que foi afetado, em texto (ex.: "Lead de Fulano (Compra)"); null se não der para resumir.</param>
+public sealed record AuditoriaItem(AuditLog Dados, string? UsuarioNome, string? Resumo = null);
 
 public sealed class AuditoriaService(IDbContextFactory<InovabensDb> fabrica)
 {
-    public async Task<Paginado<AuditoriaItem>> ListarAsync(UsuarioAtual u, string? entidade, Guid? entidadeId, int pagina = 1, int tamanho = 50)
+    /// <summary>Nome legível das tabelas auditadas (as demais aparecem pelo nome da tabela).</summary>
+    public static string NomeEntidade(string entidade) => entidade switch
+    {
+        "leads" => "Lead",
+        "lead_interacoes" => "Ação do lead",
+        "compromissos" => "Atividade / compromisso",
+        "propostas" => "Proposta",
+        "proposta_itens" => "Item de proposta",
+        "metas" => "Meta",
+        "processos" => "Processo do imóvel",
+        "pessoas" => "Pessoa",
+        "imoveis" => "Imóvel",
+        "usuarios" => "Usuário",
+        "perfis" => "Perfil",
+        "memorandos" => "Memorando",
+        "modelos_documento" => "Modelo de documento",
+        "aquisicoes" => "Aquisição",
+        "aquisicao_itens" => "Item de aquisição",
+        "configuracoes" => "Configuração",
+        "despesas" => "Despesa",
+        "despesa_lancamentos" => "Lançamento de despesa",
+        "financeiro_comprovantes" => "Comprovante",
+        "imovel_midias" => "Foto / mídia do imóvel",
+        "perfis_pessoa" => "Perfil da pessoa",
+        "receitas" => "Receita",
+        "regularizacoes" => "Regularização",
+        "tipos_imovel" => "Tipo de imóvel",
+        _ => entidade,
+    };
+
+    public async Task<Paginado<AuditoriaItem>> ListarAsync(UsuarioAtual u, string? entidade, Guid? entidadeId, int pagina = 1, int tamanho = 50,
+        bool soExclusoes = false)
     {
         u.Exigir(P.AuditoriaVer);
         await using var db = await fabrica.CreateDbContextAsync();
         var q = db.AuditLog.AsNoTracking();
         if (Texto.Limpo(entidade) is { } e) q = q.Where(a => a.Entidade == e);
         if (entidadeId is { } id) q = q.Where(a => a.EntidadeId == id);
+        if (soExclusoes) q = q.Where(a => a.Acao == "EXCLUIR");
         pagina = Math.Max(1, pagina);
         var total = await q.CountAsync();
         var itens = await (
@@ -214,9 +247,28 @@ public sealed class AuditoriaService(IDbContextFactory<InovabensDb> fabrica)
             join us in db.Usuarios on a.UsuarioId equals us.Id into uu
             from us in uu.DefaultIfEmpty()
             orderby a.CriadoEm descending
-            select new AuditoriaItem(a, us != null ? us.Nome : null)
+            select new AuditoriaItem(a, us != null ? us.Nome : null, null)
         ).Skip((pagina - 1) * tamanho).Take(tamanho).ToListAsync();
-        return new Paginado<AuditoriaItem>(itens, total, pagina, tamanho);
+        return new Paginado<AuditoriaItem>([.. itens.Select(i => i with { Resumo = Resumir(i.Dados.ValoresAntes ?? i.Dados.ValoresDepois) })],
+            total, pagina, tamanho);
+    }
+
+    /// <summary>Usa a "descricao" gravada nas exclusões; nos registros antigos, o primeiro campo que identifica o registro.</summary>
+    internal static string? Resumir(string? json)
+    {
+        if (json is null) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var raiz = doc.RootElement;
+            if (raiz.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+            if (raiz.TryGetProperty("descricao", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.String) return d.GetString();
+            foreach (var campo in new[] { "nome_razao", "nome", "titulo", "resumo", "codigo", "assunto" })
+                if (raiz.TryGetProperty(campo, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String && v.GetString() is { Length: > 0 } t)
+                    return t;
+            return null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     public async Task<IReadOnlyList<string>> EntidadesAsync(UsuarioAtual u)

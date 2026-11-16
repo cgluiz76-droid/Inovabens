@@ -195,6 +195,11 @@
                                         }
                                         <p class="pequeno mudo">@Texto.DataHora(e.Em)@(e.Usuario is { } un ? $" · {un}" : "")</p>
                                     </div>
+                                    @if (PodeExcluir && e.AcaoId is { } acaoId)
+                                    {
+                                        <button type="button" class="btn-ghost mini texto-erro evento-excluir" disabled="@Ocupado" title="Excluir esta ação"
+                                                aria-label="Excluir a ação @e.Titulo" @onclick="() => ExcluirAcao(acaoId)"><Icone Nome="lixeira" /></button>
+                                    }
                                 </li>
                             }
                         </ol>
@@ -226,6 +231,11 @@
                                     @if (pendente && PodeEditar)
                                     {
                                         <button type="button" class="btn-ghost mini" @onclick="() => AbrirCompositor(c)">Concluir</button>
+                                    }
+                                    @if (PodeExcluir)
+                                    {
+                                        <button type="button" class="btn-ghost mini texto-erro" disabled="@Ocupado" title="Excluir esta atividade"
+                                                aria-label="Excluir a atividade @c.Titulo" @onclick="() => ExcluirAtividade(c)"><Icone Nome="lixeira" /></button>
                                     }
                                 </li>
                             }
@@ -372,6 +382,8 @@
     public LeadDetalhe? Detalhe => detalhe;
 
     private bool PodeEditar => Usuario.Pode(Permissoes.CrmEditar);
+    /// <summary>Excluir lead, ações, atividades e propostas (perfil Administrador). Tudo fica registrado na Auditoria.</summary>
+    private bool PodeExcluir => Usuario.Pode(Permissoes.CrmExcluir);
     private List<Compromisso> Pendentes => [.. atividades.Where(c => c.Status == StatusCompromisso.PENDENTE)];
     private Compromisso? ProximaAtividade => Pendentes.FirstOrDefault();
     private SituacaoProximoPasso Situacao => LeadCartao.SituacaoDe(ProximaAtividade?.InicioEm);
@@ -498,9 +510,21 @@
         if (await Executar(() => Servico.AtualizarAsync(Usuario, LeadId, edicao!))) await Alterado();
     }
 
+    private async Task ExcluirAcao(Guid acaoId)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir esta ação da linha do tempo? A exclusão fica registrada na Auditoria.")) return;
+        if (await Executar(() => Servico.ExcluirAcaoAsync(Usuario, LeadId, acaoId))) await Alterado();
+    }
+
+    private async Task ExcluirAtividade(Compromisso c)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir a atividade \"{c.Titulo}\"? Ela sai da agenda. A exclusão fica registrada na Auditoria.")) return;
+        if (await Executar(() => Servico.ExcluirAtividadeAsync(Usuario, LeadId, c.Id))) await Alterado();
+    }
+
     private async Task ExcluirLead()
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Excluir este lead?")) return;
+        if (!await JS.InvokeAsync<bool>("confirm", "Excluir este lead? A exclusão fica registrada na Auditoria.")) return;
         if (!await Executar(() => Servico.ExcluirAsync(Usuario, LeadId))) return;
         await AoAlterar.InvokeAsync();
         await AoFechar.InvokeAsync();
