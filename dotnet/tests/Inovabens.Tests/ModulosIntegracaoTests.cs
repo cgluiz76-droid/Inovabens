@@ -270,30 +270,27 @@ public class ModulosIntegracaoTests
     }
 
     [Fact]
-    public async Task Alerta_de_despesa_vencida_e_resolucao_ao_pagar()
+    public async Task Alerta_de_titulo_em_atraso_e_resolucao_ao_liquidar()
     {
         await using var a = await new Ambiente().Entrar();
-        var despesas = a.S<DespesasService>();
+        var lancamentos = a.S<LancamentosFinanceirosService>();
         var alertas = a.S<AlertasService>();
-        var im = await NovoImovel(a, a.Admin, $"Despesa vencida {sufixo}");
-        var cat = (await despesas.CategoriasAsync())[0];
-        var mes = DatasBR.Hoje().AddMonths(-2);
-        mes = new DateOnly(mes.Year, mes.Month, 1);
-        await despesas.CriarAsync(a.Admin, im, new DespesaForm
-        { CategoriaId = cat.Id, Descricao = $"Taxa {sufixo}", Recorrencia = Recorrencia.UNICA, ValorPrevisto = 90m, InicioEm = mes });
-        Assert.Equal(1, await despesas.GerarCompetenciaAsync(mes, im));
-        var lanc = (await despesas.HistoricoAsync(a.Admin, im)).Single();
+        var im = await NovoImovel(a, a.Admin, $"Título em atraso {sufixo}");
+        var conta = (await lancamentos.ContasAsync(TipoConta.DESPESA))[0];
+        var id = await lancamentos.CriarAsync(a.Admin, im, new LancamentoForm
+        { Tipo = TipoConta.DESPESA, Data = DatasBR.Hoje().AddDays(-10), Valor = 90m, Descricao = $"Taxa {sufixo}", ContaId = conta.Id });
 
-        var r = await alertas.VerificarDespesasAsync();
+        var r = await alertas.VerificarAtrasadosAsync();
         Assert.True(r.Criados >= 2); // admin e carla (ambos com financeiro:ver no banco de teste)
-        var alerta = (await alertas.ListarAsync(a.Admin, false)).Single(x => x.Dados.LancamentoId == lanc.Dados.Id);
-        Assert.Equal(TipoAlerta.DESPESA_NAO_PAGA, alerta.Dados.Tipo);
+        var alerta = (await alertas.ListarAsync(a.Admin, false)).Single(x => x.Dados.LancamentoId == id);
+        Assert.Equal(TipoAlerta.TITULO_EM_ATRASO, alerta.Dados.Tipo);
         Assert.Equal(im, alerta.ImovelId);
-        Assert.Equal(0, (await alertas.VerificarDespesasAsync()).Criados); // idempotente
+        Assert.Contains("A pagar em atraso", alerta.Dados.Mensagem);
+        Assert.Equal(0, (await alertas.VerificarAtrasadosAsync()).Criados); // idempotente
 
-        await despesas.AtualizarStatusAsync(a.Admin, lanc.Dados.Id, new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, DataPagamento = DatasBR.Hoje() });
-        // marcar como pago já encerra os alertas na hora (o job é só a rede de segurança)
-        Assert.DoesNotContain(await alertas.ListarAsync(a.Admin, false), x => x.Dados.LancamentoId == lanc.Dados.Id);
+        await lancamentos.LiquidarAsync(a.Admin, id, DatasBR.Hoje(), 90m);
+        // liquidar já encerra os alertas na hora (o job é só a rede de segurança)
+        Assert.DoesNotContain(await alertas.ListarAsync(a.Admin, false), x => x.Dados.LancamentoId == id);
     }
 
     [Fact]
@@ -536,7 +533,7 @@ public class ModulosIntegracaoTests
         var fx = await rel.FichaFinanceiraXlsxAsync(a.Admin, im, CodigoIndice.IPCA);
         using (var wb = new XLWorkbook(new MemoryStream(fx.Conteudo)))
         {
-            Assert.Equal(["Resumo", "Aquisição", "Despesas", "Fluxo de caixa"], wb.Worksheets.Select(w => w.Name));
+            Assert.Equal(["Resumo", "Aquisição", "Lançamentos", "Fluxo de caixa"], wb.Worksheets.Select(w => w.Name));
             var resumo = wb.Worksheet("Resumo");
             var linha = resumo.RowsUsed().Single(r => r.Cell(1).GetString() == "Custo de aquisição");
             Assert.Equal(257500m, linha.Cell(2).GetValue<decimal>());
@@ -562,7 +559,7 @@ public class ModulosIntegracaoTests
 
         var servicos = new ServiceCollection();
         foreach (var t in new[] { typeof(MemorandosService), typeof(AgendaService), typeof(OpcoesService), typeof(UsuariosService), typeof(PerfisService),
-                     typeof(DespesasService), typeof(IndicesService), typeof(CrmService), typeof(AuditoriaService), typeof(ConfiguracoesService) })
+                     typeof(LancamentosFinanceirosService), typeof(IndicesService), typeof(CrmService), typeof(AuditoriaService), typeof(ConfiguracoesService) })
             servicos.AddSingleton(t, a.S<IServiceProvider>().GetRequiredService(t));
         servicos.AddSingleton(a.S<ILoggerFactory>());
         servicos.AddSingleton<IJSRuntime, SemJs>();

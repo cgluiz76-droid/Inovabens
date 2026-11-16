@@ -1149,3 +1149,13 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
     /* o toast precisa continuar sumindo depois de 5 s */
     .msg-sucesso { animation: toast-sai .01ms linear 5s forwards !important; }
 }
+
+/* Lançamentos Financeiros e Investimento */
+.btn-despesa { background: var(--erro); border-color: var(--erro); }
+.btn-despesa:hover { filter: brightness(.92); }
+.linha-projetada td { color: var(--texto-2); font-style: italic; }
+.linha-projetada td .badge { font-style: normal; }
+.sino.sino-financeiro { color: var(--erro); }
+.interruptor-saldo { border: 1px solid var(--borda); border-radius: var(--raio, .5rem); padding: var(--e-2) var(--e-3); margin: var(--e-3) 0; display: flex; flex-wrap: wrap; gap: var(--e-3); }
+.interruptor-saldo legend { font-weight: 600; padding: 0 var(--e-1); }
+.tabela.cenarios th.cenario-oficial { color: var(--acento); }

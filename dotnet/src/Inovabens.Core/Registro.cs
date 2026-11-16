@@ -48,10 +48,9 @@ public static class Registro
         services.AddSingleton(sp => new MetaPublicador(new HttpClient { Timeout = TimeSpan.FromMinutes(2) }, op));
         services.AddScoped<PostsService>();
         services.AddScoped<AquisicaoService>();
-        services.AddScoped<DespesasService>();
-        services.AddScoped<ReceitasService>();
+        services.AddScoped<LancamentosFinanceirosService>();
+        services.AddScoped<FechamentoService>();
         services.AddScoped<ComprovantesService>();
-        services.AddScoped<ExtratoService>();
         services.AddScoped<IndicesService>();
         services.AddScoped(s => new TaxasFinanciamentoService(
             s.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<InovabensDb>>(),

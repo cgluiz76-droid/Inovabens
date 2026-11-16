@@ -21,6 +21,7 @@ public static class Texto
         ["negociacao"] = "negociação", ["documentacao"] = "documentação", ["retificacao"] = "retificação", ["area"] = "área",
         ["nao"] = "não", ["concluido"] = "concluído", ["concluida"] = "concluída", ["reuniao"] = "reunião", ["acao"] = "ação",
         ["estrategica"] = "estratégica", ["email"] = "e-mail", ["ligacao"] = "ligação", ["disponivel"] = "disponível",
+        ["titulo"] = "título",
     };
 
     /// <summary>EM_AQUISICAO -> "Em aquisição" (mesma regra do rotulo() da interface web).</summary>

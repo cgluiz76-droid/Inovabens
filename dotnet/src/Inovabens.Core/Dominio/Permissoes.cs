@@ -22,6 +22,8 @@ public static class Permissoes
     public const string FinanceiroVer = "financeiro:ver";
     public const string FinanceiroEditar = "financeiro:editar";
     public const string FinanceiroExportar = "financeiro:exportar";
+    /// <summary>Aba Investimento do imóvel (aquisição, fechamento e lucratividade): só o Administrador recebe por padrão.</summary>
+    public const string FinanceiroInvestimento = "financeiro:investimento";
 
     public const string MemorandosVer = "memorandos:ver";
     public const string MemorandosCriar = "memorandos:criar";
@@ -49,7 +51,7 @@ public static class Permissoes
         UsuariosGerir, RbacGerir, AdminConfig, AuditoriaVer,
         PessoasVer, PessoasCriar, PessoasEditar, PessoasExcluir,
         ImoveisVer, ImoveisCriar, ImoveisEditar, ImoveisExcluir, ImoveisExportar,
-        FinanceiroVer, FinanceiroEditar, FinanceiroExportar,
+        FinanceiroVer, FinanceiroEditar, FinanceiroExportar, FinanceiroInvestimento,
         MemorandosVer, MemorandosCriar, MemorandosEditar, MemorandosExcluir,
         AgendaVer, AgendaCriar, AgendaEditar, AgendaExcluir,
         CrmVer, CrmCriar, CrmEditar, CrmExcluir, CrmPropostasDecidir,

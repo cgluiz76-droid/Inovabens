@@ -1,0 +1,66 @@
+@page "/financeiro/atrasados"
+@inherits ComponenteBase
+@inject LancamentosFinanceirosService Servico
+
+@* Títulos a pagar e a receber em atraso (abertos ou previstos com vencimento passado) de todos os imóveis visíveis.
+   Aberta pelo ícone do financeiro no topo (Administrador e Financeiro). *@
+
+<PageTitle>Títulos em atraso · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Títulos em atraso</h1>
+</div>
+<p class="pequeno mudo">Títulos a pagar e a receber com vencimento passado que ainda não foram liquidados. Para liquidar, abra o imóvel → aba Financeiro.</p>
+
+<MensagemErro Texto="@Erro" />
+
+@if (itens is null)
+{
+    @if (Erro is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+}
+else if (itens.Count == 0)
+{
+    <section class="card"><p class="vazio">Nenhum título em atraso. Tudo em dia.</p></section>
+}
+else
+{
+    <div class="kpis">
+        <div class="kpi"><p class="rotulo-kpi">A pagar em atraso</p><p class="valor-kpi texto-erro">@Sinal(itens.Where(i => i.Valor < 0).Sum(i => i.Valor))</p>
+            <p class="pequeno mudo">@itens.Count(i => i.Valor < 0) título(s)</p></div>
+        <div class="kpi"><p class="rotulo-kpi">A receber em atraso</p><p class="valor-kpi texto-ok">@Sinal(itens.Where(i => i.Valor > 0).Sum(i => i.Valor))</p>
+            <p class="pequeno mudo">@itens.Count(i => i.Valor > 0) título(s)</p></div>
+    </div>
+    <section class="card">
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Imóvel</th><th>Nº</th><th>Vencimento</th><th>Atraso</th><th>Descrição</th><th>Conta</th><th>Situação</th><th class="num">Valor</th></tr></thead>
+                <tbody>
+                    @foreach (var t in itens)
+                    {
+                        <tr>
+                            <td><a href="imoveis/@t.ImovelId?aba=lancamentos">@t.CodigoImovel</a><p class="pequeno mudo">@t.TituloImovel</p></td>
+                            <td class="nowrap mudo">@t.Numero</td>
+                            <td>@Texto.Data(t.Vencimento)</td>
+                            <td><span class="badge status-NAO_PAGO">@t.DiasAtraso dia(s)</span></td>
+                            <td><b>@t.Descricao</b></td>
+                            <td>@t.Conta</td>
+                            <td>@LancamentosFinanceirosService.NomeSituacao(t.Situacao)</td>
+                            <td class="num @(t.Valor < 0 ? "texto-erro" : "texto-ok")">@Sinal(t.Valor)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@code {
+    private IReadOnlyList<TituloAtrasado>? itens;
+
+    private static string Sinal(decimal v) => v < 0 ? "−" + Texto.Moeda(-v) : Texto.Moeda(v);
+
+    protected override Task OnInitializedAsync() => Executar(async () => itens = await Servico.AtrasadosAsync(Usuario));
+}

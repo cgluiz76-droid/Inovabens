@@ -18,8 +18,8 @@ namespace Inovabens.Tests;
 
 /// <summary>
 /// Fluxo do módulo financeiro contra PostgreSQL real (mesmos pré-requisitos de <see cref="ImoveisIntegracaoTests"/>,
-/// mais ao menos uma categoria em despesa_categorias e financeiro:ver/editar no perfil Corretor).
-/// Reproduz o cenário do e2e do Node e confere os mesmos números.
+/// mais as contas orçamentárias padrão e financeiro:ver/editar no perfil Corretor).
+/// Reproduz o cenário do e2e do Node (agora com lançamentos financeiros e fechamento) e confere os mesmos números.
 /// </summary>
 [Collection(BancoDeTeste.Nome)]
 [Trait("Categoria", "Integracao")]
@@ -41,8 +41,8 @@ public class FinanceiroIntegracaoTests
         var auth = r.GetRequiredService<AuthService>();
         var imoveis = r.GetRequiredService<ImoveisService>();
         var aquisicao = r.GetRequiredService<AquisicaoService>();
-        var despesas = r.GetRequiredService<DespesasService>();
-        var receitas = r.GetRequiredService<ReceitasService>();
+        var lancamentos = r.GetRequiredService<LancamentosFinanceirosService>();
+        var fechamentos = r.GetRequiredService<FechamentoService>();
         var indices = r.GetRequiredService<IndicesService>();
         var retorno = r.GetRequiredService<RetornoService>();
         var fabrica = r.GetRequiredService<IDbContextFactory<InovabensDb>>();
@@ -52,7 +52,9 @@ public class FinanceiroIntegracaoTests
         var id = await imoveis.CriarAsync(admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa para flip", Tipo = "casa" });
         var idCorretor = await imoveis.CriarAsync(corretor, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa da Carla", Tipo = "casa" });
 
-        // --- aquisição: total é coluna gerada; itens antes da aquisição são recusados ---
+        // --- aquisição (aba Investimento, só administrador): total é coluna gerada; itens antes da aquisição são recusados ---
+        Assert.True(admin.Pode(Permissoes.FinanceiroInvestimento));
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => aquisicao.ObterAsync(corretor, idCorretor));
         Assert.Null(await aquisicao.ObterAsync(admin, id));
         await Assert.ThrowsAsync<RegraNegocioException>(() =>
             aquisicao.CriarItemAsync(admin, id, new AquisicaoItemForm { Descricao = "ITBI", Valor = 3000m }));
@@ -67,62 +69,34 @@ public class FinanceiroIntegracaoTests
         Assert.Empty(aq.Itens);
         Assert.Equal(100000m, aq.Dados.TotalAquisicao);
 
-        // --- despesas e checklist ---
-        var cat = (await despesas.CategoriasAsync())[0];
-        var condominio = await despesas.CriarAsync(admin, id, new DespesaForm
-        { CategoriaId = cat.Id, Descricao = "Condomínio", ValorPrevisto = 800m, DiaVencimento = 31, InicioEm = D(2025, 1, 1), FimEm = D(2025, 3, 31) });
-        await despesas.CriarAsync(admin, id, new DespesaForm
-        { CategoriaId = cat.Id, Descricao = "Seguro", Recorrencia = Recorrencia.ANUAL, ValorPrevisto = 1200m, InicioEm = D(2025, 2, 5) });
-        await despesas.CriarAsync(admin, id, new DespesaForm
-        { CategoriaId = cat.Id, Descricao = "Reforma", Recorrencia = Recorrencia.UNICA, ValorPrevisto = 10000m, InicioEm = D(2025, 4, 1) });
-        await despesas.CriarAsync(admin, id, new DespesaForm
-        { CategoriaId = cat.Id, Descricao = "IPTU em aberto", Recorrencia = Recorrencia.UNICA, ValorPrevisto = 500m, InicioEm = D(2025, 5, 1) });
+        // --- lançamentos financeiros: reforma paga (liquidada) e IPTU em aberto ---
+        var contas = await lancamentos.ContasAsync(TipoConta.DESPESA);
+        var manutencao = contas.Single(c => c.Nome == "Manutenção").Id;
+        var reforma = await lancamentos.CriarAsync(admin, id, new LancamentoForm
+        {
+            Tipo = TipoConta.DESPESA, Data = D(2025, 4, 10), Valor = 10000m, Descricao = "Reforma", ContaId = manutencao, Liquidado = true, DataLiquidacao = D(2025, 4, 15),
+        });
+        await lancamentos.CriarAsync(admin, id, new LancamentoForm
+        { Tipo = TipoConta.DESPESA, Data = D(2025, 5, 10), Valor = 500m, Descricao = "IPTU em aberto", ContaId = contas.Single(c => c.Nome == "IPTU").Id });
+        var opex = await lancamentos.ResumoPorContaAsync(admin, id);
+        Assert.Equal(-10000m, Assert.Single(opex).Total); // só liquidados
 
-        var fev = await despesas.ChecklistAsync(admin, id, D(2025, 2, 17));
-        Assert.Equal(D(2025, 2, 1), fev.Mes);
-        Assert.Equal(2, fev.Resumo.AMarcar); // condomínio + seguro (ANUAL, mês de início)
-        Assert.Equal(D(2025, 2, 28), fev.Itens.Single(i => i.Descricao == "Condomínio").Vencimento); // dia 31 → último dia
-        Assert.Equal(0, await despesas.GerarCompetenciaAsync(D(2025, 2, 1), id)); // idempotente
-        Assert.DoesNotContain((await despesas.ChecklistAsync(admin, id, D(2025, 3, 1))).Itens, i => i.Descricao == "Seguro");
-        Assert.DoesNotContain((await despesas.ChecklistAsync(admin, id, D(2025, 4, 1))).Itens, i => i.Descricao == "Condomínio"); // após fim_em
-
-        // fevereiro: condomínio N/A, seguro N/A (para não entrarem no cenário do retorno)
-        foreach (var i in fev.Itens)
-            await despesas.AtualizarStatusAsync(admin, i.LancamentoId, new StatusLancamentoEntrada { Status = StatusLancamento.NAO_SE_APLICA });
-        foreach (var m in new[] { 1, 3 })
-            foreach (var i in (await despesas.ChecklistAsync(admin, id, D(2025, m, 1))).Itens)
-                await despesas.AtualizarStatusAsync(admin, i.LancamentoId, new StatusLancamentoEntrada { Status = StatusLancamento.NAO_SE_APLICA });
-
-        var reforma = (await despesas.ChecklistAsync(admin, id, D(2025, 4, 1))).Itens.Single();
-        await despesas.AtualizarStatusAsync(admin, reforma.LancamentoId, new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, DataPagamento = D(2025, 4, 15) });
-        var iptu = (await despesas.ChecklistAsync(admin, id, D(2025, 5, 1))).Itens.Single();
-        var erro = await Assert.ThrowsAsync<RegraNegocioException>(() =>
-            despesas.AtualizarStatusAsync(admin, iptu.LancamentoId, new StatusLancamentoEntrada { Status = StatusLancamento.NAO_PAGO, Justificativa = "curta" }));
-        Assert.Contains("Justificativa", erro.Message + string.Join(" ", erro.Erros.SelectMany(e => e.Value)));
-        await despesas.AtualizarStatusAsync(admin, iptu.LancamentoId, new StatusLancamentoEntrada { Status = StatusLancamento.NAO_PAGO, Justificativa = "Aguardando segunda via" });
-        var maio = await despesas.ChecklistAsync(admin, id, D(2025, 5, 1));
-        Assert.Equal(1, maio.Resumo.NaoPago);
-        Assert.Equal("Aguardando segunda via", maio.Itens[0].Justificativa);
-
-        // exclusão lógica: some da lista, não gera mais competências
-        await despesas.ExcluirAsync(admin, condominio);
-        Assert.DoesNotContain(await despesas.ListarAsync(admin, id), d => d.Dados.Id == condominio);
-
-        // --- receitas: líquido é coluna gerada; a venda marca o imóvel como Vendido ---
+        // --- fechamento: venda líquida e interruptor dos lançamentos; marca o imóvel como Vendido ---
         Assert.NotEqual(SituacaoImovel.VENDIDO, (await imoveis.DetalheAsync(admin, id)).Dados.Situacao);
-        var venda = await receitas.CriarAsync(admin, id, new ReceitaForm
-        { Tipo = TipoReceita.VENDA, Data = D(2025, 7, 20), ValorBruto = 150000m, CustosVenda = 9000m, Tributos = 1000m });
-        Assert.Equal(140000m, (await receitas.ListarAsync(admin, id)).Single(x => x.Id == venda.Id).ValorLiquido);
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => fechamentos.SalvarAsync(corretor, idCorretor, new FechamentoForm { Data = D(2025, 7, 20), ValorVenda = 1m }));
+        await fechamentos.SalvarAsync(admin, id, new FechamentoForm { Data = D(2025, 7, 20), ValorVenda = 150000m, Comissao = 9000m, Impostos = 1000m });
+        var fe = (await fechamentos.ObterAsync(admin, id))!;
+        Assert.Equal(140000m, fe.ValorLiquido);
+        Assert.Null(fe.IncluirLancamentos);
         Assert.Equal(SituacaoImovel.VENDIDO, (await imoveis.DetalheAsync(admin, id)).Dados.Situacao);
-        var extra = await receitas.CriarAsync(admin, id, new ReceitaForm { Tipo = TipoReceita.OUTRA, Data = D(2025, 6, 1), ValorBruto = 1m });
-        await receitas.ExcluirAsync(admin, extra.Id);
-        Assert.Single(await receitas.ListarAsync(admin, id));
 
-        // --- índices (manual: sem depender do BCB) e retorno ---
+        // --- índices (manual: sem depender do BCB) e retorno nos dois cenários ---
         await Assert.ThrowsAsync<AcessoNegadoException>(() => indices.LancarManualAsync(corretor, CodigoIndice.IPCA, D(2025, 1, 1), 1m));
         for (var m = 1; m <= 7; m++) await indices.LancarManualAsync(admin, CodigoIndice.IPCA, D(2025, m, 1), 1m);
 
-        var ret = await retorno.CalcularAsync(admin, id, CodigoIndice.IPCA, D(2025, 12, 31));
+        var cen = await retorno.CenariosAsync(admin, id, CodigoIndice.IPCA, D(2025, 12, 31));
+        Assert.Null(cen.Decisao);
+        var ret = cen.Oficial; // sem decisão: cenário com os lançamentos
         Assert.Equal(100000.00m, ret.CustoAquisicao);
         Assert.Equal(110000.00m, ret.CustoTotal);
         Assert.Equal(500.00m, ret.PassivoPendente);
@@ -133,25 +107,35 @@ public class FinanceiroIntegracaoTests
         Assert.Equal(106152.02m, ret.Fluxo[0].ValorCorrigido);
         Assert.Equal(3, ret.Fluxo.Count);
         Assert.Empty(ret.Avisos);
+        Assert.Equal(40000.00m, cen.SemLancamentos.Resultado);
 
-        // --- escopo do corretor: imóvel de outro corretor é invisível ---
+        // o interruptor do fechamento escolhe o cenário oficial
+        var form = FechamentoForm.De(fe);
+        form.IncluirLancamentos = false;
+        await fechamentos.SalvarAsync(admin, id, form);
+        Assert.Equal(40000.00m, (await retorno.CalcularAsync(admin, id, CodigoIndice.IPCA, D(2025, 12, 31))).Resultado);
+
+        // --- escopo: corretor não vê o imóvel de outro nem a aba Investimento ---
         await Assert.ThrowsAnyAsync<Exception>(() => retorno.CalcularAsync(corretor, id));
-        await Assert.ThrowsAnyAsync<Exception>(() => despesas.ChecklistAsync(corretor, id, D(2025, 5, 1)));
+        await Assert.ThrowsAnyAsync<Exception>(() => lancamentos.ExtratoAsync(corretor, id, new FiltroLancamentos()));
 
-        // --- tela: a aba Financeiro renderiza as quatro seções com os dados gravados ---
-        var html = await RenderizarAba(r, admin, id);
-        Assert.DoesNotContain("msg-erro", html);
-        foreach (var trecho in new[] { "Aquisição (CAPEX)", "checklist mensal", "Receitas (venda / locação)", "Retorno do investimento", "Extrato do imóvel (livro caixa)", "Saldo atual do imóvel",
-                     "100.000,00", "110.000,00", "140.000,00", "30.000,00", "27,27%", "Reforma", "ndices (BCB)" })
-            Assert.Contains(trecho, html);
-        Assert.DoesNotContain("ndices (BCB)", await RenderizarAba(r, corretor, idCorretor));
+        // --- telas: as abas renderizam com os dados gravados ---
+        var htmlInv = await Renderizar<InvestimentoAba>(r, admin, id);
+        Assert.DoesNotContain("msg-erro", htmlInv);
+        foreach (var trecho in new[] { "Aquisição (CAPEX)", "Lançamentos Financeiros (OPEX)", "Fechamento da operação", "Retorno do investimento",
+                     "100.000,00", "40.000,00", "30.000,00", "140.000,00", "Manuten", "ndices (BCB)" })
+            Assert.Contains(trecho, htmlInv);
+        var htmlLanc = await Renderizar<LancamentosFinanceirosAba>(r, admin, id);
+        Assert.DoesNotContain("msg-erro", htmlLanc);
+        foreach (var trecho in new[] { "Lançamentos Financeiros", "Nova receita", "Nova despesa", "Saldo real", "Em aberto", "Previstos" })
+            Assert.Contains(trecho, htmlLanc);
+        Assert.DoesNotContain("livro caixa", htmlLanc, StringComparison.OrdinalIgnoreCase);
 
         // --- auditoria gravada na mesma transação ---
         await using var db = await fabrica.CreateDbContextAsync();
-        Assert.True(await db.AuditLog.AnyAsync(a => a.Entidade == "despesa_lancamentos" && a.EntidadeId == iptu.LancamentoId));
-        Assert.True(await db.AuditLog.AnyAsync(a => a.Entidade == "receitas" && a.EntidadeId == venda.Id));
+        Assert.True(await db.AuditLog.AnyAsync(a => a.Entidade == "lancamentos_financeiros" && a.EntidadeId == reforma));
+        Assert.True(await db.AuditLog.AnyAsync(a => a.Entidade == "fechamentos_investimento" && a.EntidadeId == id));
     }
-
     /// <summary>Consulta o BCB de verdade: só roda com INOVABENS_TEST_BCB=1.</summary>
     [Fact]
     public async Task Sincroniza_indices_com_o_Banco_Central()
@@ -173,11 +157,11 @@ public class FinanceiroIntegracaoTests
     }
 
     /// <summary>Renderiza a aba no servidor (sem navegador) com o usuário em cascata, como faz o MainLayout.</summary>
-    private static async Task<string> RenderizarAba(IServiceProvider sp, UsuarioAtual usuario, Guid imovelId)
+    private static async Task<string> Renderizar<TAba>(IServiceProvider sp, UsuarioAtual usuario, Guid imovelId) where TAba : IComponent
     {
         var servicos = new ServiceCollection();
-        foreach (var t in new[] { typeof(AquisicaoService), typeof(DespesasService), typeof(ReceitasService), typeof(IndicesService), typeof(RetornoService),
-                     typeof(ExtratoService), typeof(ComprovantesService) })
+        foreach (var t in new[] { typeof(AquisicaoService), typeof(LancamentosFinanceirosService), typeof(FechamentoService), typeof(IndicesService),
+                     typeof(RetornoService), typeof(ComprovantesService), typeof(OpcoesService) })
             servicos.AddSingleton(t, sp.GetRequiredService(t));
         servicos.AddSingleton(sp.GetRequiredService<ILoggerFactory>());
         servicos.AddSingleton<IJSRuntime, SemJs>();
@@ -191,8 +175,8 @@ public class FinanceiroIntegracaoTests
                 ["IsFixed"] = true,
                 ["ChildContent"] = (RenderFragment)(b =>
                 {
-                    b.OpenComponent<FinanceiroAba>(0);
-                    b.AddAttribute(1, nameof(FinanceiroAba.ImovelId), imovelId);
+                    b.OpenComponent<TAba>(0);
+                    b.AddAttribute(1, "ImovelId", imovelId);
                     b.CloseComponent();
                 }),
             }));

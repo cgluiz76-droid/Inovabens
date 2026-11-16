@@ -91,9 +91,9 @@ else
         @if (resumo.LancamentosNaoPagos is { } naoPagos)
         {
             <div class="kpi">
-                <span class="rotulo-kpi">Despesas não pagas</span>
+                <span class="rotulo-kpi">Títulos em atraso</span>
                 <span class="valor-kpi @(naoPagos > 0 ? "texto-erro" : "")">@naoPagos</span>
-                <span class="contexto-kpi">@(naoPagos > 0 ? "lançamentos em aberto" : "tudo em dia")</span>
+                <span class="contexto-kpi">@(naoPagos > 0 ? "a pagar ou a receber" : "tudo em dia")</span>
             </div>
         }
         <a class="kpi link-kpi" href="alertas">

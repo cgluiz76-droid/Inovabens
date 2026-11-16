@@ -20,8 +20,8 @@ public sealed record Arquivo(byte[] Conteudo, string Nome, string Tipo);
 /// Toda exportação fica registrada na auditoria (ação EXPORTAR).
 /// </summary>
 public sealed class RelatoriosService(
-    IDbContextFactory<InovabensDb> fabrica, ImoveisService imoveis, AquisicaoService aquisicao, DespesasService despesas,
-    RetornoService retorno, ExtratoService extrato, IArmazenamento storage, AuditService audit)
+    IDbContextFactory<InovabensDb> fabrica, ImoveisService imoveis, AquisicaoService aquisicao, LancamentosFinanceirosService lancamentos,
+    RetornoService retorno, FechamentoService fechamento, IArmazenamento storage, AuditService audit)
 {
     public const string TipoPdf = "application/pdf";
     public const string TipoXlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -181,35 +181,38 @@ public sealed class RelatoriosService(
 
     /* =========================== Ficha Financeira =========================== */
 
-    private async Task<(ImovelDetalhe Im, ResultadoRetorno Ret, IReadOnlyList<LancamentoHistorico> Lanc, AquisicaoDetalhe? Aq)> DadosFinanceiros(UsuarioAtual u, Guid id, CodigoIndice indice)
+    private async Task<(ImovelDetalhe Im, RetornoCenarios Cen, IReadOnlyList<ResumoConta> Contas, AquisicaoDetalhe? Aq, FechamentoInvestimento? Fe)>
+        DadosFinanceiros(UsuarioAtual u, Guid id, CodigoIndice indice)
     {
         u.Exigir(P.FinanceiroExportar);
+        u.Exigir(P.FinanceiroInvestimento);
         var im = await imoveis.DetalheAsync(u, id);
-        var ret = await retorno.CalcularAsync(u, id, indice);
-        var lanc = await despesas.HistoricoAsync(u, id);
+        var cen = await retorno.CenariosAsync(u, id, indice);
+        var contas = await lancamentos.ResumoPorContaAsync(u, id);
         var aq = await aquisicao.ObterAsync(u, id);
-        return (im, ret, lanc, aq);
+        var fe = await fechamento.ObterAsync(u, id);
+        return (im, cen, contas, aq, fe);
     }
 
-    private static string StatusTexto(StatusLancamento? s) => s switch
-    {
-        StatusLancamento.PAGO => "Pago", StatusLancamento.NAO_PAGO => "Não pago", StatusLancamento.NAO_SE_APLICA => "Não se aplica", _ => "A marcar",
-    };
+    private static string Decisao(bool? d) => d switch { true => "Sim", false => "Não", null => "Não decidido (cenário com os lançamentos)" };
 
     public async Task<Arquivo> FichaFinanceiraPdfAsync(UsuarioAtual u, Guid id, CodigoIndice indice)
     {
-        var (im, ret, lanc, aq) = await DadosFinanceiros(u, id, indice);
+        var (im, cen, contas, aq, fe) = await DadosFinanceiros(u, id, indice);
+        var ret = cen.Oficial;
         var d = im.Dados;
         var pdf = NovoPdf("Ficha Financeira", $"{d.Codigo} · {d.Titulo}", $"Ficha Financeira {d.Codigo} · gerada em {Texto.DataHora(DateTime.UtcNow)}", col =>
         {
             Secao(col, "Resumo do investimento");
             Campos(col, 3,
                 ("Custo de aquisição", Texto.Moeda(ret.CustoAquisicao)), ("Custo total investido", Texto.Moeda(ret.CustoTotal)),
-                ("Passivo pendente (não pago)", Texto.Moeda(ret.PassivoPendente)), ("Receita líquida", Texto.Moeda(ret.ReceitaLiquida)),
+                ("Despesas em aberto vencidas", Texto.Moeda(ret.PassivoPendente)), ("Entradas líquidas", Texto.Moeda(ret.ReceitaLiquida)),
                 ("Resultado", Texto.Moeda(ret.Resultado)), ($"Custo corrigido ({ret.Indice})", Texto.Moeda(ret.CustoCorrigido)),
                 ("ROI nominal", Pct(ret.Roi)), ("ROI real (acima do índice)", Pct(ret.RoiReal)), ("TIR anualizada", Pct(ret.TirAnual)),
                 ("MOIC", ret.Moic is { } m ? m.ToString("0.00", Texto.PtBr) + "×" : "—"), ("Prazo (dias)", ret.PrazoDias?.ToString()),
-                ("Data de corte", Texto.Data(ret.DataFinal)));
+                ("Data de corte", Texto.Data(ret.DataFinal)),
+                ("Saldo dos lançamentos financeiros", Texto.Moeda(ret.SaldoLancamentos)), ("Lançamentos incluídos na apuração", Decisao(cen.Decisao)),
+                ("Resultado sem os lançamentos", Texto.Moeda(cen.SemLancamentos.Resultado)));
             foreach (var a in ret.Avisos) col.Item().Text($"• {a}").Italic().FontSize(8.5f).FontColor(Suave);
             Secao(col, "Aquisição (CAPEX)");
             if (aq is null) Paragrafo(col, "Aquisição não cadastrada.");
@@ -222,10 +225,16 @@ public sealed class RelatoriosService(
                     [.. aq.Itens.Select(i => new[] { Texto.Rotulo(i.Tipo), i.Descricao, Texto.Data(i.DataPagamento), Texto.Moeda(i.Valor) })],
                     "Sem itens detalhados.", alinharUltimaDireita: true);
             }
-            Secao(col, "Despesas e status de pagamento (OPEX)");
-            Tabela(col, [("Competência", 0.9f), ("Categoria", 1.3f), ("Descrição", 1.7f), ("Venc.", 0.85f), ("Valor", 1), ("Status", 0.85f), ("Justificativa", 1.3f)],
-                [.. lanc.Select(l => new[] { l.Dados.Competencia.ToString("MM/yyyy"), l.Categoria, l.Descricao, Texto.Data(l.Dados.Vencimento),
-                    Texto.Moeda(l.Dados.Valor), StatusTexto(l.Dados.Status), l.Dados.Justificativa ?? "" })]);
+            Secao(col, "Lançamentos financeiros por conta (OPEX)");
+            Tabela(col, [("Conta", 3), ("Tipo", 1), ("Qtde", 0.7f), ("Total", 1.6f)],
+                [.. contas.Select(c => new[] { c.Conta, Texto.Rotulo(c.Tipo), c.Quantidade.ToString(), Sinal(c.Total) })],
+                "Nenhum lançamento realizado.", alinharUltimaDireita: true);
+            Secao(col, "Fechamento da operação");
+            if (fe is null) Paragrafo(col, "Operação ainda não fechada.");
+            else
+                Campos(col, 3, ("Data da venda", Texto.Data(fe.Data)), ("Valor da venda", Texto.Moeda(fe.ValorVenda)), ("Comissão", Texto.Moeda(fe.Comissao)),
+                    ("Impostos", Texto.Moeda(fe.Impostos)), ("Outros custos", Texto.Moeda(fe.OutrosCustos)),
+                    ("Venda líquida", Texto.Moeda(fe.ValorVenda - fe.Comissao - fe.Impostos - fe.OutrosCustos)));
             Secao(col, "Fluxo de caixa");
             Tabela(col, [("Data", 0.9f), ("Tipo", 0.8f), ("Descrição", 4), ("Valor", 1.9f)],
                 [.. ret.Fluxo.Select(f => new[] { Texto.Data(f.Data), f.Tipo == TipoMovimento.SAIDA ? "Saída" : "Entrada", f.Descricao,
@@ -237,7 +246,8 @@ public sealed class RelatoriosService(
 
     public async Task<Arquivo> FichaFinanceiraXlsxAsync(UsuarioAtual u, Guid id, CodigoIndice indice)
     {
-        var (im, ret, lanc, aq) = await DadosFinanceiros(u, id, indice);
+        var (im, cen, contas, aq, fe) = await DadosFinanceiros(u, id, indice);
+        var ret = cen.Oficial;
         var d = im.Dados;
         using var wb = new XLWorkbook();
 
@@ -245,11 +255,16 @@ public sealed class RelatoriosService(
         {
             ("Imóvel", $"{d.Codigo} — {d.Titulo}", null), ("Data de corte", Texto.Data(ret.DataFinal), null), ("Índice de correção", ret.Indice.ToString(), null),
             ("Custo de aquisição", ret.CustoAquisicao, Moeda), ("Custo total investido", ret.CustoTotal, Moeda),
-            ("Passivo pendente (não pago)", ret.PassivoPendente, Moeda), ("Custo corrigido", V(ret.CustoCorrigido), Moeda),
-            ("Receita líquida", ret.ReceitaLiquida, Moeda), ("Resultado", ret.Resultado, Moeda),
+            ("Despesas em aberto vencidas", ret.PassivoPendente, Moeda), ("Custo corrigido", V(ret.CustoCorrigido), Moeda),
+            ("Entradas líquidas", ret.ReceitaLiquida, Moeda), ("Resultado", ret.Resultado, Moeda),
             ("ROI nominal", V(ret.Roi), "0.00%"), ("ROI real", V(ret.RoiReal), "0.00%"), ("TIR anualizada", V(ret.TirAnual), "0.00%"),
             ("MOIC", V(ret.Moic), "0.00\"×\""), ("Prazo (dias)", V(ret.PrazoDias), null),
+            ("Saldo dos lançamentos financeiros", ret.SaldoLancamentos, Moeda), ("Lançamentos incluídos na apuração", Decisao(cen.Decisao), null),
+            ("Resultado sem os lançamentos", cen.SemLancamentos.Resultado, Moeda), ("Resultado com os lançamentos", cen.ComLancamentos.Resultado, Moeda),
         };
+        if (fe is not null)
+            linhasResumo.AddRange([("Venda em", Texto.Data(fe.Data), null), ("Valor da venda", fe.ValorVenda, Moeda),
+                ("Venda líquida", fe.ValorVenda - fe.Comissao - fe.Impostos - fe.OutrosCustos, Moeda)]);
         linhasResumo.AddRange(ret.Avisos.Select(a => ("Aviso", (XLCellValue)a, (string?)null)));
         var rs = Aba(wb, "Resumo", [("Indicador", 38), ("Valor", 24)], linhasResumo.Select(x => new[] { x.K, x.V }));
         for (var i = 0; i < linhasResumo.Count; i++)
@@ -275,11 +290,9 @@ public sealed class RelatoriosService(
             aba.Column(4).Style.NumberFormat.Format = Moeda;
         }
 
-        var desp = Aba(wb, "Despesas", [("Competência", 13), ("Categoria", 22), ("Descrição", 34), ("Vencimento", 12), ("Valor", 16), ("Status", 14), ("Pago em", 12), ("Justificativa", 50)],
-            lanc.Select(l => new XLCellValue[] { l.Dados.Competencia.ToString("MM/yyyy"), l.Categoria, l.Descricao, Texto.Data(l.Dados.Vencimento),
-                l.Dados.Valor, StatusTexto(l.Dados.Status), l.Dados.DataPagamento is { } p ? Texto.Data(p) : "", l.Dados.Justificativa ?? "" }));
-        desp.Column(5).Style.NumberFormat.Format = Moeda;
-        desp.Range(1, 1, Math.Max(1, desp.LastRowUsed()!.RowNumber()), 8).SetAutoFilter();
+        var ct = Aba(wb, "Lançamentos", [("Conta", 34), ("Tipo", 12), ("Quantidade", 12), ("Total", 18)],
+            contas.Select(c => new XLCellValue[] { c.Conta, Texto.Rotulo(c.Tipo), c.Quantidade, c.Total }));
+        ct.Column(4).Style.NumberFormat.Format = Moeda;
 
         var fl = Aba(wb, "Fluxo de caixa", [("Data", 12), ("Tipo", 10), ("Descrição", 60), ("Valor", 18), ($"Valor corrigido ({ret.Indice})", 24)],
             ret.Fluxo.Select(f => new XLCellValue[] { Texto.Data(f.Data), f.Tipo == TipoMovimento.SAIDA ? "Saída" : "Entrada", f.Descricao, f.Valor, V(f.ValorCorrigido) }));
@@ -290,15 +303,23 @@ public sealed class RelatoriosService(
         return new Arquivo(Salvar(wb), $"ficha-financeira-{d.Codigo}.xlsx", TipoXlsx);
     }
 
-    /* ========================= Extrato (livro caixa) ========================= */
+    /* ==================== Extrato dos Lançamentos Financeiros ==================== */
 
-    private async Task<(ImovelDetalhe Im, Extrato Ex)> DadosExtrato(UsuarioAtual u, Guid id, FiltroExtrato f)
+    private async Task<(ImovelDetalhe Im, ExtratoLancamentos Ex, string Filtros)> DadosExtrato(UsuarioAtual u, Guid id, FiltroLancamentos f)
     {
         u.Exigir(P.FinanceiroExportar);
-        return (await imoveis.DetalheAsync(u, id), await extrato.GerarAsync(u, id, f));
+        var im = await imoveis.DetalheAsync(u, id);
+        var ex = await lancamentos.ExtratoAsync(u, id, f);
+        string? conta = null;
+        if (f.ContaId is { } cid)
+        {
+            await using var db = await fabrica.CreateDbContextAsync();
+            conta = await db.ContasOrcamentarias.Where(c => c.Id == cid).Select(c => c.Nome).SingleOrDefaultAsync();
+        }
+        return (im, ex, FiltrosTexto(f, conta));
     }
 
-    private static string Periodo(FiltroExtrato f) => (f.De, f.Ate) switch
+    private static string Periodo(FiltroLancamentos f) => (f.De, f.Ate) switch
     {
         (null, null) => "Todo o período",
         ({ } de, null) => $"A partir de {Texto.Data(de)}",
@@ -306,92 +327,77 @@ public sealed class RelatoriosService(
         ({ } de, { } ate) => $"{Texto.Data(de)} a {Texto.Data(ate)}",
     };
 
-    private static string FiltrosTexto(FiltroExtrato f, string? categoria) => string.Join(" · ", new[]
+    private static string FiltrosTexto(FiltroLancamentos f, string? conta) => string.Join(" · ", new[]
     {
         Periodo(f),
+        f.Projetado ? "Saldo projetado (inclui abertos e previstos)" : "Saldo real (só liquidados)",
         f.Tipo switch { TipoExtrato.RECEITAS => "Só receitas", TipoExtrato.DESPESAS => "Só despesas", _ => null },
-        categoria is null ? null : $"Categoria: {categoria}",
+        conta is null ? null : $"Conta: {conta}",
         Texto.Limpo(f.Busca) is { } b ? $"Busca: “{b}”" : null,
     }.Where(x => x is not null));
 
-    private async Task<string?> NomeCategoria(Guid? id)
-    {
-        if (id is null) return null;
-        await using var db = await fabrica.CreateDbContextAsync();
-        return await db.DespesaCategorias.Where(c => c.Id == id).Select(c => c.Nome).SingleOrDefaultAsync();
-    }
+    private static string Sinal(decimal v) => (v < 0 ? "-" : "") + Texto.Moeda(Math.Abs(v));
 
-    private static string Pendencia(PendenciaExtrato p) =>
-        p.Status == StatusLancamento.NAO_PAGO ? "Não pago" : p.Vencida ? "Vencida" : "A vencer";
-
-    public async Task<Arquivo> ExtratoPdfAsync(UsuarioAtual u, Guid id, FiltroExtrato f)
+    public async Task<Arquivo> ExtratoPdfAsync(UsuarioAtual u, Guid id, FiltroLancamentos f)
     {
-        var (im, ex) = await DadosExtrato(u, id, f);
+        var (im, ex, filtros) = await DadosExtrato(u, id, f);
         var d = im.Dados;
-        var filtros = FiltrosTexto(f, await NomeCategoria(f.CategoriaId));
-        var pdf = NovoPdf("Extrato do Imóvel", $"{d.Codigo} · {d.Titulo}", $"Extrato {d.Codigo} · gerado em {Texto.DataHora(DateTime.UtcNow)}", col =>
+        var pdf = NovoPdf("Lançamentos Financeiros", $"{d.Codigo} · {d.Titulo}", $"Lançamentos Financeiros {d.Codigo} · gerado em {Texto.DataHora(DateTime.UtcNow)}", col =>
         {
             col.Item().Text(filtros).FontSize(9).FontColor(Suave);
             Secao(col, "Resumo");
             Campos(col, 3,
-                ("Saldo anterior", Texto.Moeda(ex.SaldoAnterior)), ("Entradas (receitas)", Texto.Moeda(ex.Entradas)), ("Saídas (despesas pagas)", Texto.Moeda(ex.Saidas)),
-                ("Saldo no fim do período", Texto.Moeda(ex.SaldoFinal)), ("Despesas a pagar", Texto.Moeda(ex.TotalPendente)), ("Saldo projetado", Texto.Moeda(ex.SaldoProjetado)),
-                ("Saldo atual do imóvel (todo o histórico)", Texto.Moeda(ex.SaldoAtual)));
-            Secao(col, "Movimentação");
+                ("Saldo anterior", Sinal(ex.SaldoAnterior)), ("Entradas (receitas)", Texto.Moeda(ex.Entradas)), ("Saídas (despesas)", Texto.Moeda(ex.Saidas)),
+                ("Saldo no fim do período", Sinal(ex.SaldoFinal)), ("Saldo atual do imóvel (todo o histórico)", Sinal(ex.SaldoAtual)));
+            col.Item().Text(f.Projetado
+                ? "Saldo projetado: títulos liquidados na data da liquidação; abertos e previstos na data de vencimento."
+                : "Saldo real: só títulos liquidados (pagos/recebidos), na data da liquidação.").FontSize(8.5f).Italic().FontColor(Suave);
+            Secao(col, "Extrato");
             var linhas = new List<string[]>();
-            if (f.De is not null) linhas.Add([Texto.Data(f.De), "Saldo anterior", "", "", "", Texto.Moeda(ex.SaldoAnterior)]);
-            linhas.AddRange(ex.Movimentos.Select(m => new[]
+            if (f.De is not null) linhas.Add(["", Texto.Data(f.De), "Saldo anterior", "", "", Sinal(ex.SaldoAnterior)]);
+            linhas.AddRange(ex.Linhas.Select(l => new[]
             {
-                Texto.Data(m.Data), m.Descricao + (m.Detalhe is null ? "" : $" ({m.Detalhe})"), m.Categoria,
-                m.Entrada > 0 ? Texto.Moeda(m.Entrada) : "", m.Saida > 0 ? "-" + Texto.Moeda(m.Saida) : "", Texto.Moeda(m.Saldo),
+                l.Numero, Texto.Data(l.Data), l.Descricao + (l.Pessoa is null ? "" : $" · {l.Pessoa}") + (l.Observacao is null ? "" : $" ({l.Observacao})")
+                    + (l.Situacao == SituacaoLancamento.LIQUIDADO ? "" : $" [{LancamentosFinanceirosService.NomeSituacao(l.Situacao).ToLowerInvariant()}]"),
+                l.Conta, Sinal(l.Valor), Sinal(l.Saldo),
             }));
-            Tabela(col, [("Data", 0.9f), ("Histórico", 3.4f), ("Categoria", 1.4f), ("Entrada", 1.3f), ("Saída", 1.3f), ("Saldo", 1.4f)],
-                linhas, "Nenhuma movimentação no período.", colunasDireita: 3);
-            Secao(col, "Despesas a pagar (fora do saldo)");
-            Tabela(col, [("Vencimento", 0.9f), ("Despesa", 3), ("Categoria", 1.4f), ("Situação", 1.1f), ("Valor", 1.3f)],
-                [.. ex.Pendentes.Select(p => new[] { Texto.Data(p.Vencimento ?? p.Competencia), p.Descricao + (p.Justificativa is null ? "" : $" — “{p.Justificativa}”"),
-                    p.Categoria, Pendencia(p), Texto.Moeda(p.Valor) })],
-                "Nenhuma despesa a pagar no período.", alinharUltimaDireita: true);
+            Tabela(col, [("Nº", 1.2f), (f.Projetado ? "Data" : "Liquidação", 0.95f), ("Descrição", 3.2f), ("Conta", 1.6f), ("Valor", 1.3f), ("Saldo", 1.4f)],
+                linhas, "Nenhum título liquidado no período.", colunasDireita: 2);
         });
-        await Auditar(u, id, new { relatorio = "extrato", formato = "pdf", filtros });
-        return new Arquivo(pdf, $"extrato-{d.Codigo}.pdf", TipoPdf);
+        await Auditar(u, id, new { relatorio = "lancamentos-financeiros", formato = "pdf", filtros });
+        return new Arquivo(pdf, $"lancamentos-{d.Codigo}.pdf", TipoPdf);
     }
 
-    public async Task<Arquivo> ExtratoXlsxAsync(UsuarioAtual u, Guid id, FiltroExtrato f)
+    public async Task<Arquivo> ExtratoXlsxAsync(UsuarioAtual u, Guid id, FiltroLancamentos f)
     {
-        var (im, ex) = await DadosExtrato(u, id, f);
+        var (im, ex, filtros) = await DadosExtrato(u, id, f);
         var d = im.Dados;
-        var filtros = FiltrosTexto(f, await NomeCategoria(f.CategoriaId));
         using var wb = new XLWorkbook();
 
         var linhas = new List<XLCellValue[]>();
-        if (f.De is not null) linhas.Add([Texto.Data(f.De), "Saldo anterior", "", "", Blank.Value, Blank.Value, ex.SaldoAnterior]);
-        linhas.AddRange(ex.Movimentos.Select(m => new XLCellValue[]
-            { Texto.Data(m.Data), m.Descricao, m.Categoria, m.Detalhe ?? "", m.Entrada > 0 ? m.Entrada : Blank.Value, m.Saida > 0 ? m.Saida : Blank.Value, m.Saldo }));
-        var mov = Aba(wb, "Extrato", [("Data", 12), ("Histórico", 40), ("Categoria", 22), ("Detalhe", 44), ("Entrada", 16), ("Saída", 16), ("Saldo", 16)], linhas);
-        foreach (var c in new[] { 5, 6, 7 }) mov.Column(c).Style.NumberFormat.Format = Moeda;
+        if (f.De is not null) linhas.Add(["", Texto.Data(f.De), "", "Saldo anterior", "", "", Blank.Value, ex.SaldoAnterior]);
+        linhas.AddRange(ex.Linhas.Select(l => new XLCellValue[]
+            { l.Numero, Texto.Data(l.Data), LancamentosFinanceirosService.NomeSituacao(l.Situacao), l.Descricao + (l.Pessoa is null ? "" : $" · {l.Pessoa}"), l.Conta, l.Observacao ?? "", l.Valor, l.Saldo }));
+        var mov = Aba(wb, "Lançamentos", [("Nº", 14), (f.Projetado ? "Data" : "Liquidação", 12), ("Situação", 11), ("Descrição", 40), ("Conta", 26),
+            ("Observação", 40), ("Valor", 16), ("Saldo", 16)], linhas);
+        foreach (var c in new[] { 7, 8 }) mov.Column(c).Style.NumberFormat.Format = Moeda;
         var r = mov.LastRowUsed()!.RowNumber() + 2;
         foreach (var (k, v) in new[]
         {
-            ("Entradas", ex.Entradas), ("Saídas", ex.Saidas), ("Saldo no fim do período", ex.SaldoFinal), ("Despesas a pagar", ex.TotalPendente),
-            ("Saldo projetado", ex.SaldoProjetado), ("Saldo atual do imóvel (todo o histórico)", ex.SaldoAtual),
+            ("Entradas", ex.Entradas), ("Saídas", -ex.Saidas), ("Saldo no fim do período", ex.SaldoFinal),
+            ("Saldo atual do imóvel (todo o histórico)", ex.SaldoAtual),
         })
         {
-            mov.Cell(r, 2).Value = k;
-            mov.Cell(r, 7).Value = v;
-            mov.Cell(r, 2).Style.Font.Bold = true;
+            mov.Cell(r, 4).Value = k;
+            mov.Cell(r, 8).Value = v;
+            mov.Cell(r, 4).Style.Font.Bold = true;
             r++;
         }
         mov.Cell(r + 1, 1).Value = $"{d.Codigo} — {d.Titulo} · {filtros}";
         mov.Cell(r + 1, 1).Style.Font.Italic = true;
 
-        var pend = Aba(wb, "A pagar", [("Vencimento", 12), ("Competência", 13), ("Despesa", 40), ("Categoria", 22), ("Situação", 12), ("Valor", 16), ("Justificativa", 50)],
-            ex.Pendentes.Select(p => new XLCellValue[] { Texto.Data(p.Vencimento ?? p.Competencia), p.Competencia.ToString("MM/yyyy"), p.Descricao, p.Categoria,
-                Pendencia(p), p.Valor, p.Justificativa ?? "" }));
-        pend.Column(6).Style.NumberFormat.Format = Moeda;
-
-        await Auditar(u, id, new { relatorio = "extrato", formato = "xlsx", filtros });
-        return new Arquivo(Salvar(wb), $"extrato-{d.Codigo}.xlsx", TipoXlsx);
+        await Auditar(u, id, new { relatorio = "lancamentos-financeiros", formato = "xlsx", filtros });
+        return new Arquivo(Salvar(wb), $"lancamentos-{d.Codigo}.xlsx", TipoXlsx);
     }
 
     /* ------------------------------ Excel: apoio ------------------------------ */

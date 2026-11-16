@@ -14,7 +14,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
     /// <summary>Aquisição + itens, ou null se ainda não cadastrada. O total vem do banco (coluna gerada).</summary>
     public async Task<AquisicaoDetalhe?> ObterAsync(UsuarioAtual u, Guid imovelId)
     {
-        u.Exigir(P.FinanceiroVer);
+        u.Exigir(P.FinanceiroInvestimento);
         await using var db = await fabrica.CreateDbContextAsync();
         await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var a = await db.Aquisicoes.AsNoTracking().SingleOrDefaultAsync(x => x.ImovelId == imovelId);
@@ -25,7 +25,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
 
     public async Task SalvarAsync(UsuarioAtual u, Guid imovelId, AquisicaoForm form)
     {
-        u.Exigir(P.FinanceiroEditar);
+        u.Exigir(P.FinanceiroInvestimento);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
@@ -51,7 +51,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
 
     public async Task CriarItemAsync(UsuarioAtual u, Guid imovelId, AquisicaoItemForm form)
     {
-        u.Exigir(P.FinanceiroEditar);
+        u.Exigir(P.FinanceiroInvestimento);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
@@ -66,7 +66,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
 
     public async Task AtualizarItemAsync(UsuarioAtual u, Guid itemId, AquisicaoItemForm form)
     {
-        u.Exigir(P.FinanceiroEditar);
+        u.Exigir(P.FinanceiroInvestimento);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         var item = await ItemComAcesso(db, u, itemId);
@@ -78,7 +78,7 @@ public sealed class AquisicaoService(IDbContextFactory<InovabensDb> fabrica, Aud
 
     public async Task ExcluirItemAsync(UsuarioAtual u, Guid itemId)
     {
-        u.Exigir(P.FinanceiroEditar);
+        u.Exigir(P.FinanceiroInvestimento);
         await using var db = await fabrica.CreateDbContextAsync();
         var item = await ItemComAcesso(db, u, itemId);
         audit.Registrar(db, u.Id, "aquisicao_itens", itemId, "EXCLUIR", antes: item.Copia());

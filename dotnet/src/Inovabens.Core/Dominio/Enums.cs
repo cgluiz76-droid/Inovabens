@@ -18,11 +18,13 @@ public enum StatusRegularizacao { NAO_INICIADA, EM_ANDAMENTO, CONCLUIDA, CANCELA
 
 public enum TipoItemAquisicao { IMPOSTO, TAXA, DESPESA }
 
-public enum Recorrencia { UNICA, MENSAL, ANUAL }
+public enum TipoConta { RECEITA, DESPESA }
 
-public enum StatusLancamento { PAGO, NAO_PAGO, NAO_SE_APLICA }
-
-public enum TipoReceita { VENDA, LOCACAO, OUTRA }
+/// <summary>
+/// PREVISTO: gerado pela recorrência, aguardando confirmação. ABERTO: título a pagar/receber (vencimento em <c>data</c>).
+/// LIQUIDADO: pago/recebido, entra no saldo. IGNORADO: previsto descartado.
+/// </summary>
+public enum SituacaoLancamento { PREVISTO, ABERTO, LIQUIDADO, IGNORADO }
 
 public enum CodigoIndice { IPCA, INCC, IGPM, SELIC }
 
@@ -37,7 +39,7 @@ public enum TipoCompromisso { TAREFA, REUNIAO, VISITA, LIGACAO, MENSAGEM }
 
 public enum StatusCompromisso { PENDENTE, CONCLUIDO, CANCELADO }
 
-public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, DESPESA_NAO_PAGA, LIMITE_GRATUITO, NOVO_LEAD, PROPOSTA_EXPIRADA, ETAPA_PARADA }
+public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, TITULO_EM_ATRASO, LIMITE_GRATUITO, NOVO_LEAD, PROPOSTA_EXPIRADA, ETAPA_PARADA }
 
 /// <summary>CAPTACAO: proprietário oferecendo o imóvel (funil de captação).</summary>
 public enum FinalidadeLead { COMPRA, LOCACAO, CAPTACAO }

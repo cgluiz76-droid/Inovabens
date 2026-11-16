@@ -12,16 +12,17 @@ public sealed record ResultadoRetorno(
     decimal CustoAquisicao, decimal CustoTotal, decimal PassivoPendente, decimal? CustoCorrigido,
     decimal ReceitaLiquida, decimal Resultado,
     double? Roi, double? RoiReal, double? TirAnual, double? Moic, int? PrazoDias,
-    IReadOnlyList<string> Avisos, IReadOnlyList<MovimentoFluxo> Fluxo);
+    IReadOnlyList<string> Avisos, IReadOnlyList<MovimentoFluxo> Fluxo,
+    bool IncluiLancamentos = false, decimal SaldoLancamentos = 0, decimal? VendaLiquida = null);
 
-public sealed record LancamentoRetorno(
-    DateOnly Competencia, DateOnly? Vencimento, DateOnly? DataPagamento, StatusLancamento? Status,
-    decimal Valor, string Descricao, string Categoria);
+/// <summary>Lançamento financeiro (valor com sinal: receita +, despesa −) para a apuração. Data: liquidação (liquidados) ou vencimento.</summary>
+public sealed record LancamentoRetorno(DateOnly Data, decimal Valor, SituacaoLancamento Situacao, string Descricao, string Conta);
 
 public sealed record DadosRetorno(
     Guid ImovelId, CodigoIndice Indice, DateOnly Ate,
     Aquisicao? Aquisicao, IReadOnlyList<AquisicaoItem> Itens,
-    IReadOnlyList<LancamentoRetorno> Lancamentos, IReadOnlyList<Receita> Receitas, FatoresIndice Fatores);
+    IReadOnlyList<LancamentoRetorno> Lancamentos, FechamentoInvestimento? Fechamento, FatoresIndice Fatores,
+    bool IncluirLancamentos = true);
 
 /// <summary>
 /// Fator acumulado F(mês) = Π(1 + v/100) até o mês. A correção de um valor da data tᵢ até t é F(t)/F(tᵢ).
@@ -61,10 +62,11 @@ public sealed class FatoresIndice
 }
 
 /// <summary>
-/// Retorno do investimento (port fiel de retorno.service.ts), a partir do fluxo de caixa datado:
-///  - SAÍDAS: valor pago + itens de aquisição + despesas PAGAS (OPEX);
-///  - ENTRADAS: receitas líquidas (venda/locação), já descontados custos de venda e tributos;
-///  - passivo pendente: despesas NAO_PAGO (fora do custo, destacadas);
+/// Retorno do investimento, a partir do fluxo de caixa datado:
+///  - SAÍDAS: valor pago + itens de aquisição (CAPEX) e, se incluídos, os títulos de despesa liquidados (OPEX);
+///  - ENTRADAS: venda líquida do fechamento (venda − comissão − impostos − outros custos) e, se incluídos, os
+///    títulos de receita liquidados;
+///  - passivo pendente: títulos de despesa abertos ou previstos já vencidos (fora do custo, destacados);
 ///  - correção: cada saída é multiplicada por F(data final)/F(data da saída) do índice escolhido.
 /// Cálculo em centavos (long), como na versão Node, para dar exatamente os mesmos valores.
 /// </summary>
@@ -97,22 +99,22 @@ public static class CalculoRetorno
         }
 
         long pendente = 0;
-        foreach (var l in d.Lancamentos.Where(l => l.Competencia <= d.Ate))
+        var realizados = d.Lancamentos.Where(l => l.Situacao == SituacaoLancamento.LIQUIDADO && l.Data <= d.Ate).ToList();
+        var saldoLancamentos = realizados.Sum(l => Centavos(l.Valor));
+        if (d.IncluirLancamentos)
         {
-            if (l.Status == StatusLancamento.NAO_PAGO) pendente += Centavos(l.Valor);
-            if (l.Status == StatusLancamento.PAGO)
-            {
-                var data = l.DataPagamento ?? l.Vencimento ?? l.Competencia;
-                if (data <= d.Ate)
-                    movs.Add(new Mov(data, TipoMovimento.SAIDA, $"{l.Categoria}: {l.Descricao} ({l.Competencia:MM/yyyy})", Centavos(l.Valor)));
-            }
+            foreach (var l in realizados.OrderBy(l => l.Data))
+                movs.Add(new Mov(l.Data, l.Valor < 0 ? TipoMovimento.SAIDA : TipoMovimento.ENTRADA, $"{l.Conta}: {l.Descricao}", Math.Abs(Centavos(l.Valor))));
+            pendente = -d.Lancamentos.Where(l => (l.Situacao is SituacaoLancamento.ABERTO or SituacaoLancamento.PREVISTO) && l.Valor < 0 && l.Data <= d.Ate).Sum(l => Centavos(l.Valor));
         }
 
-        var receitas = d.Receitas.Where(r => r.Data <= d.Ate).ToList();
-        foreach (var r in receitas)
+        long? vendaLiquida = null;
+        DateOnly? venda = null;
+        if (d.Fechamento is { } fe && fe.Data <= d.Ate)
         {
-            var tipo = r.Tipo switch { TipoReceita.VENDA => "Venda", TipoReceita.LOCACAO => "Locação", _ => "Outra receita" };
-            movs.Add(new Mov(r.Data, TipoMovimento.ENTRADA, $"{tipo} (líquido)", Centavos(r.ValorLiquido)));
+            vendaLiquida = Centavos(fe.ValorVenda) - Centavos(fe.Comissao) - Centavos(fe.Impostos) - Centavos(fe.OutrosCustos);
+            venda = fe.Data;
+            movs.Add(new Mov(fe.Data, TipoMovimento.ENTRADA, "Venda (líquido de comissão, impostos e custos)", vendaLiquida.Value));
         }
 
         // ordem cronológica; no mesmo dia, saídas antes de entradas (OrderBy é estável)
@@ -123,7 +125,6 @@ public static class CalculoRetorno
         var custoAquisicao = saidas.Where(m => m.Aquisicao).Sum(m => m.Centavos);
 
         // Data final da correção: a venda (se houver), senão a data de corte.
-        var venda = receitas.Where(r => r.Tipo == TipoReceita.VENDA).Select(r => (DateOnly?)r.Data).Max();
         var dataFinal = venda ?? d.Ate;
 
         long? corrigido = null;
@@ -151,7 +152,7 @@ public static class CalculoRetorno
         }
 
         var temReceita = receita > 0;
-        if (!temReceita) avisos.Add("Sem receitas registradas: ROI, TIR e MOIC só são calculados após a venda/locação.");
+        if (!temReceita) avisos.Add("Sem entradas registradas: ROI, TIR e MOIC só são calculados após o fechamento (venda).");
         var resultado = receita - custo;
         var tir = temReceita
             ? Xirr(movs.Select(m => (m.Data, (m.Tipo == TipoMovimento.SAIDA ? -m.Centavos : m.Centavos) / 100d)).ToList())
@@ -168,7 +169,8 @@ public static class CalculoRetorno
             Moic: temReceita ? Razao(receita, custo) : null,
             PrazoDias: inicio is null ? null : dataFinal.DayNumber - inicio.Value.DayNumber,
             avisos,
-            movs.Select((m, i) => new MovimentoFluxo(m.Data, m.Tipo, m.Descricao, Reais(m.Centavos), corrigidos[i] is { } c ? Reais(c) : null)).ToList());
+            movs.Select((m, i) => new MovimentoFluxo(m.Data, m.Tipo, m.Descricao, Reais(m.Centavos), corrigidos[i] is { } c ? Reais(c) : null)).ToList(),
+            d.IncluirLancamentos, Reais(saldoLancamentos), vendaLiquida is { } v ? Reais(v) : null);
     }
 
     /// <summary>Taxa interna de retorno anualizada (XIRR) por bissecção; null se não há saída e entrada.</summary>

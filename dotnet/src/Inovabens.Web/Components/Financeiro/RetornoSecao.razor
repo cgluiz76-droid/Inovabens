@@ -1,4 +1,4 @@
-﻿@inherits ComponenteBase
+@inherits ComponenteBase
 @inject RetornoService Servico
 @inject IndicesService Indices
 
@@ -38,10 +38,37 @@
     }
     else
     {
+        <div class="tabela-container">
+            <table class="tabela cenarios">
+                <thead>
+                    <tr>
+                        <th>Apuração do lucro</th>
+                        <th class="num @(cen!.Decisao == false ? "cenario-oficial" : "")">Sem os Lançamentos Financeiros @(cen.Decisao == false ? "✔" : "")</th>
+                        <th class="num @(cen.Decisao == true ? "cenario-oficial" : "")">Com os Lançamentos Financeiros @(cen.Decisao == true ? "✔" : "")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>Custo total</td><td class="num">@Texto.Moeda(cen.SemLancamentos.CustoTotal)</td><td class="num">@Texto.Moeda(cen.ComLancamentos.CustoTotal)</td></tr>
+                    <tr><td>Entradas líquidas</td><td class="num">@Texto.Moeda(cen.SemLancamentos.ReceitaLiquida)</td><td class="num">@Texto.Moeda(cen.ComLancamentos.ReceitaLiquida)</td></tr>
+                    <tr><td><b>Resultado</b></td>
+                        <td class="num @(cen.SemLancamentos.Resultado < 0 ? "texto-erro" : "")"><b>@Texto.Moeda(cen.SemLancamentos.Resultado)</b></td>
+                        <td class="num @(cen.ComLancamentos.Resultado < 0 ? "texto-erro" : "")"><b>@Texto.Moeda(cen.ComLancamentos.Resultado)</b></td></tr>
+                    <tr><td>ROI</td><td class="num">@Texto.Percentual(cen.SemLancamentos.Roi)</td><td class="num">@Texto.Percentual(cen.ComLancamentos.Roi)</td></tr>
+                    <tr><td>TIR anual</td><td class="num">@Texto.Percentual(cen.SemLancamentos.TirAnual)</td><td class="num">@Texto.Percentual(cen.ComLancamentos.TirAnual)</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="pequeno mudo">
+            Saldo dos Lançamentos Financeiros (liquidados): <b>@Texto.Moeda(r.SaldoLancamentos)</b>.
+            @(cen.Decisao is null
+                ? "Decisão no Fechamento da operação ainda pendente: os indicadores abaixo usam o cenário com os lançamentos."
+                : cen.Decisao == true ? "Fechamento: saldo dos lançamentos INCLUÍDO na apuração." : "Fechamento: saldo dos lançamentos NÃO incluído na apuração.")
+        </p>
+
         <div class="kpis">
             <div class="kpi"><p class="rotulo-kpi">Custo total</p><p class="valor-kpi">@Texto.Moeda(r.CustoTotal)</p><p class="pequeno mudo">aquisição @Texto.Moeda(r.CustoAquisicao)</p></div>
             <div class="kpi"><p class="rotulo-kpi">Custo corrigido (@r.Indice)</p><p class="valor-kpi">@Texto.Moeda(r.CustoCorrigido)</p></div>
-            <div class="kpi"><p class="rotulo-kpi">Receita líquida</p><p class="valor-kpi">@Texto.Moeda(r.ReceitaLiquida)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Entradas líquidas</p><p class="valor-kpi">@Texto.Moeda(r.ReceitaLiquida)</p></div>
             <div class="kpi"><p class="rotulo-kpi">Resultado</p><p class="valor-kpi @(r.Resultado < 0 ? "texto-erro" : "")">@Texto.Moeda(r.Resultado)</p></div>
             <div class="kpi"><p class="rotulo-kpi">ROI</p><p class="valor-kpi">@Texto.Percentual(r.Roi)</p></div>
             <div class="kpi"><p class="rotulo-kpi">ROI real (descontada a inflação)</p><p class="valor-kpi">@Texto.Percentual(r.RoiReal)</p></div>
@@ -58,7 +85,7 @@
 
         @if (r.PassivoPendente > 0)
         {
-            <p class="aviso-passivo">Passivo pendente (despesas não pagas, fora do custo): <b>@Texto.Moeda(r.PassivoPendente)</b></p>
+            <p class="aviso-passivo">Despesas em aberto já vencidas (fora do custo): <b>@Texto.Moeda(r.PassivoPendente)</b></p>
         }
         @foreach (var a in r.Avisos)
         {
@@ -90,7 +117,8 @@
 @code {
     [Parameter, EditorRequired] public Guid ImovelId { get; set; }
 
-    private ResultadoRetorno? r;
+    private RetornoCenarios? cen;
+    private ResultadoRetorno? r => cen?.Oficial;
     private CodigoIndice indice = CodigoIndice.IPCA;
     private bool sincronizando;
 
@@ -98,7 +126,7 @@
 
     public async Task RecarregarAsync()
     {
-        await Executar(async () => r = await Servico.CalcularAsync(Usuario, ImovelId, indice));
+        await Executar(async () => cen = await Servico.CenariosAsync(Usuario, ImovelId, indice));
         StateHasChanged();
     }
 

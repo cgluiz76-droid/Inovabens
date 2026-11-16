@@ -41,7 +41,7 @@ public static class PadroesIniciais
             P.AgendaVer, P.AgendaCriar, P.AgendaEditar, P.AgendaExcluir,
             P.CrmVer, P.CrmCriar, P.CrmEditar,
         ]),
-        new("Financeiro", "Gerencia aquisição, despesas e retorno dos imóveis", false,
+        new("Financeiro", "Gerencia os lançamentos financeiros (receitas e despesas) dos imóveis", false,
         [
             P.PessoasVer, P.ImoveisVer, P.ImoveisExportar,
             P.FinanceiroVer, P.FinanceiroEditar, P.FinanceiroExportar,
@@ -51,9 +51,14 @@ public static class PadroesIniciais
         ]),
     ];
 
-    public static readonly IReadOnlyList<string> CategoriasDespesa =
+    /// <summary>Contas orçamentárias iniciais (as mesmas da migração 0030).</summary>
+    public static readonly IReadOnlyList<(string Nome, TipoConta Tipo)> ContasOrcamentarias =
     [
-        "Reformas", "Manutenção", "IPTU", "Água", "Luz", "Condomínio", "Taxas cartorárias", "Honorários profissionais", "Seguro", "Outras",
+        ("Reformas", TipoConta.DESPESA), ("Manutenção", TipoConta.DESPESA), ("IPTU", TipoConta.DESPESA), ("Água", TipoConta.DESPESA),
+        ("Luz", TipoConta.DESPESA), ("Condomínio", TipoConta.DESPESA), ("Taxas cartorárias", TipoConta.DESPESA),
+        ("Honorários profissionais", TipoConta.DESPESA), ("Seguro", TipoConta.DESPESA), ("Outras", TipoConta.DESPESA),
+        ("Reembolso", TipoConta.RECEITA), ("Taxa de administração de aluguel", TipoConta.RECEITA), ("Aluguel recebido", TipoConta.RECEITA),
+        ("Outras receitas", TipoConta.RECEITA),
     ];
 
     public static readonly IReadOnlyList<EstagioPadrao> Estagios =

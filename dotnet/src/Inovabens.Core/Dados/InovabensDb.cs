@@ -33,10 +33,9 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
 
     public DbSet<Aquisicao> Aquisicoes => Set<Aquisicao>();
     public DbSet<AquisicaoItem> AquisicaoItens => Set<AquisicaoItem>();
-    public DbSet<DespesaCategoria> DespesaCategorias => Set<DespesaCategoria>();
-    public DbSet<Despesa> Despesas => Set<Despesa>();
-    public DbSet<DespesaLancamento> DespesaLancamentos => Set<DespesaLancamento>();
-    public DbSet<Receita> Receitas => Set<Receita>();
+    public DbSet<ContaOrcamentaria> ContasOrcamentarias => Set<ContaOrcamentaria>();
+    public DbSet<LancamentoFinanceiro> LancamentosFinanceiros => Set<LancamentoFinanceiro>();
+    public DbSet<FechamentoInvestimento> FechamentosInvestimento => Set<FechamentoInvestimento>();
     public DbSet<ComprovanteFinanceiro> ComprovantesFinanceiros => Set<ComprovanteFinanceiro>();
     public DbSet<IndiceSerie> IndicesSerie => Set<IndiceSerie>();
     public DbSet<TaxaFinanciamento> TaxasFinanciamento => Set<TaxaFinanciamento>();
@@ -78,9 +77,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             n.MapEnum<TipoRegularizacao>("tipo_regularizacao", nameTranslator: semTraducao);
             n.MapEnum<StatusRegularizacao>("status_regularizacao", nameTranslator: semTraducao);
             n.MapEnum<TipoItemAquisicao>("tipo_item_aquisicao", nameTranslator: semTraducao);
-            n.MapEnum<Recorrencia>("recorrencia", nameTranslator: semTraducao);
-            n.MapEnum<StatusLancamento>("status_lancamento", nameTranslator: semTraducao);
-            n.MapEnum<TipoReceita>("tipo_receita", nameTranslator: semTraducao);
+            n.MapEnum<TipoConta>("tipo_conta", nameTranslator: semTraducao);
+            n.MapEnum<SituacaoLancamento>("situacao_lancamento", nameTranslator: semTraducao);
             n.MapEnum<CodigoIndice>("codigo_indice", nameTranslator: semTraducao);
             n.MapEnum<TipoPessoa>("tipo_pessoa", nameTranslator: semTraducao);
             n.MapEnum<TipoMemorando>("tipo_memorando", nameTranslator: semTraducao);
@@ -171,11 +169,10 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         // Colunas GERADAS pelo banco: o EF nunca as envia, só lê de volta após gravar.
         mb.Entity<Aquisicao>().Property(x => x.TotalAquisicao)
             .HasComputedColumnSql("valor_pago + impostos + taxas + despesas_diversas", stored: true);
-        mb.Entity<Receita>().Property(x => x.ValorLiquido)
-            .HasComputedColumnSql("valor_bruto - custos_venda - tributos", stored: true);
+        mb.Entity<FechamentoInvestimento>().Property(x => x.ValorLiquido)
+            .HasComputedColumnSql("valor_venda - comissao - impostos - outros_custos", stored: true);
         mb.Entity<AquisicaoItem>().HasOne(x => x.Aquisicao).WithMany().HasForeignKey(x => x.AquisicaoId);
-        mb.Entity<Despesa>().HasOne(x => x.Categoria).WithMany().HasForeignKey(x => x.CategoriaId);
-        mb.Entity<DespesaLancamento>().HasOne(x => x.Despesa).WithMany().HasForeignKey(x => x.DespesaId);
+        mb.Entity<LancamentoFinanceiro>().HasOne(x => x.Conta).WithMany().HasForeignKey(x => x.ContaId);
 
         mb.Entity<Pessoa>().HasMany(x => x.Papeis).WithOne().HasForeignKey(x => x.PessoaId);
         mb.Entity<PessoaPapel>().HasKey(x => new { x.PessoaId, x.Papel });

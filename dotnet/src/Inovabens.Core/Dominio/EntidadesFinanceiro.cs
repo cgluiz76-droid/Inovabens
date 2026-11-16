@@ -44,94 +44,90 @@ public class AquisicaoItem
     public AquisicaoItem Copia() => (AquisicaoItem)MemberwiseClone();
 }
 
-[Table("despesa_categorias")]
-public class DespesaCategoria
+/// <summary>Conta orçamentária (plano de contas simples) de um lançamento: de receita ou de despesa.</summary>
+[Table("contas_orcamentarias")]
+public class ContaOrcamentaria
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Nome { get; set; } = "";
+    public TipoConta Tipo { get; set; } = TipoConta.DESPESA;
     public bool Ativo { get; set; } = true;
 }
 
-/// <summary>Despesa recorrente (OPEX). Os lançamentos mensais (checklist) ficam em <see cref="DespesaLancamento"/>.</summary>
-[Table("despesas")]
-public class Despesa
+/// <summary>
+/// Lançamento financeiro do imóvel (receitas e despesas correntes). <see cref="Valor"/> tem SINAL: receita positiva,
+/// despesa negativa. Situação: PREVISTO (recorrência) → ABERTO (título a pagar/receber, vence em <see cref="Data"/>) →
+/// LIQUIDADO (pago/recebido em <see cref="DataLiquidacao"/>; só ele entra no saldo). <see cref="Numero"/> é sequencial
+/// no imóvel e existe nos ABERTOS e LIQUIDADOS (exibido "CODIGO-0001"). Um lançamento recorrente gera, a cada mês, um
+/// PREVISTO (<see cref="OrigemId"/> + <see cref="Competencia"/>) que o usuário confirma ou ignora.
+/// </summary>
+[Table("lancamentos_financeiros")]
+public class LancamentoFinanceiro
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ImovelId { get; set; }
-    public Guid CategoriaId { get; set; }
-    public Guid? RegularizacaoId { get; set; }
-    public string Descricao { get; set; } = "";
-    public Recorrencia Recorrencia { get; set; } = Recorrencia.UNICA;
-    public int? DiaVencimento { get; set; }
-    public decimal ValorPrevisto { get; set; }
-    public DateOnly InicioEm { get; set; }
-    public DateOnly? FimEm { get; set; }
-    public bool Ativa { get; set; } = true;
-    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
-    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
-    public DateTime? ExcluidoEm { get; set; }
-    [JsonIgnore] public DespesaCategoria? Categoria { get; set; }
-
-    public Despesa Copia() => (Despesa)MemberwiseClone();
-}
-
-/// <summary>
-/// Lançamento de uma despesa numa competência (sempre dia 1 do mês). Status nulo = "a marcar".
-/// REGRA (também CHECK no banco): NAO_PAGO exige justificativa com pelo menos 10 caracteres.
-/// </summary>
-[Table("despesa_lancamentos")]
-public class DespesaLancamento
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid DespesaId { get; set; }
-    public DateOnly Competencia { get; set; }
-    public DateOnly? Vencimento { get; set; }
+    public int? Numero { get; set; }
+    public SituacaoLancamento Situacao { get; set; } = SituacaoLancamento.ABERTO;
+    /// <summary>Vencimento.</summary>
+    public DateOnly Data { get; set; }
+    public DateOnly? DataLiquidacao { get; set; }
     public decimal Valor { get; set; }
-    public StatusLancamento? Status { get; set; }
-    public DateOnly? DataPagamento { get; set; }
-    public string? Justificativa { get; set; }
-    public string? ComprovanteChave { get; set; }
+    public string Descricao { get; set; } = "";
+    public Guid ContaId { get; set; }
+    /// <summary>Quem pagou ou recebeu: nome livre; <see cref="PessoaId"/> quando bate com uma pessoa cadastrada.</summary>
+    public Guid? PessoaId { get; set; }
+    public string? PessoaNome { get; set; }
+    public string? Observacao { get; set; }
+    public bool Recorrente { get; set; }
+    public int? DiaRecorrencia { get; set; }
+    public decimal? ValorEstimado { get; set; }
+    public Guid? OrigemId { get; set; }
+    public DateOnly? Competencia { get; set; }
+    public Guid? CriadoPor { get; set; }
     public Guid? AtualizadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
-    [JsonIgnore] public Despesa? Despesa { get; set; }
-
-    public DespesaLancamento Copia() => (DespesaLancamento)MemberwiseClone();
-}
-
-/// <summary>Receita (venda/locação). <see cref="ValorLiquido"/> é coluna GERADA (bruto − custos − tributos).</summary>
-[Table("receitas")]
-public class Receita
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid ImovelId { get; set; }
-    public TipoReceita Tipo { get; set; }
-    public DateOnly Data { get; set; }
-    public decimal ValorBruto { get; set; }
-    public decimal CustosVenda { get; set; }
-    public decimal Tributos { get; set; }
-    public decimal ValorLiquido { get; set; }
-    public Guid? ContraparteId { get; set; }
-    public string? Observacao { get; set; }
-    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
-    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
     public DateTime? ExcluidoEm { get; set; }
+    [JsonIgnore] public ContaOrcamentaria? Conta { get; set; }
+    [JsonIgnore] public Imovel? Imovel { get; set; }
 
-    public Receita Copia() => (Receita)MemberwiseClone();
+    public LancamentoFinanceiro Copia() => (LancamentoFinanceiro)MemberwiseClone();
 }
 
 /// <summary>
-/// Comprovante (nota, recibo, boleto pago) de uma receita ou do pagamento de uma despesa. O arquivo fica no Google Drive,
-/// em "&lt;pasta do imóvel&gt;/07 - Financeiro/&lt;ano&gt;". REGRA (CHECK no banco): pertence a uma receita OU a um lançamento.
+/// Fechamento da operação (venda) — um por imóvel, só administrador. <see cref="ValorLiquido"/> é coluna GERADA.
+/// <see cref="IncluirLancamentos"/>: se o saldo dos lançamentos financeiros entra na apuração do lucro (null = não decidido).
+/// </summary>
+[Table("fechamentos_investimento")]
+public class FechamentoInvestimento
+{
+    [System.ComponentModel.DataAnnotations.Key] public Guid ImovelId { get; set; }
+    public DateOnly Data { get; set; }
+    public decimal ValorVenda { get; set; }
+    public decimal Comissao { get; set; }
+    public decimal Impostos { get; set; }
+    public decimal OutrosCustos { get; set; }
+    public decimal ValorLiquido { get; set; }
+    public bool? IncluirLancamentos { get; set; }
+    public Guid? CompradorId { get; set; }
+    public string? Observacao { get; set; }
+    public Guid? AtualizadoPor { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+
+    public FechamentoInvestimento Copia() => (FechamentoInvestimento)MemberwiseClone();
+}
+
+/// <summary>
+/// Comprovante (nota, recibo, boleto pago) de um lançamento financeiro. O arquivo fica no Google Drive,
+/// em "&lt;pasta do imóvel&gt;/07 - Financeiro/&lt;ano&gt;".
 /// </summary>
 [Table("financeiro_comprovantes")]
 public class ComprovanteFinanceiro
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ImovelId { get; set; }
-    public Guid? ReceitaId { get; set; }
-    public Guid? LancamentoId { get; set; }
-    public Guid? DespesaId { get; set; }
+    public Guid LancamentoId { get; set; }
     public string ArquivoChave { get; set; } = "";
     public string NomeOriginal { get; set; } = "";
     public string TipoConteudo { get; set; } = "";

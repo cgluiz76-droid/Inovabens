@@ -46,8 +46,16 @@ public class CompatibilidadeTests
         var tabelas = Regex.Matches(sql, @"CREATE TABLE ""(\w+)"" \((.*?)\n\);", RegexOptions.Singleline)
             .ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value);
         // colunas acrescentadas depois (scripts só do .NET, como 0003_*)
-        foreach (Match m in Regex.Matches(sql, @"ALTER TABLE ""?(\w+)""? ADD COLUMN (?:IF NOT EXISTS )?""?(\w+)""?", RegexOptions.IgnoreCase))
-            tabelas[m.Groups[1].Value] += $"\n\"{m.Groups[2].Value}\" ";
+        // e tabelas renomeadas (0030: despesa_categorias -> contas_orcamentarias), na ordem em que aparecem
+        foreach (Match m in Regex.Matches(sql, @"ALTER TABLE ""?(\w+)""? (?:ADD COLUMN (?:IF NOT EXISTS )?""?(\w+)""?|RENAME TO ""?(\w+)""?)", RegexOptions.IgnoreCase))
+        {
+            if (m.Groups[3].Success)
+            {
+                tabelas[m.Groups[3].Value] = tabelas[m.Groups[1].Value];
+                tabelas.Remove(m.Groups[1].Value);
+            }
+            else tabelas[m.Groups[1].Value] += $"\n\"{m.Groups[2].Value}\" ";
+        }
 
         var opcoes = new DbContextOptionsBuilder<InovabensDb>();
         InovabensDb.ConfigurarNpgsql(opcoes, "Host=localhost;Database=x");

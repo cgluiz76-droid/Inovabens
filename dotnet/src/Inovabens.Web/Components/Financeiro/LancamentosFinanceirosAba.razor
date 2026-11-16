@@ -1,0 +1,680 @@
+@inherits ComponenteBase
+@inject LancamentosFinanceirosService Servico
+@inject ComprovantesService Comprovantes
+@inject OpcoesService Opcoes
+
+@* Aba "Lançamentos Financeiros" do imóvel: títulos a receber (+) e a pagar (−) correntes. Situação: previsto (recorrência)
+   → aberto → liquidado. O extrato mostra o saldo REAL (só liquidados, padrão) ou PROJETADO (também abertos e previstos).
+   Filtros começam no mês corrente; PDF e Excel saem com os mesmos filtros. *@
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Lançamentos Financeiros</h2>
+        <div class="acoes-topo">
+            @if (PodeEditar)
+            {
+                <button class="btn-primary" disabled="@Ocupado" @onclick="() => Novo(TipoConta.RECEITA)">+ Nova receita</button>
+                <button class="btn-primary btn-despesa" disabled="@Ocupado" @onclick="() => Novo(TipoConta.DESPESA)">+ Nova despesa</button>
+            }
+            @if (Usuario.Pode(Permissoes.FinanceiroExportar))
+            {
+                <a class="btn-ghost" href="@($"imoveis/{ImovelId}/extrato.pdf{Consulta}")" download>Extrato PDF</a>
+                <a class="btn-ghost" href="@($"imoveis/{ImovelId}/extrato.xlsx{Consulta}")" download>Extrato Excel</a>
+            }
+        </div>
+    </div>
+
+    <form class="linha-form extrato-filtros" @onsubmit="Carregar" @onsubmit:preventDefault>
+        <label class="campo-inline"><span>De</span><input type="date" class="input w-data" @bind="filtro.De" /></label>
+        <label class="campo-inline"><span>Até</span><input type="date" class="input w-data" @bind="filtro.Ate" /></label>
+        <label class="campo-inline">
+            <span>Saldo</span>
+            <select class="input" @bind="ModoSaldo" @bind:after="Carregar">
+                <option value="real">Real (só liquidados)</option>
+                <option value="projetado">Projetado (com abertos e previstos)</option>
+            </select>
+        </label>
+        <label class="campo-inline">
+            <span>Mostrar</span>
+            <select class="input" @bind="filtro.Tipo">
+                <option value="@TipoExtrato.TODOS">Receitas e despesas</option>
+                <option value="@TipoExtrato.RECEITAS">Só receitas</option>
+                <option value="@TipoExtrato.DESPESAS">Só despesas</option>
+            </select>
+        </label>
+        <label class="campo-inline">
+            <span>Conta</span>
+            <select class="input" @bind="ContaFiltro">
+                <option value="">Todas</option>
+                @foreach (var c in contas)
+                {
+                    <option value="@c.Id">@c.Nome@(c.Ativo ? "" : " (inativa)")</option>
+                }
+            </select>
+        </label>
+        <label class="campo-inline"><span>Buscar</span><input class="input" placeholder="nº, descrição, conta ou observação" @bind="filtro.Busca" /></label>
+        <button type="submit" class="btn-primary" disabled="@Ocupado">Filtrar</button>
+        <span class="atalhos-periodo">
+            <button type="button" class="btn-ghost mini" @onclick="() => Mes(-1)">Mês anterior</button>
+            <button type="button" class="btn-ghost mini" @onclick="() => Mes(0)">Mês atual</button>
+            <button type="button" class="btn-ghost mini" @onclick="EsteAno">Este ano</button>
+            <button type="button" class="btn-ghost mini" @onclick="Tudo">Tudo</button>
+        </span>
+    </form>
+    <p class="pequeno mudo">@Periodo() @(filtro.Projetado
+        ? "Saldo projetado: liquidados na data da liquidação; abertos e previstos na data de vencimento."
+        : "Saldo real: só títulos liquidados (pagos/recebidos), na data da liquidação.")</p>
+    <MensagemErro Texto="@ErroTela" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
+
+    @if (ex is null)
+    {
+        @if (Erro is null)
+        {
+            <p class="carregando">Carregando…</p>
+        }
+    }
+    else
+    {
+        <div class="kpis espaco-topo">
+            <div class="kpi"><p class="rotulo-kpi">Entradas no período</p><p class="valor-kpi texto-ok">@Texto.Moeda(ex.Entradas)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Saídas no período</p><p class="valor-kpi texto-erro">@Sinal(-ex.Saidas)</p></div>
+            <div class="kpi">
+                <p class="rotulo-kpi">Saldo @(filtro.Projetado ? "projetado" : "real") no fim do período</p>
+                <p class="valor-kpi @(ex.SaldoFinal < 0 ? "texto-erro" : "")">@Sinal(ex.SaldoFinal)</p>
+                <p class="pequeno mudo">saldo anterior @Sinal(ex.SaldoAnterior)</p>
+            </div>
+            <div class="kpi">
+                <p class="rotulo-kpi">Em aberto</p>
+                <p class="valor-kpi @(ex.Abertos.Any(a => a.Atrasado) ? "texto-erro" : "")">@ex.Abertos.Count</p>
+                <p class="pequeno mudo">@(ex.Abertos.Count == 0 ? "nenhum título" : $"{Sinal(ex.TotalAberto)} · {ex.Abertos.Count(a => a.Atrasado)} em atraso")</p>
+            </div>
+        </div>
+        <p class="pequeno mudo">Saldo real do imóvel (todo o histórico): <b class="@(ex.SaldoAtual < 0 ? "texto-erro" : "")">@Sinal(ex.SaldoAtual)</b></p>
+
+        <div class="tabela-container">
+            <table class="tabela extrato">
+                <thead>
+                    <tr>
+                        <th>Nº</th><th>@(filtro.Projetado ? "Data" : "Liquidação")</th>@if (filtro.Projetado) { <th>Situação</th> }
+                        <th>Descrição</th><th>Conta</th><th class="num">Valor</th><th class="num">Saldo</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (filtro.De is not null)
+                    {
+                        <tr class="saldo-anterior">
+                            <td></td><td>@Texto.Data(filtro.De)</td><td colspan="@(filtro.Projetado ? 4 : 3)"><b>Saldo anterior</b></td>
+                            <td class="num"><b>@Sinal(ex.SaldoAnterior)</b></td><td></td>
+                        </tr>
+                    }
+                    @if (ex.Linhas.Count == 0)
+                    {
+                        <tr><td colspan="8" class="vazio">@(filtro.Projetado ? "Nenhum título no período." : "Nenhum título liquidado no período.")</td></tr>
+                    }
+                    @foreach (var l in ex.Linhas)
+                    {
+                        <tr class="@(l.Situacao == SituacaoLancamento.LIQUIDADO ? "" : "linha-projetada")">
+                            <td class="nowrap mudo">@l.Numero</td>
+                            <td>@Texto.Data(l.Data)</td>
+                            @if (filtro.Projetado)
+                            {
+                                <td><span class="badge @ClasseSituacao(l.Situacao, l.Data)">@LancamentosFinanceirosService.NomeSituacao(l.Situacao)</span></td>
+                            }
+                            <td>
+                                <b>@l.Descricao</b>
+                                @if (l.Recorrente) { <span class="badge badge-neutro" title="Repete todo mês">↻ recorrente</span> }
+                                @if (l.DeRecorrencia) { <span class="pequeno mudo" title="Veio de uma recorrência"> ↻</span> }
+                                @if (l.Situacao == SituacaoLancamento.LIQUIDADO && l.Vencimento != l.Data) { <p class="pequeno mudo">vencimento @Texto.Data(l.Vencimento)</p> }
+                                @if (l.Pessoa is not null) { <p class="pequeno">👤 @l.Pessoa</p> }
+                                @if (l.Observacao is not null) { <p class="pequeno mudo">@l.Observacao</p> }
+                            </td>
+                            <td>@l.Conta</td>
+                            <td class="num @(l.Valor < 0 ? "texto-erro" : "texto-ok")">@Sinal(l.Valor)</td>
+                            <td class="num @(l.Saldo < 0 ? "texto-erro" : "")"><b>@Sinal(l.Saldo)</b></td>
+                            <td class="acoes-linha">
+                                @if (l.Situacao != SituacaoLancamento.PREVISTO)
+                                {
+                                    <ComprovantesAnexos LancamentoId="l.Id" Quantidade="@contagem.GetValueOrDefault(l.Id)"
+                                                        Titulo="@($"{l.Numero} {l.Descricao}")" AoAlterar="CarregarContagem" />
+                                    @if (PodeEditar)
+                                    {
+                                        <button class="btn-ghost mini" title="Editar" aria-label="Editar" disabled="@Ocupado" @onclick="() => Editar(l.Id)"><Icone Nome="lapis" /></button>
+                                        <button class="btn-perigo mini" title="Excluir" aria-label="Excluir" disabled="@Ocupado"
+                                                @onclick="() => Excluir(l.Id, l.Numero, l.Descricao, l.Valor, l.Vencimento, l.Recorrente)"><Icone Nome="lixeira" /></button>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="@(filtro.Projetado ? 5 : 4)"><b>Totais do período</b> · entradas @Texto.Moeda(ex.Entradas) · saídas @Sinal(-ex.Saidas)</td>
+                        <td class="num"><b>@Sinal(ex.Entradas - ex.Saidas)</b></td>
+                        <td class="num"><b>@Sinal(ex.SaldoFinal)</b></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <h3 class="espaco-topo">Em aberto <span class="pequeno mudo">(a pagar e a receber · fora do saldo real)</span></h3>
+        @if (ex.Abertos.Count == 0)
+        {
+            <p class="pequeno mudo">Nenhum título em aberto no período.</p>
+        }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Nº</th><th>Vencimento</th><th>Descrição</th><th>Conta</th><th>Situação</th><th class="num">Valor</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var a in ex.Abertos)
+                        {
+                            <tr>
+                                <td class="nowrap mudo">@a.Numero</td>
+                                <td>@Texto.Data(a.Vencimento)</td>
+                                <td><b>@a.Descricao</b>@if (a.Recorrente) { <span class="badge badge-neutro">↻ recorrente</span> }@if (a.Pessoa is not null) { <p class="pequeno">👤 @a.Pessoa</p> }</td>
+                                <td>@a.Conta</td>
+                                <td>
+                                    @if (a.Atrasado) { <span class="badge status-NAO_PAGO">Em atraso · @a.DiasAtraso dia(s)</span> }
+                                    else { <span class="mudo">a vencer</span> }
+                                </td>
+                                <td class="num @(a.Valor < 0 ? "texto-erro" : "texto-ok")">@Sinal(a.Valor)</td>
+                                <td class="acoes-linha">
+                                    <ComprovantesAnexos LancamentoId="a.Id" Quantidade="@contagem.GetValueOrDefault(a.Id)"
+                                                        Titulo="@($"{a.Numero} {a.Descricao}")" AoAlterar="CarregarContagem" />
+                                    @if (PodeEditar)
+                                    {
+                                        <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => AbrirLiquidacao(a)">@(a.Valor < 0 ? "Pagar" : "Receber")</button>
+                                        <button class="btn-ghost mini" title="Editar" aria-label="Editar" disabled="@Ocupado" @onclick="() => Editar(a.Id)"><Icone Nome="lapis" /></button>
+                                        <button class="btn-perigo mini" title="Excluir" aria-label="Excluir" disabled="@Ocupado"
+                                                @onclick="() => Excluir(a.Id, a.Numero, a.Descricao, a.Valor, a.Vencimento, a.Recorrente)"><Icone Nome="lixeira" /></button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <h3 class="espaco-topo">Previstos <span class="pequeno mudo">(gerados pelas recorrências · confirme para virar título)</span></h3>
+        @if (ex.Previstos.Count == 0)
+        {
+            <p class="pequeno mudo">Nenhum lançamento previsto no período.</p>
+        }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Vencimento</th><th>Descrição</th><th>Conta</th><th>Situação</th><th class="num">Valor estimado</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var p in ex.Previstos)
+                        {
+                            <tr>
+                                <td>@Texto.Data(p.Vencimento)</td>
+                                <td><b>@p.Descricao</b></td>
+                                <td>@p.Conta</td>
+                                <td>
+                                    @if (p.Atrasado) { <span class="badge status-NAO_PAGO">Em atraso · @p.DiasAtraso dia(s)</span> }
+                                    else { <span class="mudo">previsto</span> }
+                                </td>
+                                <td class="num @(p.Valor < 0 ? "texto-erro" : "texto-ok")">@Sinal(p.Valor)</td>
+                                <td class="acoes-linha">
+                                    @if (PodeEditar)
+                                    {
+                                        <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => AbrirConfirmacao(p)">Confirmar</button>
+                                        <button class="btn-ghost mini" disabled="@Ocupado" title="Não aconteceu neste mês" @onclick="() => Ignorar(p)">Ignorar</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</section>
+
+@if (form is not null)
+{
+    <Modal Titulo="@TituloForm" AoFechar="Fechar">
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@ErroModal" />
+            @if (numeroEditando is not null)
+            {
+                <p class="pequeno mudo">Título <b>@numeroEditando</b></p>
+            }
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Vencimento</span>
+                    <InputDate class="input" @bind-Value="form.Data" />
+                    <ValidationMessage For="() => form.Data" />
+                </label>
+                <label class="campo">
+                    <span>Valor (R$) @(form.Tipo == TipoConta.RECEITA ? "— entra como positivo" : "— entra como negativo")</span>
+                    <InputNumber class="input" step="0.01" min="0.01" @bind-Value="form.Valor" />
+                    <ValidationMessage For="() => form.Valor" />
+                </label>
+                <label class="campo col-2">
+                    <span>Descrição</span>
+                    <InputText class="input" maxlength="200" @bind-Value="form.Descricao" />
+                    <ValidationMessage For="() => form.Descricao" />
+                </label>
+                <label class="campo col-2">
+                    <span>@(form.Tipo == TipoConta.RECEITA ? "Pessoa (quem pagou)" : "Pessoa (a quem foi pago)")</span>
+                    <InputText class="input" list="pessoas-lancamento" maxlength="200" placeholder="Digite o nome ou escolha uma pessoa cadastrada"
+                               @bind-Value="form.Pessoa" />
+                    <datalist id="pessoas-lancamento">
+                        @foreach (var nome in pessoas)
+                        {
+                            <option value="@nome" />
+                        }
+                    </datalist>
+                    <ValidationMessage For="() => form.Pessoa" />
+                </label>
+                <label class="campo col-2">
+                    <span>Conta orçamentária</span>
+                    <select class="input" @bind="ContaForm">
+                        <option value="">Selecione…</option>
+                        @foreach (var c in contas.Where(c => c.Tipo == form.Tipo && (c.Ativo || c.Id == form.ContaId)))
+                        {
+                            <option value="@c.Id">@c.Nome</option>
+                        }
+                    </select>
+                    <ValidationMessage For="() => form.ContaId" />
+                </label>
+                <label class="check col-2">
+                    <InputCheckbox @bind-Value="form.Liquidado" /> @(form.Tipo == TipoConta.RECEITA ? "Já recebido (liquidado)" : "Já pago (liquidado)")
+                </label>
+                @if (form.Liquidado)
+                {
+                    <label class="campo">
+                        <span>Data do @(form.Tipo == TipoConta.RECEITA ? "recebimento" : "pagamento")</span>
+                        <InputDate class="input" @bind-Value="form.DataLiquidacao" />
+                        <ValidationMessage For="() => form.DataLiquidacao" />
+                    </label>
+                    <p class="pequeno mudo">Entra no saldo nesta data.</p>
+                }
+                else
+                {
+                    <p class="pequeno mudo col-2">Fica <b>em aberto</b> (fora do saldo real) até ser @(form.Tipo == TipoConta.RECEITA ? "recebido" : "pago"); depois do vencimento aparece como em atraso.</p>
+                }
+                <label class="campo col-2">
+                    <span>Observação</span>
+                    <InputTextArea class="input" rows="2" @bind-Value="form.Observacao" />
+                </label>
+                <div class="campo col-2">
+                    <span>Documento / recibo</span>
+                    @if (!Comprovantes.Habilitado)
+                    {
+                        <p class="pequeno texto-erro">Google Drive não configurado: configure em Administração → Configurações para anexar.</p>
+                    }
+                    else
+                    {
+                        <div>
+                            <label class="btn-ghost mini" style="display:inline-block">
+                                📎 Anexar documento…
+                                <InputFile OnChange="EscolherAnexos" class="oculto" disabled="@Ocupado" multiple />
+                            </label>
+                            @if (editandoId is { } eid && contagem.GetValueOrDefault(eid) > 0)
+                            {
+                                <span class="pequeno mudo"> já anexado(s): @contagem.GetValueOrDefault(eid)</span>
+                            }
+                        </div>
+                        @if (anexos.Count > 0)
+                        {
+                            <ul class="lista-comprovantes">
+                                @foreach (var a in anexos)
+                                {
+                                    <li>
+                                        @a.Nome <span class="pequeno mudo">@Tamanho(a.Dados.Length)</span>
+                                        <button type="button" class="btn-ghost mini" title="Tirar" aria-label="@($"Tirar {a.Nome}")" @onclick="() => anexos.Remove(a)"><Icone Nome="x" /></button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        <p class="pequeno mudo">Enviado ao salvar. Fica no Drive em “07 - Financeiro/&lt;ano&gt;” da pasta do imóvel.</p>
+                    }
+                </div>
+                @if (!deRecorrencia)
+                {
+                    <label class="check col-2">
+                        <InputCheckbox @bind-Value="form.Recorrente" @bind-Value:after="AoMarcarRecorrencia" /> Repete todo mês (recorrência)
+                    </label>
+                    @if (form.Recorrente)
+                    {
+                        <label class="campo">
+                            <span>Dia da recorrência</span>
+                            <InputNumber class="input" min="1" max="31" @bind-Value="form.DiaRecorrencia" />
+                            <ValidationMessage For="() => form.DiaRecorrencia" />
+                        </label>
+                        <label class="campo">
+                            <span>Valor estimado (R$)</span>
+                            <InputNumber class="input" step="0.01" min="0.01" @bind-Value="form.ValorEstimado" />
+                            <ValidationMessage For="() => form.ValorEstimado" />
+                        </label>
+                        <p class="pequeno mudo col-2">A partir do mês seguinte, todo mês nasce um lançamento <b>previsto</b> nesse dia, com o valor estimado.
+                            Confirmado, ele vira título em aberto (ou já liquidado); também pode ser ignorado.</p>
+                    }
+                }
+                else
+                {
+                    <p class="pequeno mudo col-2">↻ Título confirmado a partir de uma recorrência: altere a recorrência no lançamento de origem.</p>
+                }
+            </div>
+            <div class="acoes direita">
+                <button type="button" class="btn-ghost" @onclick="Fechar">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (confirmando is not null)
+{
+    <Modal Titulo="@((liquidando ? (confirmando.Valor < 0 ? "Pagar" : "Receber") : "Confirmar previsto") + $" — {confirmando.Descricao}")" AoFechar="Fechar">
+        <EditForm Model="confirmacao" OnValidSubmit="ConfirmarOuLiquidar" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@ErroModal" />
+            <p class="pequeno mudo">
+                @confirmando.Conta · @(liquidando ? $"título {confirmando.Numero}, vencimento {Texto.Data(confirmando.Vencimento)}" : $"estimado {Sinal(confirmando.Valor)}")
+            </p>
+            <div class="grade-2">
+                @if (!liquidando)
+                {
+                    <label class="campo">
+                        <span>Vencimento</span>
+                        <InputDate class="input" @bind-Value="confirmacao.Data" />
+                        <ValidationMessage For="() => confirmacao.Data" />
+                    </label>
+                }
+                <label class="campo">
+                    <span>Valor (R$)</span>
+                    <InputNumber class="input" step="0.01" min="0.01" @bind-Value="confirmacao.Valor" />
+                    <ValidationMessage For="() => confirmacao.Valor" />
+                </label>
+                @if (!liquidando)
+                {
+                    <label class="check col-2"><InputCheckbox @bind-Value="confirmacao.Liquidado" /> Já @(confirmando.Valor < 0 ? "pago" : "recebido") (liquidado)</label>
+                }
+                @if (liquidando || confirmacao.Liquidado)
+                {
+                    <label class="campo">
+                        <span>Data do @(confirmando.Valor < 0 ? "pagamento" : "recebimento")</span>
+                        <InputDate class="input" @bind-Value="confirmacao.DataLiquidacao" />
+                        <ValidationMessage For="() => confirmacao.DataLiquidacao" />
+                    </label>
+                }
+            </div>
+            <p class="pequeno mudo">@(liquidando || confirmacao.Liquidado ? "O título passa a liquidado e entra no saldo." : "O previsto vira título em aberto, com o próximo nº do imóvel.")</p>
+            <div class="acoes direita">
+                <button type="button" class="btn-ghost" @onclick="Fechar">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Confirmar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+<ConfirmarExclusao @ref="confirmar" />
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private FiltroLancamentos filtro = FiltroLancamentos.MesAtual();
+    private ExtratoLancamentos? ex;
+
+    /// <summary>Ao ligar a recorrência, sugere o dia do vencimento e o próprio valor como estimado.</summary>
+    private void AoMarcarRecorrencia()
+    {
+        if (form is null || !form.Recorrente) return;
+        form.DiaRecorrencia = form.Data?.Day ?? form.DiaRecorrencia;
+        form.ValorEstimado ??= form.Valor > 0 ? form.Valor : null;
+    }
+    /// <summary>select de bool não casa com o valor renderizado ("True"): usa texto.</summary>
+    private string ModoSaldo
+    {
+        get => filtro.Projetado ? "projetado" : "real";
+        set => filtro.Projetado = value == "projetado";
+    }
+    private IReadOnlyList<ContaOrcamentaria> contas = [];
+    private IReadOnlyDictionary<Guid, int> contagem = new Dictionary<Guid, int>();
+
+    private LancamentoForm? form;
+    private Guid? editandoId;
+    private string? numeroEditando;
+    private bool deRecorrencia;
+    private TituloPendente? confirmando;
+    private bool liquidando;
+    private ConfirmacaoPrevistoForm confirmacao = new();
+    private ConfirmarExclusao confirmar = default!;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.FinanceiroEditar);
+    private bool ModalAberto => form is not null || confirmando is not null;
+    private string? ErroModal => ModalAberto ? Erro : null;
+    private string? ErroTela => ModalAberto ? null : Erro;
+
+    private string TituloForm => (editandoId is null ? "Nova " : "Editar ") + (form!.Tipo == TipoConta.RECEITA ? "receita" : "despesa");
+
+    private static string Sinal(decimal v) => v < 0 ? "−" + Texto.Moeda(-v) : Texto.Moeda(v);
+
+    private static string ClasseSituacao(SituacaoLancamento s, DateOnly data) => s switch
+    {
+        SituacaoLancamento.LIQUIDADO => "badge-ok",
+        _ when data < DatasBR.Hoje() => "status-NAO_PAGO",
+        _ => "badge-neutro",
+    };
+
+    private string ContaFiltro
+    {
+        get => filtro.ContaId?.ToString() ?? "";
+        set => filtro.ContaId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    private string ContaForm
+    {
+        get => form?.ContaId?.ToString() ?? "";
+        set { if (form is not null) form.ContaId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    /// <summary>Os mesmos filtros da tela, para o PDF e o Excel.</summary>
+    private string Consulta
+    {
+        get
+        {
+            var partes = new List<string>();
+            if (filtro.De is { } de) partes.Add($"de={de:yyyy-MM-dd}");
+            if (filtro.Ate is { } ate) partes.Add($"ate={ate:yyyy-MM-dd}");
+            if (filtro.Tipo != TipoExtrato.TODOS) partes.Add($"tipo={filtro.Tipo}");
+            if (filtro.ContaId is { } c) partes.Add($"conta={c}");
+            if (Texto.Limpo(filtro.Busca) is { } b) partes.Add($"busca={Uri.EscapeDataString(b)}");
+            if (filtro.Projetado) partes.Add("projetado=true");
+            return partes.Count == 0 ? "" : "?" + string.Join("&", partes);
+        }
+    }
+
+    private string Periodo() => (filtro.De, filtro.Ate) switch
+    {
+        (null, null) => "Todo o período.",
+        ({ } de, null) => $"A partir de {Texto.Data(de)}.",
+        (null, { } ate) => $"Até {Texto.Data(ate)}.",
+        ({ } de, { } ate) => $"De {Texto.Data(de)} a {Texto.Data(ate)}.",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () =>
+        {
+            contas = await Servico.ContasAsync(incluirInativas: true);
+            pessoas = (await Opcoes.PessoasAsync(Usuario)).Select(p => p.Nome).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        });
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () =>
+    {
+        ex = await Servico.ExtratoAsync(Usuario, ImovelId, filtro);
+        contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId);
+    });
+
+    private async Task CarregarContagem() => await Executar(async () => contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId));
+
+    private Task Mes(int deslocamento)
+    {
+        var hoje = DatasBR.Hoje();
+        var inicio = new DateOnly(hoje.Year, hoje.Month, 1).AddMonths(deslocamento);
+        filtro.De = inicio;
+        filtro.Ate = inicio.AddMonths(1).AddDays(-1);
+        return Carregar();
+    }
+
+    private Task EsteAno()
+    {
+        var ano = DatasBR.Hoje().Year;
+        filtro.De = new DateOnly(ano, 1, 1);
+        filtro.Ate = new DateOnly(ano, 12, 31);
+        return Carregar();
+    }
+
+    private Task Tudo()
+    {
+        filtro.De = null;
+        filtro.Ate = null;
+        return Carregar();
+    }
+
+    private void Novo(TipoConta tipo)
+    {
+        Erro = null;
+        editandoId = null;
+        numeroEditando = null;
+        deRecorrencia = false;
+        anexos.Clear();
+        form = LancamentoForm.Novo(tipo);
+    }
+
+    private async Task Editar(Guid id)
+    {
+        LancamentoDetalhe? d = null;
+        if (!await Executar(async () => d = await Servico.ObterAsync(Usuario, id))) return;
+        editandoId = id;
+        numeroEditando = d!.Numero;
+        deRecorrencia = d.Dados.OrigemId is not null;
+        anexos.Clear();
+        form = LancamentoForm.De(d.Dados);
+    }
+
+    private async Task Salvar()
+    {
+        var id = editandoId ?? Guid.Empty;
+        var ok = editandoId is not null
+            ? await Executar(() => Servico.AtualizarAsync(Usuario, id, form!))
+            : await Executar(async () => id = await Servico.CriarAsync(Usuario, ImovelId, form!));
+        if (!ok) return;
+        var msg = editandoId is null
+            ? (form!.Tipo == TipoConta.RECEITA ? "Receita lançada" : "Despesa lançada") + (form.Liquidado ? " (liquidada)" : " (em aberto)")
+            : "Título atualizado";
+        form = null;
+        var enviados = 0;
+        var envioOk = anexos.Count == 0 || await Executar(async () =>
+        {
+            foreach (var a in anexos.ToList())
+            {
+                using var dados = new MemoryStream(a.Dados);
+                await Comprovantes.EnviarAsync(Usuario, id, dados, a.Nome, a.Tipo, a.Dados.Length);
+                anexos.Remove(a);
+                enviados++;
+            }
+        });
+        anexos.Clear();
+        await Carregar();
+        if (!envioOk)
+        {
+            Erro = $"{msg}, mas o anexo falhou: {Erro} Anexe de novo pelo botão 📎 do título.";
+            return;
+        }
+        Sucesso = msg + (enviados > 0 ? $", com {enviados} anexo(s)." : ".");
+    }
+
+    private void AbrirConfirmacao(TituloPendente p)
+    {
+        Erro = null;
+        liquidando = false;
+        confirmando = p;
+        confirmacao = new ConfirmacaoPrevistoForm { Data = p.Vencimento, Valor = Math.Abs(p.Valor), DataLiquidacao = DatasBR.Hoje() };
+    }
+
+    private void AbrirLiquidacao(TituloPendente a)
+    {
+        Erro = null;
+        liquidando = true;
+        confirmando = a;
+        confirmacao = new ConfirmacaoPrevistoForm { Data = a.Vencimento, Valor = Math.Abs(a.Valor), Liquidado = true, DataLiquidacao = DatasBR.Hoje() };
+    }
+
+    private async Task ConfirmarOuLiquidar()
+    {
+        var c = confirmando!;
+        var ok = liquidando
+            ? await Executar(() =>
+            {
+                if (confirmacao.DataLiquidacao is null) throw new RegraNegocioException("DataLiquidacao", "Informe a data.");
+                return Servico.LiquidarAsync(Usuario, c.Id, confirmacao.DataLiquidacao.Value, confirmacao.Valor!.Value);
+            })
+            : await Executar(() => Servico.ConfirmarAsync(Usuario, c.Id, confirmacao));
+        if (!ok) return;
+        var msg = liquidando ? $"Título {c.Numero} liquidado." : confirmacao.Liquidado ? "Previsto confirmado e liquidado." : "Previsto confirmado: título em aberto.";
+        confirmando = null;
+        await Carregar();
+        Sucesso = msg;
+    }
+
+    private async Task Ignorar(TituloPendente p)
+    {
+        if (!await Executar(() => Servico.IgnorarAsync(Usuario, p.Id))) return;
+        await Carregar();
+        Sucesso = $"Previsto de {Texto.Data(p.Vencimento)} ignorado.";
+    }
+
+    private async Task Excluir(Guid id, string numero, string descricao, decimal valor, DateOnly vencimento, bool recorrente)
+    {
+        var detalhe = recorrente ? "Os lançamentos previstos desta recorrência que ainda não foram confirmados também saem." : null;
+        if (!await confirmar.PerguntarAsync($"Título {numero} – {descricao} ({Sinal(valor)}, vencimento {Texto.Data(vencimento)})", detalhe)) return;
+        if (!await Executar(() => Servico.ExcluirAsync(Usuario, id))) return;
+        await Carregar();
+        Sucesso = $"Título {numero} excluído (registrado na Auditoria).";
+    }
+
+    /// <summary>Arquivo escolhido no formulário: guardado em memória e enviado ao Drive só depois de salvar.</summary>
+    private sealed record AnexoPendente(string Nome, string Tipo, byte[] Dados);
+
+    private readonly List<AnexoPendente> anexos = [];
+    private IReadOnlyList<string> pessoas = [];
+
+    private Task EscolherAnexos(InputFileChangeEventArgs e) => Executar(async () =>
+    {
+        var arquivos = EnvioComprovantes.Selecionar(e);
+        if (anexos.Count + arquivos.Count > ComprovantesService.MaximoPorEnvio)
+            throw new RegraNegocioException("arquivo", $"No máximo {ComprovantesService.MaximoPorEnvio} arquivos por lançamento.");
+        foreach (var f in arquivos)
+        {
+            await using var origem = f.OpenReadStream(ComprovantesService.TamanhoMaximo);
+            using var buffer = new MemoryStream();
+            await origem.CopyToAsync(buffer);
+            anexos.Add(new AnexoPendente(f.Name, string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType, buffer.ToArray()));
+        }
+    });
+
+    private static string Tamanho(long b) => b >= 1024 * 1024 ? $"{b / 1024d / 1024:0.#} MB" : $"{Math.Max(1, b / 1024)} KB";
+
+    private void Fechar()
+    {
+        anexos.Clear();
+        form = null;
+        confirmando = null;
+        Erro = null;
+    }
+}

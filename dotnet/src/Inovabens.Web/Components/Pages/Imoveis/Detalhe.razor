@@ -54,6 +54,10 @@ else
         {
             <button class="aba @(aba == Aba.Financeiro ? "ativa" : "")" @onclick="() => aba = Aba.Financeiro">Financeiro</button>
         }
+        @if (Usuario.Pode(Permissoes.FinanceiroInvestimento))
+        {
+            <button class="aba @(aba == Aba.Investimento ? "ativa" : "")" @onclick="() => aba = Aba.Investimento">Investimento</button>
+        }
         <button class="aba @(aba == Aba.Regularizacao ? "ativa" : "")" @onclick="() => aba = Aba.Regularizacao">Regularização</button>
         @if (Usuario.Pode(Permissoes.MemorandosVer))
         {
@@ -90,7 +94,11 @@ else
     }
     else if (aba == Aba.Financeiro)
     {
-        <FinanceiroAba ImovelId="Id" AoAlterarImovel="Recarregar" />
+        <LancamentosFinanceirosAba ImovelId="Id" />
+    }
+    else if (aba == Aba.Investimento && Usuario.Pode(Permissoes.FinanceiroInvestimento))
+    {
+        <InvestimentoAba ImovelId="Id" AoAlterarImovel="Recarregar" />
     }
     else if (aba == Aba.Memorandos)
     {
@@ -115,9 +123,11 @@ else
 }
 
 @code {
-    private enum Aba { Ficha, Financeiro, Regularizacao, Memorandos, Agenda, Interessados, Redes }
+    private enum Aba { Ficha, Financeiro, Investimento, Regularizacao, Memorandos, Agenda, Interessados, Redes }
 
     [Parameter] public Guid Id { get; set; }
+    /// <summary>?aba=lancamentos abre direto nos Lançamentos Financeiros (link da tela de títulos em atraso).</summary>
+    [SupplyParameterFromQuery(Name = "aba")] public string? AbaInicial { get; set; }
 
     private ImovelDetalhe? detalhe;
     private ImovelForm form = new();
@@ -128,6 +138,11 @@ else
     private string? LinkMapa => detalhe?.Dados is { } d
         ? RegrasImovel.LinkGoogleMaps(d.Latitude, d.Longitude, RegrasImovel.EnderecoParaMapa(d.Logradouro, d.Numero, d.Bairro, d.Cidade, d.Uf, d.Cep))
         : null;
+
+    protected override void OnInitialized()
+    {
+        if (AbaInicial == "lancamentos" && Usuario.Pode(Permissoes.FinanceiroVer)) aba = Aba.Financeiro;
+    }
 
     protected override Task OnParametersSetAsync() => Recarregar();
 

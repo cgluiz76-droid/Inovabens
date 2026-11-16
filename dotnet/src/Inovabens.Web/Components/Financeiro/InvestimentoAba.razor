@@ -1,0 +1,194 @@
+@inherits ComponenteBase
+@inject LancamentosFinanceirosService Lancamentos
+@inject FechamentoService Fechamentos
+@inject OpcoesService Opcoes
+
+@* Aba "Investimento" (só quem tem financeiro:investimento — por padrão, o Administrador): aquisição (CAPEX), resumo dos
+   Lançamentos Financeiros (OPEX), fechamento da operação com o interruptor "incluir o saldo dos lançamentos" e o retorno
+   nos dois cenários. *@
+
+<AquisicaoSecao ImovelId="ImovelId" Editar="true" AoAlterar="AtualizarRetorno" />
+
+<section class="card">
+    <h2>Lançamentos Financeiros (OPEX)</h2>
+    <p class="pequeno mudo">Resumo, por conta, dos lançamentos realizados na aba Financeiro (previstos não entram).</p>
+    @if (contas is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else if (contas.Count == 0)
+    {
+        <p class="pequeno mudo">Nenhum lançamento realizado.</p>
+    }
+    else
+    {
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Conta</th><th>Tipo</th><th class="num">Lançamentos</th><th class="num">Total</th></tr></thead>
+                <tbody>
+                    @foreach (var c in contas)
+                    {
+                        <tr>
+                            <td>@c.Conta</td>
+                            <td>@Texto.Rotulo(c.Tipo)</td>
+                            <td class="num">@c.Quantidade</td>
+                            <td class="num @(c.Total < 0 ? "texto-erro" : "texto-ok")">@Sinal(c.Total)</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr><td colspan="3"><b>Saldo dos lançamentos</b></td><td class="num"><b>@Sinal(contas.Sum(c => c.Total))</b></td></tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+</section>
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Fechamento da operação</h2>
+        @if (fechado)
+        {
+            <span class="badge badge-ok">Operação fechada</span>
+        }
+    </div>
+    <MensagemErro Texto="@Erro" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
+    @if (form is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <EditForm Model="form" OnValidSubmit="SalvarFechamento" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="grade-4">
+                <label class="campo">
+                    <span>Data da venda</span>
+                    <InputDate class="input" @bind-Value="form.Data" />
+                    <ValidationMessage For="() => form.Data" />
+                </label>
+                <label class="campo">
+                    <span>Valor da venda (R$)</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="form.ValorVenda" />
+                    <ValidationMessage For="() => form.ValorVenda" />
+                </label>
+                <label class="campo">
+                    <span>Comissão (R$)</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="form.Comissao" />
+                    <ValidationMessage For="() => form.Comissao" />
+                </label>
+                <label class="campo">
+                    <span>Impostos (R$)</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="form.Impostos" />
+                    <ValidationMessage For="() => form.Impostos" />
+                </label>
+                <label class="campo">
+                    <span>Outros custos da venda (R$)</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="form.OutrosCustos" />
+                    <ValidationMessage For="() => form.OutrosCustos" />
+                </label>
+                <label class="campo">
+                    <span>Comprador</span>
+                    <select class="input" @bind="Comprador">
+                        <option value="">—</option>
+                        @foreach (var p in pessoas)
+                        {
+                            <option value="@p.Id">@p.Nome</option>
+                        }
+                    </select>
+                </label>
+                <div class="campo col-2">
+                    <span>Venda líquida</span>
+                    <p class="valor-kpi">@Texto.Moeda(form.Liquido)</p>
+                </div>
+            </div>
+
+            <fieldset class="interruptor-saldo">
+                <legend>Incluir o saldo dos Lançamentos Financeiros na apuração do lucro?</legend>
+                <label class="check"><input type="radio" name="incluir" checked="@(form.IncluirLancamentos == true)" @onchange="() => form.IncluirLancamentos = true" /> Sim, incluir</label>
+                <label class="check"><input type="radio" name="incluir" checked="@(form.IncluirLancamentos == false)" @onchange="() => form.IncluirLancamentos = false" /> Não incluir</label>
+                <label class="check"><input type="radio" name="incluir" checked="@(form.IncluirLancamentos is null)" @onchange="() => form.IncluirLancamentos = null" /> Decidir depois (mostra os dois cenários)</label>
+            </fieldset>
+
+            <label class="campo">
+                <span>Observação</span>
+                <InputTextArea class="input" rows="2" @bind-Value="form.Observacao" />
+            </label>
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">@(fechado ? "Salvar fechamento" : "Fechar a operação")</button>
+                @if (fechado)
+                {
+                    <button type="button" class="btn-perigo" disabled="@Ocupado" @onclick="DesfazerFechamento"><Icone Nome="lixeira" />Desfazer fechamento</button>
+                }
+            </div>
+            <p class="pequeno mudo">Fechar a operação marca o imóvel como <b>Vendido</b>. A venda líquida entra como entrada no retorno do investimento.</p>
+        </EditForm>
+    }
+</section>
+
+<RetornoSecao @ref="retorno" ImovelId="ImovelId" />
+
+<ConfirmarExclusao @ref="confirmar" />
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    /// <summary>O fechamento muda a situação do imóvel (Vendido): o cabeçalho precisa recarregar.</summary>
+    [Parameter] public Func<Task>? AoAlterarImovel { get; set; }
+
+    private IReadOnlyList<ResumoConta>? contas;
+    private FechamentoForm? form;
+    private bool fechado;
+    private IReadOnlyList<Opcao> pessoas = [];
+    private RetornoSecao? retorno;
+    private ConfirmarExclusao confirmar = default!;
+
+    private static string Sinal(decimal v) => v < 0 ? "−" + Texto.Moeda(-v) : Texto.Moeda(v);
+
+    private string Comprador
+    {
+        get => form?.CompradorId?.ToString() ?? "";
+        set { if (form is not null) form.CompradorId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () =>
+        {
+            contas = await Lancamentos.ResumoPorContaAsync(Usuario, ImovelId);
+            pessoas = await Opcoes.PessoasAsync(Usuario);
+        });
+        await CarregarFechamento();
+    }
+
+    private Task CarregarFechamento() => Executar(async () =>
+    {
+        var f = await Fechamentos.ObterAsync(Usuario, ImovelId);
+        fechado = f is not null;
+        form = f is null ? new FechamentoForm { Data = DatasBR.Hoje() } : FechamentoForm.De(f);
+    });
+
+    private async Task AtualizarRetorno()
+    {
+        if (retorno is not null) await retorno.RecarregarAsync();
+    }
+
+    private async Task SalvarFechamento()
+    {
+        if (!await Executar(() => Fechamentos.SalvarAsync(Usuario, ImovelId, form!))) return;
+        await CarregarFechamento();
+        await AtualizarRetorno();
+        Sucesso = "Fechamento salvo.";
+        if (AoAlterarImovel is not null) await AoAlterarImovel();
+    }
+
+    private async Task DesfazerFechamento()
+    {
+        if (!await confirmar.PerguntarAsync($"Fechamento da operação (venda de {Texto.Moeda(form!.ValorVenda)} em {Texto.Data(form.Data)})",
+                "A situação do imóvel continua Vendido: ajuste na ficha, se for o caso.")) return;
+        if (!await Executar(() => Fechamentos.ExcluirAsync(Usuario, ImovelId))) return;
+        await CarregarFechamento();
+        await AtualizarRetorno();
+        Sucesso = "Fechamento desfeito (registrado na Auditoria).";
+    }
+}

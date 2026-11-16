@@ -18,7 +18,8 @@ public sealed record ResumoPainel(
     int? PropostasEmAnalise = null, int? LeadsNovosSemana = null);
 
 /// <summary>Resumo da página inicial respeitando escopo e permissões (port de dashboard.module.ts).</summary>
-public sealed class PainelService(IDbContextFactory<InovabensDb> fabrica, AgendaService agenda, AlertasService alertas)
+public sealed class PainelService(IDbContextFactory<InovabensDb> fabrica, AgendaService agenda, AlertasService alertas,
+    Financeiro.LancamentosFinanceirosService lancamentos)
 {
     public async Task<ResumoPainel> ResumoAsync(UsuarioAtual u)
     {
@@ -45,7 +46,7 @@ public sealed class PainelService(IDbContextFactory<InovabensDb> fabrica, Agenda
         }
 
         int? naoPagos = u.Pode(P.FinanceiroVer)
-            ? await db.DespesaLancamentos.CountAsync(l => l.Despesa!.ExcluidoEm == null && l.Status == StatusLancamento.NAO_PAGO)
+            ? await lancamentos.ContagemAtrasadosAsync(u)
             : null;
 
         IReadOnlyList<CompromissoDetalhe> proximos = u.Pode(P.AgendaVer)

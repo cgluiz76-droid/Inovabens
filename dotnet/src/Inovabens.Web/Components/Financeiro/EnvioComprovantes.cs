@@ -19,11 +19,11 @@ public static class EnvioComprovantes
         return arquivos;
     }
 
-    public static Task EnviarAsync(ComprovantesService servico, UsuarioAtual u, OrigemComprovante origem, InputFileChangeEventArgs e,
+    public static Task EnviarAsync(ComprovantesService servico, UsuarioAtual u, Guid lancamentoId, InputFileChangeEventArgs e,
         Action<int, int>? progresso = null, Action? enviado = null) =>
-        EnviarAsync(servico, u, origem, Selecionar(e), progresso, enviado);
+        EnviarAsync(servico, u, lancamentoId, Selecionar(e), progresso, enviado);
 
-    public static async Task EnviarAsync(ComprovantesService servico, UsuarioAtual u, OrigemComprovante origem, IReadOnlyList<IBrowserFile> arquivos,
+    public static async Task EnviarAsync(ComprovantesService servico, UsuarioAtual u, Guid lancamentoId, IReadOnlyList<IBrowserFile> arquivos,
         Action<int, int>? progresso = null, Action? enviado = null)
     {
         for (var i = 0; i < arquivos.Count; i++)
@@ -34,7 +34,7 @@ public static class EnvioComprovantes
             using var buffer = new MemoryStream();
             await origemArquivo.CopyToAsync(buffer);
             buffer.Position = 0;
-            await servico.EnviarAsync(u, origem, buffer, f.Name,
+            await servico.EnviarAsync(u, lancamentoId, buffer, f.Name,
                 string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType, buffer.Length);
             enviado?.Invoke();
         }

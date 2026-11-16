@@ -1,6 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @implements IDisposable
 @inject AlertasService Alertas
+@inject LancamentosFinanceirosService LancamentosFin
 @inject NavigationManager Nav
 
 @* data-interativo: o circuito do Blazor já assumiu a página (usado pelos testes de ponta a ponta) *@
@@ -72,6 +73,18 @@
                 <span class="tema-escuro"><Icone Nome="lua" /></span>
                 <span class="tema-claro"><Icone Nome="sol" /></span>
             </button>
+            @if (usuario?.Pode(Permissoes.FinanceiroVer) == true)
+            {
+                <a class="sino @(atrasados > 0 ? "sino-financeiro" : "")" href="financeiro/atrasados"
+                   title="@(atrasados > 0 ? $"{atrasados} título(s) a pagar/receber em atraso" : "Títulos em atraso: nenhum")"
+                   aria-label="@(atrasados > 0 ? $"Títulos em atraso {atrasados}" : "Títulos em atraso")">
+                    <Icone Nome="dinheiro" />
+                    @if (atrasados > 0)
+                    {
+                        <span class="contador">@(atrasados > 99 ? "99+" : atrasados.ToString())</span>
+                    }
+                </a>
+            }
             <a class="sino" href="alertas" title="Alertas" aria-label="@(alertas > 0 ? $"Alertas {(alertas > 99 ? "99+" : alertas.ToString())}" : "Alertas")">
                 <Icone Nome="sino" />
                 @if (alertas > 0)
@@ -140,6 +153,7 @@
     private UsuarioAtual? usuario;
     private BuscaGlobal? busca;
     private int alertas;
+    private int atrasados;
 
     protected override void OnInitialized() => Nav.LocationChanged += AoNavegar;
 
@@ -159,8 +173,12 @@
     private async Task ContarAlertas()
     {
         if (usuario is null) return;
-        try { alertas = await Alertas.ContagemAsync(usuario); }
-        catch { /* o contador é auxiliar: falha no banco não derruba o layout */ }
+        try
+        {
+            alertas = await Alertas.ContagemAsync(usuario);
+            atrasados = await LancamentosFin.ContagemAtrasadosAsync(usuario);
+        }
+        catch { /* os contadores são auxiliares: falha no banco não derruba o layout */ }
     }
 
     /// <summary>"Ana Maria Souza" -> "AS" (primeira e última palavra).</summary>

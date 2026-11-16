@@ -2,7 +2,7 @@
 @inject ComprovantesService Servico
 @inject IJSRuntime JS
 
-@* Botão de comprovantes de uma receita ou de um pagamento de despesa: abre a lista (abrir, anexar, remover).
+@* Botão de comprovantes de um lançamento financeiro: abre a lista (abrir, anexar, remover).
    Os arquivos ficam no Drive em "<pasta do imóvel>/07 - Financeiro/<ano>". Só aparece para quem edita o financeiro. *@
 
 @if (Usuario.Pode(Permissoes.FinanceiroEditar))
@@ -53,7 +53,7 @@
 }
 
 @code {
-    [Parameter, EditorRequired] public OrigemComprovante Origem { get; set; } = default!;
+    [Parameter, EditorRequired] public Guid LancamentoId { get; set; }
     [Parameter] public int Quantidade { get; set; }
     [Parameter] public string Titulo { get; set; } = "";
     /// <summary>Chamado depois de anexar ou remover (a lista de fora atualiza a contagem).</summary>
@@ -67,7 +67,7 @@
     {
         aberto = true;
         itens = null;
-        await Executar(async () => itens = await Servico.ListarAsync(Usuario, Origem));
+        await Executar(async () => itens = await Servico.ListarAsync(Usuario, LancamentoId));
     }
 
     private async Task Fechar()
@@ -83,13 +83,13 @@
     private async Task Enviar(InputFileChangeEventArgs e)
     {
         var enviados = 0;
-        await Executar(() => EnvioComprovantes.EnviarAsync(Servico, Usuario, Origem, e,
+        await Executar(() => EnvioComprovantes.EnviarAsync(Servico, Usuario, LancamentoId, e,
             (i, total) => { progresso = $"Enviando {i} de {total}…"; StateHasChanged(); }, () => enviados++));
         progresso = null;
         if (enviados == 0) return;
         alterou = true;
         var erro = Erro;
-        await Executar(async () => itens = await Servico.ListarAsync(Usuario, Origem));
+        await Executar(async () => itens = await Servico.ListarAsync(Usuario, LancamentoId));
         Erro ??= erro;
     }
 
@@ -98,7 +98,7 @@
         if (!await JS.InvokeAsync<bool>("confirm", $"Remover o comprovante \"{c.Nome}\"? Ele vai para a lixeira do Drive (recuperável por 30 dias).")) return;
         if (!await Executar(() => Servico.RemoverAsync(Usuario, c.Id))) return;
         alterou = true;
-        await Executar(async () => itens = await Servico.ListarAsync(Usuario, Origem));
+        await Executar(async () => itens = await Servico.ListarAsync(Usuario, LancamentoId));
     }
 
     private static string Tamanho(long b) => b >= 1024 * 1024 ? $"{b / 1024d / 1024:0.#} MB" : $"{Math.Max(1, b / 1024)} KB";

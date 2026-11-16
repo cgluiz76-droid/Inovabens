@@ -8,18 +8,6 @@ namespace Inovabens.Core.Financeiro;
 
 public sealed record AquisicaoDetalhe(Aquisicao Dados, IReadOnlyList<AquisicaoItem> Itens);
 
-public sealed record DespesaDetalhe(Despesa Dados, string Categoria);
-
-public sealed record ChecklistItem(
-    Guid DespesaId, Guid LancamentoId, string Descricao, string Categoria, Recorrencia Recorrencia,
-    DateOnly? Vencimento, decimal Valor, StatusLancamento? Status, DateOnly? DataPagamento, string? Justificativa);
-
-public sealed record ChecklistResumo(int Pago, int NaoPago, int NaoSeAplica, int AMarcar);
-
-public sealed record Checklist(DateOnly Mes, ChecklistResumo Resumo, IReadOnlyList<ChecklistItem> Itens);
-
-public sealed record LancamentoHistorico(DespesaLancamento Dados, string Descricao, string Categoria);
-
 /* ------------------------------ Entradas ------------------------------ */
 
 /// <summary>Valores monetários: numeric(15,2), nunca negativos, no máximo 2 casas.</summary>
@@ -106,126 +94,161 @@ public sealed class AquisicaoItemForm : IValidatableObject
     }
 }
 
-public sealed class DespesaForm : IValidatableObject
+/// <summary>
+/// Nova receita / nova despesa (título a receber / a pagar). O usuário digita valores POSITIVOS; o sinal vem do tipo
+/// (receita +, despesa −). <see cref="Data"/> é o vencimento; <see cref="Liquidado"/> marca como já pago/recebido.
+/// Recorrente: todo mês, no <see cref="DiaRecorrencia"/>, nasce um lançamento PREVISTO com o <see cref="ValorEstimado"/>.
+/// </summary>
+public sealed class LancamentoForm : IValidatableObject
 {
-    [Required(ErrorMessage = "Selecione a categoria.")]
-    public Guid? CategoriaId { get; set; }
+    public TipoConta Tipo { get; set; } = TipoConta.DESPESA;
+
+    [Required(ErrorMessage = "Informe o vencimento.")]
+    public DateOnly? Data { get; set; }
+
+    [Required(ErrorMessage = "Informe o valor.")]
+    public decimal? Valor { get; set; }
+
+    /// <summary>Já pago/recebido: o título nasce LIQUIDADO (entra no saldo na data da liquidação).</summary>
+    public bool Liquidado { get; set; }
+    public DateOnly? DataLiquidacao { get; set; }
 
     [Required(ErrorMessage = "Informe a descrição.")]
     [StringLength(200, MinimumLength = 2, ErrorMessage = "A descrição deve ter de 2 a 200 caracteres.")]
     public string Descricao { get; set; } = "";
 
-    public Recorrencia Recorrencia { get; set; } = Recorrencia.MENSAL;
+    [Required(ErrorMessage = "Escolha a conta orçamentária.")]
+    public Guid? ContaId { get; set; }
 
-    [Range(1, 31, ErrorMessage = "Dia entre 1 e 31.")]
-    public int? DiaVencimento { get; set; } = 10;
-
-    public decimal ValorPrevisto { get; set; }
-
-    [Required(ErrorMessage = "Informe o início.")]
-    public DateOnly? InicioEm { get; set; }
-
-    public DateOnly? FimEm { get; set; }
-    public Guid? RegularizacaoId { get; set; }
-    public bool Ativa { get; set; } = true;
-
-    public IEnumerable<ValidationResult> Validate(ValidationContext _)
-    {
-        foreach (var e in Dinheiro.Validar((nameof(ValorPrevisto), ValorPrevisto))) yield return e;
-        if (FimEm < InicioEm) yield return new ValidationResult("O fim não pode ser antes do início.", [nameof(FimEm)]);
-    }
-
-    public static DespesaForm De(Despesa d) => new()
-    {
-        CategoriaId = d.CategoriaId, Descricao = d.Descricao, Recorrencia = d.Recorrencia, DiaVencimento = d.DiaVencimento,
-        ValorPrevisto = d.ValorPrevisto, InicioEm = d.InicioEm, FimEm = d.FimEm, RegularizacaoId = d.RegularizacaoId, Ativa = d.Ativa,
-    };
-
-    internal void AplicarEm(Despesa d)
-    {
-        d.CategoriaId = CategoriaId!.Value;
-        d.Descricao = Descricao.Trim();
-        d.Recorrencia = Recorrencia;
-        d.DiaVencimento = DiaVencimento;
-        d.ValorPrevisto = ValorPrevisto;
-        d.InicioEm = InicioEm!.Value;
-        d.FimEm = FimEm;
-        d.RegularizacaoId = RegularizacaoId;
-        d.Ativa = Ativa;
-    }
-}
-
-/// <summary>Marcação do checklist. REGRA: Não Pago exige justificativa (mín. 10 caracteres úteis).</summary>
-public sealed class StatusLancamentoEntrada : IValidatableObject
-{
-    public const int MinimoJustificativa = 10;
-
-    public StatusLancamento Status { get; set; }
-    public string? Justificativa { get; set; }
-    public DateOnly? DataPagamento { get; set; }
-    public decimal? Valor { get; set; }
-
-    public IEnumerable<ValidationResult> Validate(ValidationContext _)
-    {
-        if (Status == StatusLancamento.NAO_PAGO && (Justificativa?.Trim().Length ?? 0) < MinimoJustificativa)
-            yield return new ValidationResult(
-                $"Justificativa obrigatória (mínimo {MinimoJustificativa} caracteres) quando o status é Não Pago.", [nameof(Justificativa)]);
-        foreach (var e in Dinheiro.Validar((nameof(Valor), Valor))) yield return e;
-    }
-
-    /// <summary>Pago e Não se aplica encerram o alerta de despesa vencida do lançamento.</summary>
-    public bool ResolveAlerta => Status is StatusLancamento.PAGO or StatusLancamento.NAO_SE_APLICA;
-
-    /// <summary>
-    /// Justificativa só em Não Pago / Não se aplica; data de pagamento só em Pago (padrão: hoje);
-    /// valor só muda quando informado.
-    /// </summary>
-    internal void AplicarEm(DespesaLancamento l, Guid usuarioId, DateOnly hoje)
-    {
-        var comNota = Status is StatusLancamento.NAO_PAGO or StatusLancamento.NAO_SE_APLICA;
-        l.Status = Status;
-        l.Justificativa = comNota ? Texto.Limpo(Justificativa) : null;
-        l.DataPagamento = Status == StatusLancamento.PAGO ? DataPagamento ?? hoje : null;
-        if (Valor is { } v) l.Valor = v;
-        l.AtualizadoPor = usuarioId;
-    }
-}
-
-public sealed class ReceitaForm : IValidatableObject
-{
-    public TipoReceita Tipo { get; set; } = TipoReceita.VENDA;
-
-    [Required(ErrorMessage = "Informe a data.")]
-    public DateOnly? Data { get; set; }
-
-    [Required(ErrorMessage = "Informe o valor bruto.")]
-    public decimal? ValorBruto { get; set; }
-
-    public decimal CustosVenda { get; set; }
-    public decimal Tributos { get; set; }
-    public Guid? ContraparteId { get; set; }
+    [StringLength(2000, ErrorMessage = "Máximo de 2000 caracteres.")]
     public string? Observacao { get; set; }
 
-    public IEnumerable<ValidationResult> Validate(ValidationContext _) => Dinheiro.Validar(
-        (nameof(ValorBruto), ValorBruto), (nameof(CustosVenda), CustosVenda), (nameof(Tributos), Tributos));
+    /// <summary>Pessoa (quem pagou/recebeu): digitada ou escolhida entre as cadastradas.</summary>
+    [StringLength(200, ErrorMessage = "Máximo de 200 caracteres.")]
+    public string? Pessoa { get; set; }
 
-    internal void AplicarEm(Receita r)
+    public bool Recorrente { get; set; }
+    public int? DiaRecorrencia { get; set; }
+    public decimal? ValorEstimado { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {
-        r.Tipo = Tipo;
-        r.Data = Data!.Value;
-        r.ValorBruto = ValorBruto!.Value;
-        r.CustosVenda = CustosVenda;
-        r.Tributos = Tributos;
-        r.ContraparteId = ContraparteId;
-        r.Observacao = Texto.Limpo(Observacao);
+        foreach (var r in Dinheiro.Validar((nameof(Valor), Valor), (nameof(ValorEstimado), ValorEstimado))) yield return r;
+        if (Valor == 0) yield return new ValidationResult("O valor não pode ser zero.", [nameof(Valor)]);
+        if (Liquidado && DataLiquidacao is null) yield return new ValidationResult("Informe a data do pagamento/recebimento.", [nameof(DataLiquidacao)]);
+        if (!Recorrente) yield break;
+        if (DiaRecorrencia is not (>= 1 and <= 31)) yield return new ValidationResult("Informe o dia da recorrência (1 a 31).", [nameof(DiaRecorrencia)]);
+        if (ValorEstimado is null or 0) yield return new ValidationResult("Informe o valor estimado dos próximos meses.", [nameof(ValorEstimado)]);
+    }
+
+    public static LancamentoForm Novo(TipoConta tipo)
+    {
+        var hoje = DatasBR.Hoje();
+        return new LancamentoForm { Tipo = tipo, Data = hoje, Liquidado = true, DataLiquidacao = hoje, DiaRecorrencia = hoje.Day };
+    }
+
+    public static LancamentoForm De(LancamentoFinanceiro l) => new()
+    {
+        Tipo = l.Valor < 0 ? TipoConta.DESPESA : TipoConta.RECEITA, Data = l.Data, Valor = Math.Abs(l.Valor), Descricao = l.Descricao,
+        Liquidado = l.Situacao == SituacaoLancamento.LIQUIDADO, DataLiquidacao = l.DataLiquidacao ?? DatasBR.Hoje(),
+        ContaId = l.ContaId, Observacao = l.Observacao, Pessoa = l.PessoaNome, Recorrente = l.Recorrente, DiaRecorrencia = l.DiaRecorrencia ?? l.Data.Day,
+        ValorEstimado = l.ValorEstimado is { } e ? Math.Abs(e) : null,
+    };
+
+    private decimal Sinal => Tipo == TipoConta.DESPESA ? -1 : 1;
+
+    internal void AplicarEm(LancamentoFinanceiro l)
+    {
+        l.Data = Data!.Value;
+        l.Valor = Sinal * Valor!.Value;
+        l.Situacao = Liquidado ? SituacaoLancamento.LIQUIDADO : SituacaoLancamento.ABERTO;
+        l.DataLiquidacao = Liquidado ? DataLiquidacao : null;
+        l.Descricao = Descricao.Trim();
+        l.ContaId = ContaId!.Value;
+        l.Observacao = Texto.Limpo(Observacao);
+        l.PessoaNome = Texto.Limpo(Pessoa);
+        l.Recorrente = Recorrente;
+        l.DiaRecorrencia = Recorrente ? DiaRecorrencia : null;
+        l.ValorEstimado = Recorrente ? Sinal * ValorEstimado!.Value : null;
     }
 }
 
-public sealed class CategoriaForm
+/// <summary>
+/// Confirmação de um previsto (vira título ABERTO, ou já LIQUIDADO) ou liquidação de um título aberto.
+/// Valor positivo; o sinal é o do lançamento. <see cref="Data"/> = vencimento (na liquidação, não muda).
+/// </summary>
+public sealed class ConfirmacaoPrevistoForm : IValidatableObject
+{
+    [Required(ErrorMessage = "Informe o vencimento.")]
+    public DateOnly? Data { get; set; }
+
+    [Required(ErrorMessage = "Informe o valor.")]
+    public decimal? Valor { get; set; }
+
+    public bool Liquidado { get; set; }
+    public DateOnly? DataLiquidacao { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext _)
+    {
+        foreach (var r in Dinheiro.Validar((nameof(Valor), Valor))) yield return r;
+        if (Valor == 0) yield return new ValidationResult("O valor não pode ser zero.", [nameof(Valor)]);
+        if (Liquidado && DataLiquidacao is null) yield return new ValidationResult("Informe a data do pagamento/recebimento.", [nameof(DataLiquidacao)]);
+    }
+}
+
+/// <summary>Fechamento da operação (venda) do imóvel, na aba Investimento.</summary>
+public sealed class FechamentoForm : IValidatableObject
+{
+    [Required(ErrorMessage = "Informe a data da venda.")]
+    public DateOnly? Data { get; set; }
+
+    [Required(ErrorMessage = "Informe o valor da venda.")]
+    public decimal? ValorVenda { get; set; }
+
+    public decimal Comissao { get; set; }
+    public decimal Impostos { get; set; }
+    public decimal OutrosCustos { get; set; }
+
+    /// <summary>Se o saldo dos lançamentos financeiros entra na apuração do lucro (null = decidir depois).</summary>
+    public bool? IncluirLancamentos { get; set; }
+
+    public Guid? CompradorId { get; set; }
+    public string? Observacao { get; set; }
+
+    public decimal Liquido => (ValorVenda ?? 0) - Comissao - Impostos - OutrosCustos;
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext _)
+    {
+        foreach (var r in Dinheiro.Validar((nameof(ValorVenda), ValorVenda), (nameof(Comissao), Comissao), (nameof(Impostos), Impostos),
+                     (nameof(OutrosCustos), OutrosCustos))) yield return r;
+        if (ValorVenda is <= 0) yield return new ValidationResult("O valor da venda deve ser maior que zero.", [nameof(ValorVenda)]);
+    }
+
+    public static FechamentoForm De(FechamentoInvestimento f) => new()
+    {
+        Data = f.Data, ValorVenda = f.ValorVenda, Comissao = f.Comissao, Impostos = f.Impostos, OutrosCustos = f.OutrosCustos,
+        IncluirLancamentos = f.IncluirLancamentos, CompradorId = f.CompradorId, Observacao = f.Observacao,
+    };
+
+    internal void AplicarEm(FechamentoInvestimento f)
+    {
+        f.Data = Data!.Value;
+        f.ValorVenda = ValorVenda!.Value;
+        f.Comissao = Comissao;
+        f.Impostos = Impostos;
+        f.OutrosCustos = OutrosCustos;
+        f.IncluirLancamentos = IncluirLancamentos;
+        f.CompradorId = CompradorId;
+        f.Observacao = Texto.Limpo(Observacao);
+    }
+}
+
+public sealed class ContaForm
 {
     [Required(ErrorMessage = "Informe o nome.")]
     [StringLength(80, MinimumLength = 2, ErrorMessage = "O nome deve ter de 2 a 80 caracteres.")]
     public string Nome { get; set; } = "";
 
+    public TipoConta Tipo { get; set; } = TipoConta.DESPESA;
     public bool Ativo { get; set; } = true;
 }

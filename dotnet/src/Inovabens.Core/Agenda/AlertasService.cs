@@ -23,13 +23,13 @@ public sealed class AlertasService(IDbContextFactory<InovabensDb> fabrica)
             from a in q
             join c in db.Compromissos on a.CompromissoId equals c.Id into cs
             from c in cs.DefaultIfEmpty()
-            join l in db.DespesaLancamentos on a.LancamentoId equals l.Id into ls
+            join l in db.LancamentosFinanceiros on a.LancamentoId equals l.Id into ls
             from l in ls.DefaultIfEmpty()
             join p in db.Processos on a.ProcessoId equals p.Id into ps
             from p in ps.DefaultIfEmpty()
             orderby a.GeradoEm descending
             select new AlertaItem(a, c == null ? null : c.Id, c == null ? null : c.Titulo,
-                c != null ? c.ImovelId : l != null ? l.Despesa!.ImovelId : p != null ? p.ImovelId : null, a.LeadId,
+                c != null ? c.ImovelId : l != null ? l.ImovelId : p != null ? p.ImovelId : null, a.LeadId,
                 p == null ? null : p.Funil)
         ).Take(200).ToListAsync();
     }
@@ -78,28 +78,33 @@ public sealed class AlertasService(IDbContextFactory<InovabensDb> fabrica)
         return new ResultadoVerificacao(criados, resolvidos);
     }
 
-    /// <summary>Despesas vencidas sem pagamento (a marcar ou NAO_PAGO) alertam cada usuário com financeiro:ver.</summary>
-    public async Task<ResultadoVerificacao> VerificarDespesasAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Títulos a pagar/receber em atraso (abertos ou previstos com vencimento passado) alertam cada usuário com financeiro:ver
+    /// (Administrador e Financeiro). Liquidar, ignorar ou excluir o título resolve o alerta.
+    /// </summary>
+    public async Task<ResultadoVerificacao> VerificarAtrasadosAsync(CancellationToken ct = default)
     {
         await using var db = await fabrica.CreateDbContextAsync(ct);
         var criados = await db.Database.ExecuteSqlRawAsync("""
             insert into alertas (tipo, usuario_id, lancamento_id, mensagem)
-            select 'DESPESA_NAO_PAGA'::tipo_alerta, u.id, l.id,
-                   'Despesa vencida em ' || to_char(l.vencimento, 'DD/MM/YYYY') || ': ' || d.descricao || ' (' || i.codigo || ')'
-              from despesa_lancamentos l
-              join despesas d on d.id = l.despesa_id join imoveis i on i.id = d.imovel_id
+            select 'TITULO_EM_ATRASO'::tipo_alerta, u.id, l.id,
+                   (case when l.valor < 0 then 'A pagar' else 'A receber' end) || ' em atraso desde ' || to_char(l.data, 'DD/MM/YYYY') || ': '
+                   || coalesce(i.codigo || '-' || lpad(l.numero::text, 4, '0'), i.codigo) || ' ' || l.descricao
+                   || (case when l.situacao = 'PREVISTO' then ' (previsto, a confirmar)' else '' end)
+              from lancamentos_financeiros l
+              join imoveis i on i.id = l.imovel_id
               cross join (select distinct u2.id from usuarios u2
                             join perfil_permissoes pp on pp.perfil_id = u2.perfil_id join permissoes m on m.id = pp.permissao_id
                            where m.codigo = 'financeiro:ver' and u2.ativo and u2.excluido_em is null) u
-             where (l.status is null or l.status = 'NAO_PAGO') and l.vencimento < @hoje
-               and d.excluido_em is null and i.excluido_em is null
+             where l.situacao in ('ABERTO', 'PREVISTO') and l.data < @hoje
+               and l.excluido_em is null and i.excluido_em is null
             on conflict do nothing
             """, [new NpgsqlParameter("hoje", NpgsqlDbType.Date) { Value = DatasBR.Hoje() }], ct);
         var resolvidos = await db.Database.ExecuteSqlRawAsync("""
             update alertas a set resolvido_em = now()
-             where a.resolvido_em is null and a.tipo = 'DESPESA_NAO_PAGA'
-               and exists (select 1 from despesa_lancamentos l join despesas d on d.id = l.despesa_id
-                            where l.id = a.lancamento_id and (l.status in ('PAGO','NAO_SE_APLICA') or d.excluido_em is not null))
+             where a.resolvido_em is null and a.tipo = 'TITULO_EM_ATRASO'
+               and exists (select 1 from lancamentos_financeiros l
+                            where l.id = a.lancamento_id and (l.situacao in ('LIQUIDADO', 'IGNORADO') or l.excluido_em is not null))
             """, ct);
         return new ResultadoVerificacao(criados, resolvidos);
     }

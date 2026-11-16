@@ -7,7 +7,7 @@ namespace Inovabens.Core.Dados;
 
 /// <summary>
 /// Dados-base idempotentes (port de apps/api/src/db/seed.ts): permissões, perfis padrão (só ACRESCENTA
-/// permissões, nunca remove as customizações do administrador), categorias de despesa, estágios dos dois
+/// permissões, nunca remove as customizações do administrador), contas orçamentárias, estágios dos dois
 /// funis e o administrador inicial, criado somente se ainda não houver nenhum usuário.
 /// </summary>
 public sealed class DadosIniciais(InovabensOpcoes op, ILogger<DadosIniciais> log)
@@ -34,8 +34,9 @@ public sealed class DadosIniciais(InovabensOpcoes op, ILogger<DadosIniciais> log
                 """, ct, ("n", p.Nome), ("cs", p.Permissoes.ToArray()));
         }
 
-        foreach (var nome in PadroesIniciais.CategoriasDespesa)
-            await Exec(con, tx, "INSERT INTO despesa_categorias (nome) VALUES (@n) ON CONFLICT DO NOTHING", ct, ("n", nome));
+        foreach (var (nome, tipo) in PadroesIniciais.ContasOrcamentarias)
+            await Exec(con, tx, "INSERT INTO contas_orcamentarias (nome, tipo) VALUES (@n, @t::tipo_conta) ON CONFLICT DO NOTHING", ct,
+                ("n", nome), ("t", tipo.ToString()));
 
         foreach (var funil in Enum.GetValues<Funil>())
             for (var i = 0; i < PadroesIniciais.EstagiosDo(funil).Count; i++)

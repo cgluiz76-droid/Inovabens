@@ -1,5 +1,5 @@
 @inherits ComponenteBase
-@inject DespesasService Despesas
+@inject LancamentosFinanceirosService Lancamentos
 @inject IndicesService Indices
 @inject CrmService Crm
 @inject IJSRuntime JS
@@ -9,7 +9,8 @@
 
 <div class="grade-2">
     <section class="card">
-        <h2>Categorias de despesa</h2>
+        <h2>Contas orçamentárias</h2>
+        <p class="pequeno mudo">Usadas nos Lançamentos Financeiros dos imóveis. Receita entra com valor positivo; despesa, negativo.</p>
         @if (categorias is not null)
         {
             <table class="tabela">
@@ -18,6 +19,7 @@
                     {
                         <tr>
                             <td><input class="input" value="@c.Nome" @onchange="e => RenomearCategoria(c, e.Value?.ToString())" /></td>
+                            <td><span class="badge @(c.Tipo == TipoConta.RECEITA ? "status-PAGO" : "status-NAO_PAGO")">@Texto.Rotulo(c.Tipo)</span></td>
                             <td class="acoes-linha">
                                 <label class="check">
                                     <input type="checkbox" checked="@c.Ativo" @onchange="e => SalvarCategoria(c, c.Nome, (bool)e.Value!)" /> Ativa
@@ -29,7 +31,11 @@
             </table>
         }
         <div class="linha-form">
-            <input class="input w-desc" placeholder="Nova categoria" @bind="novaCategoria" />
+            <input class="input w-desc" placeholder="Nova conta" @bind="novaCategoria" />
+            <select class="input" @bind="novoTipo">
+                <option value="@TipoConta.DESPESA">Despesa</option>
+                <option value="@TipoConta.RECEITA">Receita</option>
+            </select>
             <button class="btn-primary" disabled="@Ocupado" @onclick="CriarCategoria">Adicionar</button>
         </div>
     </section>
@@ -139,7 +145,8 @@
 <IntegracoesConfig />
 
 @code {
-    private IReadOnlyList<DespesaCategoria>? categorias;
+    private IReadOnlyList<ContaOrcamentaria>? categorias;
+    private TipoConta novoTipo = TipoConta.DESPESA;
     private string novaCategoria = "";
     private Funil funil = Funil.VENDA;
     private List<FunilEstagio>? estagios;
@@ -151,21 +158,21 @@
         await CarregarEstagios();
     }
 
-    private Task CarregarCategorias() => Executar(async () => categorias = await Despesas.CategoriasAsync(incluirInativas: true));
+    private Task CarregarCategorias() => Executar(async () => categorias = await Lancamentos.ContasAsync(incluirInativas: true));
 
     private Task CarregarEstagios() => Executar(async () => estagios = [.. await Crm.EstagiosAsync(funil)]);
 
-    private Task RenomearCategoria(DespesaCategoria c, string? nome) => SalvarCategoria(c, nome ?? "", c.Ativo);
+    private Task RenomearCategoria(ContaOrcamentaria c, string? nome) => SalvarCategoria(c, nome ?? "", c.Ativo);
 
-    private async Task SalvarCategoria(DespesaCategoria c, string nome, bool ativo)
+    private async Task SalvarCategoria(ContaOrcamentaria c, string nome, bool ativo)
     {
-        await Executar(() => Despesas.AtualizarCategoriaAsync(Usuario, c.Id, new CategoriaForm { Nome = nome, Ativo = ativo }));
+        await Executar(() => Lancamentos.AtualizarContaAsync(Usuario, c.Id, new ContaForm { Nome = nome, Tipo = c.Tipo, Ativo = ativo }));
         await CarregarCategorias();
     }
 
     private async Task CriarCategoria()
     {
-        if (!await Executar(() => Despesas.CriarCategoriaAsync(Usuario, new CategoriaForm { Nome = novaCategoria }))) return;
+        if (!await Executar(() => Lancamentos.CriarContaAsync(Usuario, new ContaForm { Nome = novaCategoria, Tipo = novoTipo }))) return;
         novaCategoria = "";
         await CarregarCategorias();
     }

@@ -56,8 +56,8 @@ public class MigradorTests
         Assert.Equal(Permissoes.Todas.Count, await Escalar<long>(BancoFixture.Url, """
             SELECT count(*) FROM perfil_permissoes pp JOIN perfis p ON p.id = pp.perfil_id WHERE p.nome = 'Administrador'
             """));
-        Assert.Equal(PadroesIniciais.CategoriasDespesa.Count,
-            await Escalar<long>(BancoFixture.Url, $"SELECT count(*) FROM despesa_categorias WHERE nome = ANY(ARRAY['{string.Join("','", PadroesIniciais.CategoriasDespesa)}'])"));
+        Assert.Equal(PadroesIniciais.ContasOrcamentarias.Count,
+            await Escalar<long>(BancoFixture.Url, $"SELECT count(*) FROM contas_orcamentarias WHERE nome = ANY(ARRAY['{string.Join("','", PadroesIniciais.ContasOrcamentarias.Select(c => c.Nome))}'])"));
         Assert.Equal(PadroesIniciais.Estagios.Count * 2,
             await Escalar<long>(BancoFixture.Url, $"SELECT count(*) FROM funil_estagios WHERE funil IN ('VENDA','LOCACAO') AND nome = ANY(ARRAY['{string.Join("','", PadroesIniciais.Estagios.Select(e => e.Nome))}'])"));
         Assert.True(await Escalar<bool>(BancoFixture.Url, "SELECT EXISTS (SELECT 1 FROM usuarios WHERE email = 'admin@inovabens.com.br')"));
@@ -86,7 +86,7 @@ public class MigradorTests
     private static async Task<(long, long, long, long, long)> Contagens(string url) => (
         await Escalar<long>(url, "SELECT count(*) FROM permissoes"),
         await Escalar<long>(url, "SELECT count(*) FROM perfil_permissoes"),
-        await Escalar<long>(url, "SELECT count(*) FROM despesa_categorias"),
+        await Escalar<long>(url, "SELECT count(*) FROM contas_orcamentarias"),
         await Escalar<long>(url, "SELECT count(*) FROM funil_estagios"),
         await Escalar<long>(url, "SELECT count(*) FROM usuarios"));
 

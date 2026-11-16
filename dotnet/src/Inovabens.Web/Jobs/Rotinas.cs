@@ -79,7 +79,7 @@ public sealed class AlertasCompromissosJob(IServiceScopeFactory e, InovabensOpco
     }
 }
 
-/// <summary>Todo dia às 06:00: gera os lançamentos do mês (checklist) e alerta despesas vencidas não pagas.</summary>
+/// <summary>Todo dia às 06:00: gera os lançamentos previstos das recorrências e alerta os títulos a pagar/receber em atraso.</summary>
 public sealed class RotinaFinanceiraDiariaJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<RotinaFinanceiraDiariaJob> log) : Rotina(e, o, log)
 {
     protected override string Nome => "financeiro diário";
@@ -87,9 +87,8 @@ public sealed class RotinaFinanceiraDiariaJob(IServiceScopeFactory e, InovabensO
 
     protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
     {
-        var hoje = DatasBR.Hoje();
-        var gerados = await sp.GetRequiredService<DespesasService>().GerarCompetenciaAsync(new DateOnly(hoje.Year, hoje.Month, 1));
-        var r = await sp.GetRequiredService<AlertasService>().VerificarDespesasAsync(ct);
+        var gerados = await sp.GetRequiredService<LancamentosFinanceirosService>().GerarPrevistosAsync(LancamentosFinanceirosService.LimitePrevistos(null));
+        var r = await sp.GetRequiredService<AlertasService>().VerificarAtrasadosAsync(ct);
         Log.LogInformation("Rotina financeira: {Gerados} lançamento(s) gerado(s); alertas {Criados} criado(s), {Resolvidos} resolvido(s)",
             gerados, r.Criados, r.Resolvidos);
     }

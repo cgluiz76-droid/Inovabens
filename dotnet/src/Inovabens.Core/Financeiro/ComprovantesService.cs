@@ -8,18 +8,10 @@ using P = Inovabens.Core.Dominio.Permissoes;
 
 namespace Inovabens.Core.Financeiro;
 
-/// <summary>De onde é o comprovante: uma receita, o pagamento (lançamento) de uma despesa ou a própria despesa (contrato, boleto).</summary>
-public sealed record OrigemComprovante(Guid? ReceitaId, Guid? LancamentoId, Guid? DespesaId = null)
-{
-    public static OrigemComprovante DaReceita(Guid id) => new(id, null);
-    public static OrigemComprovante DoLancamento(Guid id) => new(null, id);
-    public static OrigemComprovante DaDespesa(Guid id) => new(null, null, id);
-}
-
 public sealed record ComprovanteDetalhe(Guid Id, string Nome, string Tipo, long Tamanho, DateTime CriadoEm);
 
 /// <summary>
-/// Comprovantes das receitas e dos pagamentos de despesas, gravados no Google Drive em
+/// Comprovantes dos lançamentos financeiros, gravados no Google Drive em
 /// "&lt;pasta do imóvel&gt;/07 - Financeiro/&lt;ano&gt;". Ver, anexar e remover exige editar o financeiro.
 /// </summary>
 public sealed class ComprovantesService(
@@ -30,32 +22,32 @@ public sealed class ComprovantesService(
 
     public bool Habilitado => armazenamento.Habilitado;
 
-    public async Task<IReadOnlyList<ComprovanteDetalhe>> ListarAsync(UsuarioAtual u, OrigemComprovante origem)
+    public async Task<IReadOnlyList<ComprovanteDetalhe>> ListarAsync(UsuarioAtual u, Guid lancamentoId)
     {
         u.Exigir(P.FinanceiroEditar);
         await using var db = await fabrica.CreateDbContextAsync();
-        await Resolver(db, u, origem);
-        return await Da(db, origem).OrderBy(c => c.CriadoEm)
+        await Resolver(db, u, lancamentoId);
+        return await db.ComprovantesFinanceiros.AsNoTracking().Where(c => c.LancamentoId == lancamentoId).OrderBy(c => c.CriadoEm)
             .Select(c => new ComprovanteDetalhe(c.Id, c.NomeOriginal, c.TipoConteudo, c.Tamanho, c.CriadoEm))
             .ToListAsync();
     }
 
-    /// <summary>Quantos comprovantes cada receita, lançamento e despesa do imóvel tem (para o ícone de anexo).</summary>
+    /// <summary>Quantos comprovantes cada lançamento do imóvel tem (para o ícone de anexo).</summary>
     public async Task<IReadOnlyDictionary<Guid, int>> ContagemAsync(UsuarioAtual u, Guid imovelId)
     {
         if (!u.Pode(P.FinanceiroEditar)) return new Dictionary<Guid, int>();
         await using var db = await fabrica.CreateDbContextAsync();
         await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         return await db.ComprovantesFinanceiros.AsNoTracking().Where(c => c.ImovelId == imovelId)
-            .GroupBy(c => c.ReceitaId ?? c.LancamentoId ?? c.DespesaId!.Value)
+            .GroupBy(c => c.LancamentoId)
             .ToDictionaryAsync(g => g.Key, g => g.Count());
     }
 
     /// <summary>
-    /// Grava o arquivo no Drive e o vincula. Nome no Drive: "AAAA-MM-DD Receita Locação - recibo.pdf" ou
-    /// "AAAA-MM-DD Despesa Condomínio - boleto.pdf", na pasta do ano da receita ou do pagamento.
+    /// Grava o arquivo no Drive e o vincula. Nome no Drive: "AAAA-MM-DD CA0013-0004 Condomínio - boleto.pdf",
+    /// na pasta do ano do lançamento.
     /// </summary>
-    public async Task<Guid> EnviarAsync(UsuarioAtual u, OrigemComprovante origem, Stream conteudo, string nomeOriginal, string contentType,
+    public async Task<Guid> EnviarAsync(UsuarioAtual u, Guid lancamentoId, Stream conteudo, string nomeOriginal, string contentType,
         long tamanho, CancellationToken ct = default)
     {
         u.Exigir(P.FinanceiroEditar);
@@ -64,7 +56,7 @@ public sealed class ComprovantesService(
         if (tamanho > TamanhoMaximo)
             throw new RegraNegocioException("arquivo", $"Arquivo maior que {TamanhoMaximo / 1024 / 1024} MB.");
         await using var db = await fabrica.CreateDbContextAsync(ct);
-        var (imovelId, data, rotulo) = await Resolver(db, u, origem);
+        var (imovelId, data, rotulo) = await Resolver(db, u, lancamentoId);
 
         var nome = Path.GetFileName(nomeOriginal.Trim());
         if (nome.Length == 0) nome = "comprovante";
@@ -78,7 +70,7 @@ public sealed class ComprovantesService(
 
         var c = new ComprovanteFinanceiro
         {
-            ImovelId = imovelId, ReceitaId = origem.ReceitaId, LancamentoId = origem.LancamentoId, DespesaId = origem.DespesaId, ArquivoChave = chave,
+            ImovelId = imovelId, LancamentoId = lancamentoId, ArquivoChave = chave,
             NomeOriginal = nome, TipoConteudo = tipo, Tamanho = tamanho, CriadoPor = u.Id,
         };
         db.ComprovantesFinanceiros.Add(c);
@@ -111,11 +103,6 @@ public sealed class ComprovantesService(
         await armazenamento.RemoverAsync(c.ArquivoChave);
     }
 
-    private static IQueryable<ComprovanteFinanceiro> Da(InovabensDb db, OrigemComprovante o) =>
-        o.ReceitaId is { } r ? db.ComprovantesFinanceiros.AsNoTracking().Where(c => c.ReceitaId == r)
-            : o.LancamentoId is { } l ? db.ComprovantesFinanceiros.AsNoTracking().Where(c => c.LancamentoId == l)
-            : db.ComprovantesFinanceiros.AsNoTracking().Where(c => c.DespesaId == o.DespesaId);
-
     private static async Task<ComprovanteFinanceiro> ComAcesso(InovabensDb db, UsuarioAtual u, Guid id)
     {
         var c = await db.ComprovantesFinanceiros.SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Comprovante não encontrado.");
@@ -124,34 +111,15 @@ public sealed class ComprovantesService(
     }
 
     /// <summary>Imóvel, data (define o ano da pasta) e rótulo do nome do arquivo, conferindo o acesso ao imóvel.</summary>
-    private static async Task<(Guid ImovelId, DateOnly Data, string Rotulo)> Resolver(InovabensDb db, UsuarioAtual u, OrigemComprovante o)
+    private static async Task<(Guid ImovelId, DateOnly Data, string Rotulo)> Resolver(InovabensDb db, UsuarioAtual u, Guid lancamentoId)
     {
-        if (new[] { o.ReceitaId, o.LancamentoId, o.DespesaId }.Count(x => x is not null) != 1)
-            throw new RegraNegocioException("origem", "Informe a receita, o lançamento ou a despesa.");
-        (Guid, DateOnly, string) r;
-        if (o.ReceitaId is { } rid)
-        {
-            var x = await db.Receitas.AsNoTracking().SingleOrDefaultAsync(x => x.Id == rid && x.ExcluidoEm == null)
-                ?? throw new NaoEncontradoException("Receita não encontrada.");
-            r = (x.ImovelId, x.Data, $"Receita {Texto.Rotulo(x.Tipo)}");
-        }
-        else if (o.DespesaId is { } did)
-        {
-            // anexo da despesa (contrato, boleto): pasta do ano de início
-            var x = await db.Despesas.AsNoTracking().SingleOrDefaultAsync(x => x.Id == did && x.ExcluidoEm == null)
-                ?? throw new NaoEncontradoException("Despesa não encontrada.");
-            r = (x.ImovelId, x.InicioEm, $"Despesa {x.Descricao}");
-        }
-        else
-        {
-            var x = await db.DespesaLancamentos.AsNoTracking().Where(l => l.Id == o.LancamentoId)
-                .Select(l => new { l.Despesa!.ImovelId, Data = l.DataPagamento ?? l.Vencimento ?? l.Competencia, l.Despesa.Descricao })
-                .SingleOrDefaultAsync() ?? throw new NaoEncontradoException("Lançamento não encontrado.");
-            r = (x.ImovelId, x.Data, $"Despesa {x.Descricao}");
-        }
-        await Acesso.ImovelComAcesso(db, u, r.Item1, rastrear: false);
+        var x = await db.LancamentosFinanceiros.AsNoTracking().Where(l => l.Id == lancamentoId && l.ExcluidoEm == null)
+            .Select(l => new { l.ImovelId, l.Data, l.Numero, l.Descricao, Codigo = db.Imoveis.Where(i => i.Id == l.ImovelId).Select(i => i.Codigo).First() })
+            .SingleOrDefaultAsync() ?? throw new NaoEncontradoException("Lançamento não encontrado.");
+        await Acesso.ImovelComAcesso(db, u, x.ImovelId, rastrear: false);
+        var r = $"{LancamentosFinanceirosService.FormatarNumero(x.Codigo, x.Numero)} {x.Descricao}";
         // nome de arquivo no Drive: sem barras nem caracteres que o Windows recusa ao baixar a pasta
-        var rotulo = string.Concat(r.Item3.Select(ch => "\\/:*?\"<>|".Contains(ch) ? '-' : ch));
-        return (r.Item1, r.Item2, rotulo.Length > 60 ? rotulo[..60].TrimEnd() : rotulo);
+        var rotulo = string.Concat(r.Select(ch => "\\/:*?\"<>|".Contains(ch) ? '-' : ch));
+        return (x.ImovelId, x.Data, rotulo.Length > 60 ? rotulo[..60].TrimEnd() : rotulo);
     }
 }

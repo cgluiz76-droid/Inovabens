@@ -15,10 +15,10 @@ public class FinanceiroTests
         new Aquisicao { DataAquisicao = D(2025, 1, 10), ValorPago = 100000m, TotalAquisicao = 100000m },
         [],
         [
-            new(D(2025, 4, 1), D(2025, 4, 10), D(2025, 4, 15), StatusLancamento.PAGO, 10000m, "Reforma", "Manutenção"),
-            new(D(2025, 5, 1), D(2025, 5, 10), null, StatusLancamento.NAO_PAGO, 500m, "IPTU em aberto", "Impostos"),
+            new(D(2025, 4, 15), -10000m, SituacaoLancamento.LIQUIDADO, "Reforma", "Manutenção"),
+            new(D(2025, 5, 10), -500m, SituacaoLancamento.ABERTO, "IPTU em aberto", "IPTU"),
         ],
-        [new Receita { Tipo = TipoReceita.VENDA, Data = D(2025, 7, 20), ValorBruto = 150000m, CustosVenda = 9000m, Tributos = 1000m, ValorLiquido = 140000m }],
+        new FechamentoInvestimento { Data = D(2025, 7, 20), ValorVenda = 150000m, Comissao = 9000m, Impostos = 1000m },
         fatores);
 
     private static FatoresIndice Ipca1PorCento() =>
@@ -62,9 +62,9 @@ public class FinanceiroTests
     }
 
     [Fact]
-    public void Sem_receita_indicadores_ficam_nulos()
+    public void Sem_fechamento_indicadores_ficam_nulos()
     {
-        var d = Cenario(Ipca1PorCento()) with { Receitas = [] };
+        var d = Cenario(Ipca1PorCento()) with { Fechamento = null, Lancamentos = [] };
         var r = CalculoRetorno.Calcular(d);
         Assert.Null(r.Roi);
         Assert.Null(r.Moic);
@@ -102,56 +102,80 @@ public class FinanceiroTests
         return res;
     }
 
-    [Theory]
-    [InlineData(null, false)]
-    [InlineData("curta", false)]
-    [InlineData("   nove ch   ", false)]
-    [InlineData("Inquilino atrasou o repasse", true)]
-    public void Nao_pago_exige_justificativa(string? just, bool valido)
+    [Fact]
+    public void Sem_os_lancamentos_o_custo_e_so_a_aquisicao()
     {
-        var e = new StatusLancamentoEntrada { Status = StatusLancamento.NAO_PAGO, Justificativa = just };
-        Assert.Equal(valido, Validar(e).Count == 0);
+        var r = CalculoRetorno.Calcular(Cenario(Ipca1PorCento()) with { IncluirLancamentos = false });
+        Assert.Equal(100000.00m, r.CustoTotal);
+        Assert.Equal(0m, r.PassivoPendente);
+        Assert.Equal(40000.00m, r.Resultado);
+        Assert.Equal(-10000.00m, r.SaldoLancamentos);
+        Assert.False(r.IncluiLancamentos);
+        Assert.Equal(140000.00m, r.VendaLiquida);
     }
 
     [Fact]
-    public void Pago_nao_exige_justificativa_mas_valida_valor()
+    public void Receita_liquidada_entra_como_entrada_e_previsto_nao_entra()
     {
-        Assert.Empty(Validar(new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, Valor = 10.5m }));
-        Assert.NotEmpty(Validar(new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, Valor = -1m }));
-        Assert.NotEmpty(Validar(new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, Valor = 1.234m }));
+        var d = Cenario(Ipca1PorCento());
+        d = d with { Lancamentos = [.. d.Lancamentos, new(D(2025, 6, 1), 2000m, SituacaoLancamento.LIQUIDADO, "Reembolso", "Reembolso"),
+            new(D(2025, 6, 5), -300m, SituacaoLancamento.PREVISTO, "Condomínio", "Condomínio")] };
+        var r = CalculoRetorno.Calcular(d);
+        Assert.Equal(142000.00m, r.ReceitaLiquida);
+        Assert.Equal(800.00m, r.PassivoPendente); // IPTU aberto + condomínio previsto, ambos vencidos
+        Assert.Equal(-8000.00m, r.SaldoLancamentos);
     }
 
     [Fact]
-    public void Marcar_pago_usa_hoje_e_descarta_justificativa()
+    public void Despesa_entra_com_sinal_negativo_e_receita_positivo()
     {
-        var usuario = Guid.NewGuid();
-        var l = new DespesaLancamento { Valor = 100m, Justificativa = "antiga", Status = StatusLancamento.NAO_PAGO };
-        var e = new StatusLancamentoEntrada { Status = StatusLancamento.PAGO, Justificativa = "ignorada" };
+        var conta = Guid.NewGuid();
+        var l = new LancamentoFinanceiro();
+        new LancamentoForm { Tipo = TipoConta.DESPESA, Data = D(2026, 11, 10), Valor = 350m, Descricao = "Condomínio", ContaId = conta }.AplicarEm(l);
+        Assert.Equal(-350m, l.Valor);
+        Assert.Equal(SituacaoLancamento.ABERTO, l.Situacao);
+        Assert.Null(l.DataLiquidacao);
 
-        e.AplicarEm(l, usuario, D(2026, 10, 28));
-
-        Assert.Equal(StatusLancamento.PAGO, l.Status);
-        Assert.Equal(D(2026, 10, 28), l.DataPagamento);
-        Assert.Null(l.Justificativa);
-        Assert.Equal(100m, l.Valor);
-        Assert.Equal(usuario, l.AtualizadoPor);
-        Assert.True(e.ResolveAlerta);
+        new LancamentoForm
+        {
+            Tipo = TipoConta.RECEITA, Data = D(2026, 11, 5), Valor = 1200m, Descricao = "Aluguel", ContaId = conta, Liquidado = true, DataLiquidacao = D(2026, 11, 6),
+            Recorrente = true, DiaRecorrencia = 5, ValorEstimado = 1200m,
+        }.AplicarEm(l);
+        Assert.Equal(1200m, l.Valor);
+        Assert.Equal(1200m, l.ValorEstimado);
+        Assert.Equal(SituacaoLancamento.LIQUIDADO, l.Situacao);
+        Assert.Equal(D(2026, 11, 6), l.DataLiquidacao);
     }
 
-    [Theory]
-    [InlineData(StatusLancamento.NAO_PAGO, false)]
-    [InlineData(StatusLancamento.NAO_SE_APLICA, true)]
-    public void Marcar_sem_pagamento_guarda_justificativa_e_limpa_data(StatusLancamento status, bool resolveAlerta)
+    [Fact]
+    public void Formulario_do_lancamento_valida_valor_liquidacao_e_recorrencia()
     {
-        var l = new DespesaLancamento { Valor = 100m, DataPagamento = D(2026, 10, 1), Status = StatusLancamento.PAGO };
-        var e = new StatusLancamentoEntrada { Status = status, Justificativa = "  Inquilino atrasou o repasse  ", DataPagamento = D(2026, 10, 2), Valor = 80m };
+        LancamentoForm F() => new() { Tipo = TipoConta.DESPESA, Data = D(2026, 11, 10), Valor = 10m, Descricao = "Luz", ContaId = Guid.NewGuid() };
+        Assert.Empty(Validar(F()));
+        var f = F(); f.Valor = 0; Assert.NotEmpty(Validar(f));
+        f = F(); f.Valor = -5; Assert.NotEmpty(Validar(f));
+        f = F(); f.Valor = 1.234m; Assert.NotEmpty(Validar(f));
+        f = F(); f.Liquidado = true; Assert.Contains(Validar(f), r => r.MemberNames.Contains(nameof(LancamentoForm.DataLiquidacao)));
+        f = F(); f.Recorrente = true; f.DiaRecorrencia = 32; f.ValorEstimado = 10m; Assert.Contains(Validar(f), r => r.MemberNames.Contains(nameof(LancamentoForm.DiaRecorrencia)));
+        f = F(); f.Recorrente = true; f.DiaRecorrencia = 10; Assert.Contains(Validar(f), r => r.MemberNames.Contains(nameof(LancamentoForm.ValorEstimado)));
+        f = F(); f.Recorrente = true; f.DiaRecorrencia = 10; f.ValorEstimado = 10m; Assert.Empty(Validar(f));
+    }
 
-        e.AplicarEm(l, Guid.NewGuid(), D(2026, 10, 28));
+    [Fact]
+    public void Numero_do_titulo_usa_o_codigo_do_imovel()
+    {
+        Assert.Equal("CA0013-0007", LancamentosFinanceirosService.FormatarNumero("CA0013", 7));
+        Assert.Equal("—", LancamentosFinanceirosService.FormatarNumero("CA0013", null));
+    }
 
-        Assert.Equal("Inquilino atrasou o repasse", l.Justificativa);
-        Assert.Null(l.DataPagamento);
-        Assert.Equal(80m, l.Valor);
-        Assert.Equal(resolveAlerta, e.ResolveAlerta);
+    [Fact]
+    public void Fechamento_exige_venda_positiva()
+    {
+        Assert.NotEmpty(Validar(new FechamentoForm { Data = D(2026, 1, 1), ValorVenda = 0 }));
+        Assert.NotEmpty(Validar(new FechamentoForm { Data = D(2026, 1, 1), ValorVenda = 100, Comissao = -1 }));
+        var ok = new FechamentoForm { Data = D(2026, 1, 1), ValorVenda = 100, Comissao = 6, Impostos = 4 };
+        Assert.Empty(Validar(ok));
+        Assert.Equal(90m, ok.Liquido);
     }
 
     [Fact]

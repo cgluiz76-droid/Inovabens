@@ -322,46 +322,46 @@ public class FluxosTests(Aplicacao app)
         await p.EntrarAsync(AdminEmail, SenhaPadrao);
         await p.CriarImovelAsync($"Casa E2E {s}");
 
-        // despesa mensal começando neste mês: entra no checklist do mês
+        // despesa em aberto (fora do saldo real) e receita já recebida
         await p.Botao("Financeiro").ClickAsync();
-        await p.Botao("Cadastrar despesa").ClickAsync();
-        // o filtro do extrato também tem "Categoria": usa o campo do modal
-        await p.GetByRole(AriaRole.Dialog).GetByLabel("Categoria").SelectOptionAsync(new SelectOptionValue { Label = "IPTU" });
-        await p.GetByLabel("Descrição").FillAsync($"IPTU {s}");
-        await p.GetByLabel("Valor previsto (R$)").FillAsync("350.00");
-        var hoje = DateTime.Today;
-        await p.GetByLabel("Início").FillAsync(new DateTime(hoje.Year, hoje.Month, 1).ToString("yyyy-MM-dd"));
-        await p.Botao("Salvar").ClickAsync();
+        var hoje = DateTime.Today.ToString("yyyy-MM-dd");
+        await p.Botao("+ Nova despesa").ClickAsync();
+        var modal = p.GetByRole(AriaRole.Dialog);
+        await modal.GetByLabel("Vencimento").FillAsync(hoje);
+        await modal.GetByLabel("Valor (R$)").FillAsync("350.00");
+        await modal.GetByLabel("Descrição").FillAsync($"IPTU {s}");
+        await modal.GetByLabel("Pessoa").FillAsync($"Prefeitura {s}");
+        await modal.GetByLabel("Conta orçamentária").SelectOptionAsync(new SelectOptionValue { Label = "IPTU" });
+        await modal.GetByLabel("Já pago (liquidado)").UncheckAsync();
+        await modal.Botao("Salvar").ClickAsync();
 
-        // a despesa aparece no checklist e também no extrato ("a pagar"): usa a linha do checklist
-        var checklist = p.Locator("section").Filter(new() { Has = p.GetByRole(AriaRole.Heading, new() { Name = "Despesas recorrentes (OPEX) — checklist mensal" }) });
-        var linha = checklist.GetByRole(AriaRole.Row).Filter(new() { HasText = $"IPTU {s}" });
-        await Expect(linha).ToBeVisibleAsync();
+        var aberto = p.GetByRole(AriaRole.Row).Filter(new() { HasText = $"IPTU {s}" });
+        await Expect(aberto).ToContainTextAsync("a vencer");
+        await Expect(aberto).ToContainTextAsync($"Prefeitura {s}");
+        await Expect(p.GetByText("Nenhum título liquidado no período.")).ToBeVisibleAsync();
 
-        // REGRA: Não Pago exige justificativa (mín. 10 caracteres)
-        await linha.GetByRole(AriaRole.Button, new() { Name = "Não pago" }).ClickAsync();
-        var justificativa = p.GetByLabel("Justificativa (obrigatória)");
-        await justificativa.FillAsync("curta");
-        await p.Botao("Confirmar").ClickAsync();
-        await Expect(p.GetByText("Justificativa obrigatória")).ToBeVisibleAsync();
-        await justificativa.FillAsync("Inquilino atrasou o repasse");
-        await p.Botao("Confirmar").ClickAsync();
-        await Expect(linha.GetByText("“Inquilino atrasou o repasse”")).ToBeVisibleAsync();
+        await p.Botao("+ Nova receita").ClickAsync();
+        await modal.GetByLabel("Vencimento").FillAsync(hoje);
+        await modal.GetByLabel("Valor (R$)").FillAsync("1000");
+        await modal.GetByLabel("Descrição").FillAsync($"Sinal {s}");
+        await modal.GetByLabel("Conta orçamentária").SelectOptionAsync(new SelectOptionValue { Label = "Outras receitas" });
+        await modal.Botao("Salvar").ClickAsync();
+        var extrato = p.Locator("table.extrato");
+        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = $"Sinal {s}" })).ToContainTextAsync("R$ 1.000,00");
 
-        // extrato (livro caixa): a despesa não paga fica "a pagar", fora do saldo; a receita entra no saldo
-        var extrato = p.Locator("section").Filter(new() { Has = p.GetByRole(AriaRole.Heading, new() { Name = "Extrato do imóvel (livro caixa)" }) });
-        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = $"IPTU {s}" })).ToContainTextAsync("Não pago");
-        await p.GetByLabel("Bruto").FillAsync("1000");
-        await p.Botao("Lançar").ClickAsync();
-        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = "Receita de venda" })).ToContainTextAsync("R$ 1.000,00");
-        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = "Total a pagar" })).ToContainTextAsync("saldo projetado R$ 650,00");
+        // pagar o título em aberto: entra no saldo real (1.000 − 350)
+        await aberto.Botao("Pagar").ClickAsync();
+        await modal.Botao("Confirmar").ClickAsync();
+        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = $"IPTU {s}" })).ToContainTextAsync("R$ 350,00");
+        await Expect(extrato.GetByRole(AriaRole.Row).Filter(new() { HasText = "Totais do período" })).ToContainTextAsync("R$ 650,00");
         var (nomeExtrato, pdfExtrato) = await p.BaixarAsync(p.GetByRole(AriaRole.Link, new() { Name = "Extrato PDF" }));
         Assert.EndsWith(".pdf", nomeExtrato);
         Assert.Equal("%PDF"u8.ToArray(), pdfExtrato);
         if (Environment.GetEnvironmentVariable("E2E_CAPTURA_EXTRATO") is { } capturaExtrato)
             await extrato.ScreenshotAsync(new() { Path = capturaExtrato });
 
-        // exportações: ficha financeira (aba Financeiro) e ficha do imóvel
+        // exportações: ficha financeira (aba Investimento) e ficha do imóvel
+        await p.Botao("Investimento").ClickAsync();
         var (nomePdf, pdf) = await p.BaixarAsync(p.GetByRole(AriaRole.Link, new() { Name = "Ficha financeira PDF" }));
         Assert.EndsWith(".pdf", nomePdf);
         Assert.Equal("%PDF"u8.ToArray(), pdf);
