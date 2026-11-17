@@ -162,9 +162,10 @@ public sealed class ImoveisService(
             : new(m, url, null, $"{url}?l={LarguraMiniatura}", $"{url}?l={LarguraTela}");
     }
 
-    /// <summary>Larguras que o sistema reduz ao entregar fotos do Drive (as mesmas versões publicadas no R2).</summary>
-    public const int LarguraMiniatura = 400, LarguraTela = 1200;
-    public static bool LarguraValida(int largura) => largura is LarguraMiniatura or LarguraTela;
+    /// <summary>Larguras que o sistema reduz ao entregar fotos do Drive (400 e 1200 = as mesmas versões publicadas no R2;
+    /// 160 = ícone da lista de imóveis no computador, que aparece com 64 px).</summary>
+    public const int LarguraIcone = 160, LarguraMiniatura = 400, LarguraTela = 1200;
+    public static bool LarguraValida(int largura) => largura is LarguraIcone or LarguraMiniatura or LarguraTela;
 
     /// <param name="codigoExterno">Código que o imóvel já tem fora do sistema (anúncio do Imobibrasil, ex.: CA0060):
     /// usado se estiver no padrão e livre; senão o próximo do prefixo do tipo.</param>

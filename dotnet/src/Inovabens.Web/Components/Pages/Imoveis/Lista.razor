@@ -62,7 +62,8 @@ else
                             <a href="imoveis/@i.Id" tabindex="-1" aria-hidden="true">
                                 @if (i.CapaUrl is { } capa)
                                 {
-                                    <img class="miniatura-imovel" src="@capa" alt="" loading="lazy" />
+                                    @* no computador a miniatura tem 64 px: o navegador escolhe a versão de 160 px; no celular (cartão largo), a de 400 *@
+                                    <img class="miniatura-imovel" src="@capa" srcset="@SrcsetCapa(capa)" sizes="@(SrcsetCapa(capa) is null ? null : "(max-width: 640px) 100vw, 64px")" alt="" loading="lazy" />
                                 }
                                 else
                                 {
@@ -93,6 +94,12 @@ else
 }
 
 @code {
+    // só a foto entregue pelo sistema (?l=400) tem a versão de 160 px; a publicada no R2 tem 400/1200/1920
+    private static readonly string SufixoMiniatura = $"?l={ImoveisService.LarguraMiniatura}";
+    private static string? SrcsetCapa(string capa) => capa.EndsWith(SufixoMiniatura, StringComparison.Ordinal)
+        ? $"{capa[..^SufixoMiniatura.Length]}?l={ImoveisService.LarguraIcone} {ImoveisService.LarguraIcone}w, {capa} {ImoveisService.LarguraMiniatura}w"
+        : null;
+
     /// <summary>?visao=mapa abre direto no mapa (dá para mandar o link).</summary>
     [SupplyParameterFromQuery(Name = "visao")] public string? Visao { get; set; }
 

@@ -289,7 +289,8 @@ else
                 {
                     <p class="coluna-valor" title="Soma do valor das propostas (ou do anunciado, sem proposta)">@Texto.MoedaCompacta(col.ValorTotal)</p>
                 }
-                @foreach (var l in col.Leads)
+                @{ var exibidos = Exibidos(col); }
+                @foreach (var l in exibidos)
                 {
                     var perdido = col.Estagio.Tipo == TipoEstagio.PERDIDO;
                     var abre = PodeAbrir(l);
@@ -395,9 +396,36 @@ else
                         </div>
                     </div>
                 }
+                @if (col.Leads.Count > exibidos.Count)
+                {
+                    <button type="button" class="btn-ghost mini mostrar-mais" @onclick="() => MostrarMais(col)">
+                        @TextoMostrarMais(col.Leads.Count - exibidos.Count)
+                    </button>
+                }
             </div>
         }
     </div>;
+
+    // colunas muito cheias deixavam o quadro com milhares de nós (o CRM tinha 149 cartões): mostra os primeiros de cada
+    // etapa e o resto sob demanda. O lead aberto ou em destaque sempre aparece. A contagem da etapa continua a total.
+    private const int PorColuna = 20;
+    private readonly Dictionary<Guid, int> limiteColuna = [];
+
+    private List<LeadCartao> Exibidos(ColunaFunil col)
+    {
+        var limite = limiteColuna.GetValueOrDefault(col.Estagio.Id, PorColuna);
+        if (col.Leads.Count <= limite) return [.. col.Leads];
+        var lista = col.Leads.Take(limite).ToList();
+        foreach (var extra in col.Leads.Skip(limite))
+            if (extra.Id == leadAberto || extra.Id == destaque || extra.Id == menuCartao) lista.Add(extra);
+        return lista;
+    }
+
+    private static string TextoMostrarMais(int resto) =>
+        resto <= PorColuna ? $"Mostrar mais {resto}" : $"Mostrar mais {PorColuna} (faltam {resto})";
+
+    private void MostrarMais(ColunaFunil col) =>
+        limiteColuna[col.Estagio.Id] = limiteColuna.GetValueOrDefault(col.Estagio.Id, PorColuna) + PorColuna;
 
     /* ---- filtros: responsável (no servidor); situação e raias (na tela) ---- */
 

@@ -617,8 +617,9 @@ tr.cancelado td { color: var(--mudo); text-decoration: line-through; }
 .cartao-lead:hover { border-color: var(--acento-borda); }
 /* quadro com centenas de cartões: o navegador só calcula estilo/layout dos que estão na tela (web.dev/articles/content-visibility).
    A contenção cortaria o menu "⋯" suspenso, por isso o cartão com menu aberto volta ao normal. */
-.cartao-lead { content-visibility: auto; contain-intrinsic-size: auto 8.5rem; }
+.cartao-lead { content-visibility: auto; contain-intrinsic-size: auto 12rem; }
 .cartao-lead:has(.menu-cartao[open]) { content-visibility: visible; }
+.coluna .mostrar-mais { width: 100%; justify-content: center; margin-top: var(--e-2); }
 .cartao-lead p { margin: var(--e-1) 0; }
 /* arrastar e soltar no funil */
 .cartao-lead[draggable=true] { cursor: grab; }

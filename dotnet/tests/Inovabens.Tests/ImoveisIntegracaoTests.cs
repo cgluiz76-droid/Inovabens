@@ -118,6 +118,10 @@ public class ImoveisIntegracaoTests
         Assert.Equal(25, lista.TamanhoPagina);
         var item = Assert.Single(lista.Itens, i => i.Id == id1);
         Assert.Contains("/drive-capa?l=", item.CapaUrl); // miniatura da capa
+        // larguras que o sistema reduz: 160 (ícone da lista no computador), 400 e 1200; outras são recusadas
+        Assert.True(ImoveisService.LarguraValida(ImoveisService.LarguraIcone));
+        Assert.True(ImoveisService.LarguraValida(ImoveisService.LarguraMiniatura));
+        Assert.False(ImoveisService.LarguraValida(300));
 
         // --- mídias: sem Google Drive configurado, envio é recusado de forma controlada ---
         await Assert.ThrowsAsync<ServicoIndisponivelException>(() =>
