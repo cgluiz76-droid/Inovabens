@@ -149,6 +149,8 @@ body {
 }
 a { color: var(--acento); text-decoration: none; text-underline-offset: .18em; }
 a:hover { text-decoration: underline; }
+/* link no meio do texto não pode depender só da cor (WCAG 1.4.1) */
+:where(p, li, td, .ajuda) a:not([class]) { text-decoration: underline; }
 h1, h2, h3 { font-family: var(--fonte-titulo); color: var(--titulo); text-wrap: balance; }
 h1 { font-size: clamp(1.5rem, 1.1rem + 1.2vw, var(--t-2xl)); font-weight: var(--p-forte); line-height: var(--a-titulo); letter-spacing: var(--l-28); margin: 0; }
 h1:focus, h1:focus-visible { outline: none; }
@@ -560,7 +562,7 @@ details summary { cursor: pointer; color: var(--mudo); }
 .bloco-hoje:hover { text-decoration: none; border-color: currentColor; }
 .numero-hoje { font-size: var(--t-2xl); font-weight: var(--p-forte); letter-spacing: var(--l-28); line-height: 1; font-variant-numeric: tabular-nums; }
 .rotulo-hoje { font-weight: 600; }
-.detalhe-hoje { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: var(--e-1); font-size: var(--t-sm); opacity: .85;
+.detalhe-hoje { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: var(--e-1); font-size: var(--t-sm);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .detalhe-hoje svg { width: 1em; height: 1em; flex: none; }
 .hoje-perigo { background: var(--erro-fundo); border-color: var(--erro-borda); color: var(--erro); }
@@ -613,6 +615,10 @@ tr.cancelado td { color: var(--mudo); text-decoration: line-through; }
 /* hover só na borda: sem animar sombra (caro com muitos cartões) */
 .cartao-lead { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio-p); padding: var(--e-3); margin-bottom: var(--e-2); box-shadow: var(--sombra-1); transition: border-color var(--dur) var(--curva); }
 .cartao-lead:hover { border-color: var(--acento-borda); }
+/* quadro com centenas de cartões: o navegador só calcula estilo/layout dos que estão na tela (web.dev/articles/content-visibility).
+   A contenção cortaria o menu "⋯" suspenso, por isso o cartão com menu aberto volta ao normal. */
+.cartao-lead { content-visibility: auto; contain-intrinsic-size: auto 8.5rem; }
+.cartao-lead:has(.menu-cartao[open]) { content-visibility: visible; }
 .cartao-lead p { margin: var(--e-1) 0; }
 /* arrastar e soltar no funil */
 .cartao-lead[draggable=true] { cursor: grab; }

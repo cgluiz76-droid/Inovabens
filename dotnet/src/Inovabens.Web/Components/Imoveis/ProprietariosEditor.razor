@@ -11,7 +11,7 @@
     @foreach (var it in itens)
     {
         <div class="linha-itens">
-            <select class="input w-pessoa" disabled="@(!Editar)" value="@(it.PessoaId?.ToString() ?? "")"
+            <select class="input w-pessoa" aria-label="Proprietário" disabled="@(!Editar)" value="@(it.PessoaId?.ToString() ?? "")"
                     @onchange="e => it.PessoaId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
                 <option value="">Selecione…</option>
                 @foreach (var p in pessoas)
@@ -19,7 +19,7 @@
                     <option value="@p.Id">@p.Nome</option>
                 }
             </select>
-            <input class="input w-num" type="number" step="0.01" min="0" max="100" disabled="@(!Editar)" @bind="it.Percentual" /> %
+            <input class="input w-num" type="number" step="0.01" min="0" max="100" aria-label="Percentual do proprietário" disabled="@(!Editar)" @bind="it.Percentual" /> %
             <label class="check"><input type="checkbox" disabled="@(!Editar)" @bind="it.Principal" /> Principal</label>
             <input class="input w-data" type="date" title="Início" disabled="@(!Editar)" @bind="it.InicioEm" />
             <input class="input w-data" type="date" title="Fim" disabled="@(!Editar)" @bind="it.FimEm" />

@@ -173,11 +173,28 @@
     }
 
     // o Blazor altera o DOM o tempo todo: agrupa as mudanças em uma verificação por quadro
-    var agendado = false;
-    function aoMudar() {
+    //    Rotular tabelas percorre todas as células: só refaz quando a mudança tocou uma tabela (o CRM, por exemplo,
+    //    muda o DOM a todo clique e não tem tabela nenhuma).
+    var agendado = false, tabelasMudaram = true;
+    function tocaTabela(no) {
+        if (no.nodeType !== 1) no = no.parentNode;
+        if (!no || no.nodeType !== 1) return false;
+        return !!(no.closest("table") || no.querySelector("table"));
+    }
+    function aoMudar(registros) {
+        if (!tabelasMudaram && registros) {
+            for (var i = 0; i < registros.length && !tabelasMudaram; i++) {
+                var r = registros[i];
+                if (r.target.closest && r.target.closest("table")) { tabelasMudaram = true; break; }
+                for (var a = 0; a < r.addedNodes.length; a++) if (tocaTabela(r.addedNodes[a])) { tabelasMudaram = true; break; }
+            }
+        }
         if (agendado) return;
         agendado = true;
-        requestAnimationFrame(function () { agendado = false; sincronizar(); entregarBusca(); rotularTabelas(); marcarEtapa(); });
+        requestAnimationFrame(function () {
+            agendado = false; sincronizar(); entregarBusca(); marcarEtapa();
+            if (tabelasMudaram) { tabelasMudaram = false; rotularTabelas(); }
+        });
     }
     new MutationObserver(aoMudar).observe(document.body, { childList: true, subtree: true });
     aoMudar();

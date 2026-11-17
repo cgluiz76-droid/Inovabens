@@ -365,8 +365,13 @@ else
                                     {
                                         <button class="btn-icone" title="Agendar atividade" aria-label="Agendar atividade" @onclick="() => AbrirAgendar(l)">+</button>
                                     }
-                                    <details class="menu-cartao">
-                                        <summary class="btn-icone" title="Mais ações" aria-label="Mais ações">⋯</summary>
+                                    @* o conteúdo do menu só existe no cartão aberto: com 150 cartões, renderizar todos os
+                                       menus fechados (select de etapas + botão) quase dobrava o HTML e o diff do Blazor *@
+                                    <details class="menu-cartao" open="@(menuCartao == l.Id)">
+                                        <summary class="btn-icone" title="Mais ações" aria-label="Mais ações" aria-expanded="@(menuCartao == l.Id ? "true" : "false")"
+                                                 @onclick="() => menuCartao = menuCartao == l.Id ? null : l.Id" @onclick:preventDefault>⋯</summary>
+                                        @if (menuCartao == l.Id)
+                                        {
                                         <div class="menu-cartao-itens">
                                             @if (PodeMover)
                                             {
@@ -383,6 +388,7 @@ else
                                                 <button type="button" class="btn-perigo mini" disabled="@Ocupado" @onclick="() => ExcluirLead(l)"><Icone Nome="lixeira" />Excluir lead</button>
                                             }
                                         </div>
+                                        }
                                     </details>
                                 </span>
                             }
@@ -491,6 +497,7 @@ else
     private bool contatoNovo = true;
 
     private Guid? leadAberto;
+    private Guid? menuCartao; // cartão com o menu "⋯" aberto (um por vez)
     private LeadPainel? painel;
 
     private IReadOnlyList<FunilEstagio> EstagiosDoFunil => colunas?.Select(c => c.Estagio).ToList() ?? [];
@@ -649,6 +656,7 @@ else
 
     private async Task ExcluirLead(LeadCartao l)
     {
+        menuCartao = null;
         if (!await confirmar.PerguntarAsync($"o lead de {l.PessoaNome}", "Saem do CRM o lead, as ações e o funil dele.")) return;
         if (!await Executar(() => Servico.ExcluirAsync(Usuario, l.Id))) return;
         if (leadAberto == l.Id) FecharPainel();
@@ -735,6 +743,7 @@ else
     private async Task Mover(LeadCartao l, string? estagioId)
     {
         if (!Guid.TryParse(estagioId, out var id)) return;
+        menuCartao = null;
         var origem = colunas!.First(c => c.Leads.Any(x => x.Id == l.Id)).Estagio;
         var destino = colunas!.Select(c => c.Estagio).First(e => e.Id == id);
         await Carregar(); // volta o select para o estágio atual até confirmar
