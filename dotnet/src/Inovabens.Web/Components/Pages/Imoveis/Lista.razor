@@ -1,6 +1,7 @@
 @page "/imoveis"
 @attribute [Authorize(Policy = Permissoes.ImoveisVer)]
 @inherits ComponenteBase
+@using Microsoft.AspNetCore.WebUtilities
 @implements IDisposable
 @inject ImoveisService Servico
 @inject OpcoesService Opcoes
@@ -15,6 +16,11 @@
         <button class="aba @(Mapa ? "" : "ativa")" @onclick="() => TrocarVisao(false)">☰ Lista</button>
         <button class="aba @(Mapa ? "ativa" : "")" @onclick="() => TrocarVisao(true)">🗺️ Mapa</button>
     </div>
+    @if (Usuario.Pode(Permissoes.ImoveisExportarLista))
+    {
+        @* planilha com as informações da lista (sem fotos), nos filtros atuais e com todas as páginas *@
+        <a class="btn-ghost" href="@LinkExcel" download title="Baixar a lista filtrada em Excel">⬇ Exportar Excel</a>
+    }
     @if (Usuario.Pode(Permissoes.ImoveisCriar))
     {
         <a class="btn-primary" href="imoveis/novo">+ Novo imóvel</a>
@@ -185,6 +191,13 @@ else
         Pagina = pagina,
         TamanhoPagina = 25,
     };
+
+    /// <summary>Download com os filtros atuais (os vazios ficam de fora; QueryHelpers ignora valor nulo).</summary>
+    private string LinkExcel => QueryHelpers.AddQueryString("imoveis/lista.xlsx", new Dictionary<string, string?>
+    {
+        ["termo"] = Texto.Limpo(termo), ["situacao"] = Texto.Limpo(situacao), ["tipo"] = Texto.Limpo(tipo),
+        ["cidade"] = Texto.Limpo(cidade), ["corretor"] = Usuario.EscopoProprio ? null : Texto.Limpo(corretor),
+    });
 
     private Task Carregar() => Executar(async () =>
     {

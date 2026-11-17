@@ -1,6 +1,7 @@
 @page "/pessoas"
 @attribute [Authorize(Policy = Permissoes.PessoasVer)]
 @inherits ComponenteBase
+@using Microsoft.AspNetCore.WebUtilities
 @implements IDisposable
 @inject PessoasService Servico
 @inject CadastrosService Cadastros
@@ -11,10 +12,17 @@
 
 <div class="titulo">
     <h1>Pessoas</h1>
-    @if (Usuario.Pode(Permissoes.PessoasCriar))
-    {
-        <button class="btn-primary" @onclick="Nova">+ Nova pessoa</button>
-    }
+    <div class="acoes-topo">
+        @if (Usuario.Pode(Permissoes.PessoasExportarLista))
+        {
+            @* planilha com as informações da lista, nos filtros atuais e com todas as páginas *@
+            <a class="btn-ghost" href="@LinkExcel" download title="Baixar a lista filtrada em Excel">⬇ Exportar Excel</a>
+        }
+        @if (Usuario.Pode(Permissoes.PessoasCriar))
+        {
+            <button class="btn-primary" @onclick="Nova">+ Nova pessoa</button>
+        }
+    </div>
 </div>
 
 <div class="filtros">
@@ -268,6 +276,9 @@ else
     private string? erroForm;
 
     private bool PodeEditar => Usuario.Pode(Permissoes.PessoasEditar);
+
+    private string LinkExcel => QueryHelpers.AddQueryString("pessoas/lista.xlsx", new Dictionary<string, string?>
+        { ["termo"] = Texto.Limpo(termo), ["papel"] = Texto.Limpo(papel) });
 
     /// <summary>pessoas?id=&lt;id&gt; (busca global): abre o cadastro da pessoa.</summary>
     [SupplyParameterFromQuery(Name = "id")] public Guid? AbrirId { get; set; }

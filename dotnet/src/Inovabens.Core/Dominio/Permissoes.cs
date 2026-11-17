@@ -12,12 +12,16 @@ public static class Permissoes
     public const string PessoasCriar = "pessoas:criar";
     public const string PessoasEditar = "pessoas:editar";
     public const string PessoasExcluir = "pessoas:excluir";
+    /// <summary>Botão "Exportar Excel" da lista de Pessoas (só o Administrador recebe por padrão).</summary>
+    public const string PessoasExportarLista = "pessoas:exportar_lista";
 
     public const string ImoveisVer = "imoveis:ver";
     public const string ImoveisCriar = "imoveis:criar";
     public const string ImoveisEditar = "imoveis:editar";
     public const string ImoveisExcluir = "imoveis:excluir";
     public const string ImoveisExportar = "imoveis:exportar";
+    /// <summary>Botão "Exportar Excel" da lista de Imóveis (só o Administrador recebe por padrão).</summary>
+    public const string ImoveisExportarLista = "imoveis:exportar_lista";
 
     public const string FinanceiroVer = "financeiro:ver";
     public const string FinanceiroEditar = "financeiro:editar";
@@ -49,8 +53,8 @@ public static class Permissoes
     public static readonly IReadOnlyList<string> Todas =
     [
         UsuariosGerir, RbacGerir, AdminConfig, AuditoriaVer,
-        PessoasVer, PessoasCriar, PessoasEditar, PessoasExcluir,
-        ImoveisVer, ImoveisCriar, ImoveisEditar, ImoveisExcluir, ImoveisExportar,
+        PessoasVer, PessoasCriar, PessoasEditar, PessoasExcluir, PessoasExportarLista,
+        ImoveisVer, ImoveisCriar, ImoveisEditar, ImoveisExcluir, ImoveisExportar, ImoveisExportarLista,
         FinanceiroVer, FinanceiroEditar, FinanceiroExportar, FinanceiroInvestimento,
         MemorandosVer, MemorandosCriar, MemorandosEditar, MemorandosExcluir,
         AgendaVer, AgendaCriar, AgendaEditar, AgendaExcluir,

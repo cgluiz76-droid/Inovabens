@@ -1,5 +1,7 @@
+using ClosedXML.Excel;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
+using Inovabens.Core.Relatorios;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
@@ -45,6 +47,48 @@ public sealed class ImoveisService(
         var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.Miniatura ?? d.Url : null);
         itens = [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id) })];
         return new Paginado<ImovelListaItem>(itens, total, pagina, tamanho);
+    }
+
+    /// <summary>
+    /// Planilha da lista de imóveis com os mesmos filtros e a mesma ordem da tela, todas as páginas.
+    /// Só as informações da lista (sem fotos). Corretor continua vendo apenas os seus.
+    /// </summary>
+    public async Task<Arquivo> ExcelListaAsync(UsuarioAtual u, FiltroImoveis f)
+    {
+        u.Exigir(P.ImoveisVer);
+        u.Exigir(P.ImoveisExportarLista);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var itens = await Filtrados(db, u, f).OrderByDescending(i => i.CriadoEm)
+            .Select(i => new
+            {
+                i.Codigo, i.Titulo, i.Tipo, i.Finalidade, i.Situacao, i.Bairro, i.Cidade, i.Uf, i.PrecoVenda, i.PrecoLocacao,
+                Corretor = i.Corretor != null ? i.Corretor.Nome : null,
+            })
+            .ToListAsync();
+
+        using var wb = new XLWorkbook();
+        static XLCellValue T(string? s) => string.IsNullOrEmpty(s) ? Blank.Value : s;
+        static XLCellValue N(decimal? v) => v is { } x ? x : Blank.Value;
+        var ws = RelatoriosService.Aba(wb, "Imóveis",
+        [
+            ("Código", 12), ("Imóvel", 40), ("Tipo", 16), ("Finalidade", 14), ("Bairro", 22), ("Cidade", 20), ("UF", 5),
+            ("Situação", 16), ("Preço de venda", 16), ("Preço de locação", 16), ("Corretor", 24),
+        ],
+        itens.Select(i => new XLCellValue[]
+        {
+            i.Codigo, i.Titulo, Texto.Rotulo(i.Tipo), Texto.Rotulo(i.Finalidade), T(i.Bairro), T(i.Cidade), T(i.Uf),
+            Texto.Rotulo(i.Situacao), N(i.PrecoVenda), N(i.PrecoLocacao), T(i.Corretor),
+        }));
+        ws.Columns(9, 10).Style.NumberFormat.Format = "#,##0.00";
+        if (itens.Count > 0) ws.Range(1, 1, itens.Count + 1, 11).SetAutoFilter();
+
+        audit.Registrar(db, u.Id, "imoveis", null, "EXPORTAR", depois: new
+        {
+            relatorio = "lista-imoveis", formato = "xlsx", linhas = itens.Count,
+            filtros = new { f.Termo, situacao = f.Situacao?.ToString(), f.Tipo, f.Cidade, f.CorretorId },
+        });
+        await db.SaveChangesAsync();
+        return new Arquivo(RelatoriosService.Salvar(wb), $"imoveis-{DatasBR.Hoje():yyyy-MM-dd}.xlsx", RelatoriosService.TipoXlsx);
     }
 
     /// <summary>Filtros comuns da lista e do mapa de imóveis (respeita o escopo do usuário).</summary>

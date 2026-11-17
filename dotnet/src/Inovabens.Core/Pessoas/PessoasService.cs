@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
+using ClosedXML.Excel;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
+using Inovabens.Core.Relatorios;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
@@ -108,6 +110,17 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
     {
         u.Exigir(P.PessoasVer);
         await using var db = await fabrica.CreateDbContextAsync();
+        var q = Filtradas(db, f);
+        var pagina = Math.Max(1, f.Pagina);
+        var total = await q.CountAsync();
+        var itens = await q.Include(p => p.Papeis).OrderBy(p => p.NomeRazao)
+            .Skip((pagina - 1) * f.TamanhoPagina).Take(f.TamanhoPagina).ToListAsync();
+        return new Paginado<Pessoa>(itens, total, pagina, f.TamanhoPagina);
+    }
+
+    /// <summary>Filtros da lista (busca e perfil), comuns à tela e à planilha.</summary>
+    private static IQueryable<Pessoa> Filtradas(InovabensDb db, FiltroPessoas f)
+    {
         var q = db.Pessoas.AsNoTracking().Where(p => p.ExcluidoEm == null);
         if (Texto.Limpo(f.Termo) is { } t)
         {
@@ -116,11 +129,46 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
                 || EF.Functions.ILike(p.Email!, termo) || EF.Functions.ILike(p.Telefone!, termo));
         }
         if (Texto.Limpo(f.Papel) is { } papel) q = q.Where(p => p.Papeis.Any(x => x.Papel == papel));
-        var pagina = Math.Max(1, f.Pagina);
-        var total = await q.CountAsync();
-        var itens = await q.Include(p => p.Papeis).OrderBy(p => p.NomeRazao)
-            .Skip((pagina - 1) * f.TamanhoPagina).Take(f.TamanhoPagina).ToListAsync();
-        return new Paginado<Pessoa>(itens, total, pagina, f.TamanhoPagina);
+        return q;
+    }
+
+    /// <summary>
+    /// Planilha da lista de pessoas com os mesmos filtros e a mesma ordem da tela, todas as páginas
+    /// (dados e contato, perfis e códigos dos imóveis ligados).
+    /// </summary>
+    public async Task<Arquivo> ExcelListaAsync(UsuarioAtual u, FiltroPessoas f)
+    {
+        u.Exigir(P.PessoasVer);
+        u.Exigir(P.PessoasExportarLista);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var pessoas = await Filtradas(db, f).Include(p => p.Papeis).OrderBy(p => p.NomeRazao).ToListAsync();
+        var nomesPerfil = await db.PerfisPessoa.AsNoTracking().ToDictionaryAsync(p => p.Codigo, p => p.Nome);
+        var codigos = await CodigosImoveisAsync(u, [.. pessoas.Select(p => p.Id)]);
+
+        using var wb = new XLWorkbook();
+        static XLCellValue T(string? s) => string.IsNullOrWhiteSpace(s) ? Blank.Value : s;
+        var ws = RelatoriosService.Aba(wb, "Pessoas",
+        [
+            ("Nome / Razão social", 36), ("Tipo", 15), ("CPF/CNPJ", 20), ("Telefone", 16), ("WhatsApp", 16), ("E-mail", 30),
+            ("Cidade", 20), ("UF", 5), ("Perfis", 24), ("Especialidade", 20), ("Imóveis", 30),
+        ],
+        pessoas.Select(p => new XLCellValue[]
+        {
+            p.NomeRazao, p.Tipo == TipoPessoa.PF ? "Pessoa física" : "Pessoa jurídica",
+            T(string.IsNullOrEmpty(p.CpfCnpj) ? null : Formatos.Documento(p.CpfCnpj)),
+            T(p.Telefone), T(p.Whatsapp), T(p.Email), T(p.Cidade), T(p.Uf),
+            T(string.Join(", ", p.Papeis.Select(x => nomesPerfil.GetValueOrDefault(x.Papel) ?? Texto.Rotulo(x.Papel)))),
+            T(string.Join(", ", p.Papeis.Select(x => x.Especialidade).Where(e => !string.IsNullOrWhiteSpace(e)).Distinct())),
+            T(codigos.TryGetValue(p.Id, out var cods) ? string.Join(", ", cods) : null),
+        }));
+        if (pessoas.Count > 0) ws.Range(1, 1, pessoas.Count + 1, 11).SetAutoFilter();
+
+        audit.Registrar(db, u.Id, "pessoas", null, "EXPORTAR", depois: new
+        {
+            relatorio = "lista-pessoas", formato = "xlsx", linhas = pessoas.Count, filtros = new { f.Termo, f.Papel },
+        });
+        await db.SaveChangesAsync();
+        return new Arquivo(RelatoriosService.Salvar(wb), $"pessoas-{DatasBR.Hoje():yyyy-MM-dd}.xlsx", RelatoriosService.TipoXlsx);
     }
 
     public async Task<Pessoa> ObterAsync(UsuarioAtual u, Guid id)

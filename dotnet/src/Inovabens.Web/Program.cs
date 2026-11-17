@@ -7,6 +7,7 @@ using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Financeiro;
 using Inovabens.Core.Imoveis;
+using Inovabens.Core.Pessoas;
 using Inovabens.Core.Relatorios;
 using Inovabens.Core.Servicos;
 using Inovabens.Web;
@@ -305,6 +306,13 @@ imovel.MapGet("ficha-financeira.xlsx", (Guid id, CodigoIndice? indice, HttpConte
 // Painel de acompanhamento do CRM em Excel, com os mesmos filtros da tela (crm/acompanhamento?...)
 app.MapGet("/crm/acompanhamento.xlsx", (HttpContext c, AcompanhamentoService s) =>
     Baixar(c, u => s.ExcelAsync(u, FiltroAcompanhamento.Ler(k => c.Request.Query[k].FirstOrDefault())))).RequireAuthorization(Permissoes.CrmVer);
+
+// Listas de Imóveis e Pessoas em Excel, com os filtros da tela (só informações, sem fotos)
+app.MapGet("/imoveis/lista.xlsx", (string? termo, SituacaoImovel? situacao, string? tipo, string? cidade, Guid? corretor, HttpContext c, ImoveisService s) =>
+    Baixar(c, u => s.ExcelListaAsync(u, new FiltroImoveis { Termo = termo, Situacao = situacao, Tipo = tipo, Cidade = cidade, CorretorId = corretor })))
+    .RequireAuthorization(Permissoes.ImoveisExportarLista);
+app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
+    Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 
 // Pré-visualização do site público (páginas próprias, abertas em outra aba pelo botão "Ver no site"):
 // /site (início), /site/imoveis?finalidade=venda|locacao (busca) e /site/imovel/{id} (ficha). Logo e menu ligam as três.
