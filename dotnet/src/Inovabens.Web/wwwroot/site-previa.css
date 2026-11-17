@@ -46,7 +46,7 @@ button { font: inherit; color: inherit; }
 .topo { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--sup) 90%, transparent); backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid var(--borda); }
 .topo .miolo { display: flex; align-items: center; gap: 20px; min-height: 68px; }
 .marca { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--titulo); }
-.marca img { width: 38px; height: 38px; }
+.marca img { flex: none; width: 38px; height: 38px; }
 .marca-txt { display: grid; line-height: 1; }
 .marca-txt b { font-family: var(--f-titulo); font-weight: 700; font-size: 1.2rem; letter-spacing: .02em; }
 .marca-txt b span { background: var(--degrade-ouro); -webkit-background-clip: text; background-clip: text; color: transparent; }

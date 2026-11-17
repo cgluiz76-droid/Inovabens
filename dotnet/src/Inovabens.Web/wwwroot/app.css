@@ -177,7 +177,7 @@ p { line-height: var(--a-ui); text-wrap: pretty; }
 }
 .marca { display: flex; align-items: center; gap: var(--e-3); padding: var(--e-6) var(--e-5) var(--e-5); color: #fff; text-decoration: none; }
 .marca:hover { text-decoration: none; }
-.marca img { width: 2.5rem; height: 2.5rem; border-radius: .55rem; box-shadow: 0 6px 16px rgb(0 0 0 / .35); }
+.marca img { flex: none; width: 2.5rem; height: 2.5rem; border-radius: .55rem; box-shadow: 0 6px 16px rgb(0 0 0 / .35); }
 .marca-texto { display: flex; flex-direction: column; line-height: 1.05; }
 .marca-nome { font-weight: var(--p-forte); font-size: var(--t-lg); letter-spacing: .04em; }
 .marca-nome b { font-weight: 600; background: var(--degrade-ouro); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -206,7 +206,7 @@ p { line-height: var(--a-ui); text-wrap: pretty; }
 .menu-veu { display: none; position: fixed; inset: 0; z-index: 950; background: var(--veu); animation: surgir var(--dur) ease-out; }
 .marca-topo { display: none; align-items: center; gap: var(--e-2); margin-right: auto; color: var(--titulo); text-decoration: none; }
 .marca-topo:hover { text-decoration: none; }
-.marca-topo img { width: 2rem; height: 2rem; border-radius: .45rem; }
+.marca-topo img { flex: none; width: 2rem; height: 2rem; border-radius: .45rem; }
 .marca-topo .marca-nome { font-size: var(--t-base); color: var(--titulo); }
 /* barra inferior (só no celular) */
 .barra-inferior { display: none; position: fixed; z-index: 700; left: 0; right: 0; bottom: 0; justify-content: space-around;
@@ -1059,8 +1059,10 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
     :root[data-menu-aberto] .menu-veu { display: block; }
     :root[data-menu-aberto] body { overflow: hidden; }
     .recolher-menu { display: none; }
-    .topo { padding: var(--e-2) var(--e-4); padding-top: max(var(--e-2), env(safe-area-inset-top)); }
-    .marca-topo { display: inline-flex; }
+    .topo { gap: var(--e-1); padding: var(--e-2) var(--e-4); padding-top: max(var(--e-2), env(safe-area-inset-top)); }
+    /* telas estreitas: o nome cede espaço (reticências); o ícone nunca encolhe nem sai pela esquerda */
+    .marca-topo { display: inline-flex; min-width: 0; }
+    .marca-topo .marca-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .usuario-dados, .separador-topo, .rotulo-sair { display: none; }
     .barra-inferior { display: flex; }
     .conteudo { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
@@ -1076,6 +1078,10 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
     .redes-post { grid-template-columns: 1fr; }
     .config-campos { grid-template-columns: 1fr; }
     .modal { padding: var(--e-5); }
+}
+@media (max-width: 440px) {
+    /* celular: o nome não cabe inteiro ao lado dos botões; fica só o ícone (o nome completo está no menu) */
+    .marca-topo .marca-nome { display: none; }
 }
 @media (max-width: 640px) {
     /* faixa "Hoje" compacta: 3 blocos lado a lado, só número e rótulo */

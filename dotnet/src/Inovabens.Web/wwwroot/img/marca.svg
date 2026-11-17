@@ -1,21 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Inovabens">
-  <!-- Ícone do logotipo Inovabens redesenhado em vetor: quadrado azul, base marinho, curva dourada e "I" serifado -->
+  <!-- Ícone do logotipo Inovabens em vetor, com as medidas tiradas do logotipo original (logo-inovabens.webp):
+       quadrado azul, base marinho, faixa dourada afinando para a direita e "I" serifado de haste fina -->
   <defs>
-    <clipPath id="c"><rect width="100" height="100" rx="18"/></clipPath>
+    <clipPath id="c"><rect width="100" height="100" rx="14"/></clipPath>
     <linearGradient id="ouro" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#B8801F"/>
-      <stop offset=".55" stop-color="#E2B04F"/>
-      <stop offset="1" stop-color="#C8902F"/>
-    </linearGradient>
-    <linearGradient id="azul" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0F3BB0"/>
-      <stop offset="1" stop-color="#0A2E96"/>
+      <stop offset="0" stop-color="#A86F10"/>
+      <stop offset=".3" stop-color="#F8BE58"/>
+      <stop offset=".62" stop-color="#BC8323"/>
+      <stop offset=".82" stop-color="#E7A541"/>
+      <stop offset="1" stop-color="#FADC6E"/>
     </linearGradient>
   </defs>
   <g clip-path="url(#c)">
-    <rect width="100" height="100" fill="url(#azul)"/>
-    <path d="M0 77 C 38 74, 72 64, 100 45 L100 100 L0 100 Z" fill="#03075F"/>
-    <path d="M0 77 C 38 74, 72 64, 100 45" fill="none" stroke="url(#ouro)" stroke-width="3.2"/>
+    <rect width="100" height="100" fill="#012D9C"/>
+    <path d="M0 80.9 C33.3 78 66.7 77.9 100 47.1 V100 H0 Z" fill="#00015E"/>
+    <path d="M0 75.1 C33.3 72.2 66.7 72.6 100 44.4 V47.1 C66.7 77.9 33.3 78 0 80.9 Z" fill="url(#ouro)"/>
   </g>
-  <path fill="#fff" d="M29.5 11h41v2.6c-4.4.4-6.8 1.6-7.6 3.6v65.6c.8 2 3.2 3.2 7.6 3.6V89h-41v-2.6c4.4-.4 6.8-1.6 7.6-3.6V17.2c-.8-2-3.2-3.2-7.6-3.6z"/>
+  <path fill="#fff" d="M29.5 10.6H69v1.8h-7.6c-3.8.9-5.8 3.2-5.8 7.1V80c0 3.9 2 6.2 5.8 7.2H69V89H29.5v-1.8h7.6c3.8-1 5.8-3.3 5.8-7.2V19.5c0-3.9-2-6.2-5.8-7.1h-7.6z"/>
 </svg>
