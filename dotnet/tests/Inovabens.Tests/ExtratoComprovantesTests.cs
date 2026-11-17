@@ -292,6 +292,68 @@ public class ExtratoComprovantesTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Filtro_de_situacao_liquidado_aberto_em_atraso_e_previsto()
+    {
+        var (admin, id, _) = await Cenario();
+        var lanc = S<LancamentosFinanceirosService>();
+        var manutencao = await Conta("Manutenção");
+        var aluguel = await Conta("Aluguel recebido");
+        var hoje = DatasBR.Hoje();
+        var mes = new DateOnly(hoje.Year, hoje.Month, 1);
+
+        var pago = await lanc.CriarAsync(admin, id, Despesa(hoje.AddDays(-20), 100m, "Pintura paga", manutencao, hoje.AddDays(-20)));
+        var atrasado = await lanc.CriarAsync(admin, id, Despesa(hoje.AddDays(-5), 200m, "Conserto atrasado", manutencao));
+        var aVencer = await lanc.CriarAsync(admin, id, Receita(hoje.AddDays(5), 300m, "Aluguel a receber", aluguel));
+        var modelo = Receita(mes.AddMonths(-1), 50m, "Taxa mensal", aluguel, mes.AddMonths(-1));
+        modelo.Recorrente = true;
+        modelo.DiaRecorrencia = 1;
+        modelo.ValorEstimado = 50m;
+        await lanc.CriarAsync(admin, id, modelo);
+
+        FiltroLancamentos F(FiltroSituacao s, bool projetado = false) =>
+            new() { De = mes.AddMonths(-1), Ate = mes.AddMonths(2).AddDays(-1), Situacao = s, Projetado = projetado };
+
+        // liquidado: continua no saldo real; nada em aberto nem previsto
+        var liq = await lanc.ExtratoAsync(admin, id, F(FiltroSituacao.LIQUIDADO));
+        Assert.False(liq.Filtro.Projetado);
+        Assert.Contains(liq.Linhas, l => l.Id == pago);
+        Assert.All(liq.Linhas, l => Assert.Equal(SituacaoLancamento.LIQUIDADO, l.Situacao));
+        Assert.Empty(liq.Abertos);
+        Assert.Empty(liq.Previstos);
+
+        // aberto: passa sozinho para o saldo projetado
+        var abertos = await lanc.ExtratoAsync(admin, id, F(FiltroSituacao.ABERTO));
+        Assert.True(abertos.Filtro.Projetado);
+        Assert.Equal(new[] { atrasado, aVencer }.Order(), abertos.Linhas.Select(l => l.Id).Order());
+        Assert.All(abertos.Linhas, l => Assert.Equal(SituacaoLancamento.ABERTO, l.Situacao));
+        Assert.Equal(2, abertos.Abertos.Count);
+        Assert.Empty(abertos.Previstos);
+        Assert.Equal(100m, abertos.SaldoFinal); // −200 + 300
+
+        // em atraso: aberto ou previsto com vencimento antes de hoje
+        var atraso = await lanc.ExtratoAsync(admin, id, F(FiltroSituacao.EM_ATRASO));
+        Assert.Contains(atraso.Linhas, l => l.Id == atrasado);
+        Assert.DoesNotContain(atraso.Linhas, l => l.Id == aVencer || l.Id == pago);
+        Assert.All(atraso.Linhas, l => Assert.True(l.Situacao != SituacaoLancamento.LIQUIDADO && l.Data < hoje));
+        Assert.All(atraso.Abertos, a => Assert.True(a.Atrasado));
+
+        // previsto: só os gerados pela recorrência
+        var previstos = await lanc.ExtratoAsync(admin, id, F(FiltroSituacao.PREVISTO));
+        Assert.NotEmpty(previstos.Linhas);
+        Assert.All(previstos.Linhas, l => Assert.Equal(SituacaoLancamento.PREVISTO, l.Situacao));
+        Assert.Empty(previstos.Abertos);
+        Assert.Equal(previstos.Linhas.Count, previstos.Previstos.Count);
+
+        // a exportação segue o filtro e informa a situação
+        var xlsx = await S<RelatoriosService>().ExtratoXlsxAsync(admin, id, F(FiltroSituacao.ABERTO));
+        using var wb = new ClosedXML.Excel.XLWorkbook(new MemoryStream(xlsx.Conteudo));
+        var celulas = wb.Worksheet("Lançamentos").CellsUsed().Select(c => c.GetString()).ToList();
+        Assert.Contains(celulas, c => c.Contains("Situação: Aberto"));
+        Assert.Contains("Conserto atrasado", celulas);
+        Assert.DoesNotContain("Pintura paga", celulas);
+    }
+
+    [Fact]
     public async Task Comprovantes_vao_para_07_Financeiro_do_ano_e_ficam_vinculados()
     {
         var (admin, id, nome) = await Cenario();

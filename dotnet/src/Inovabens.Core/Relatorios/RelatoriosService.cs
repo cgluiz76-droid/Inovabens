@@ -332,6 +332,7 @@ public sealed class RelatoriosService(
         Periodo(f),
         f.Projetado ? "Saldo projetado (inclui abertos e previstos)" : "Saldo real (só liquidados)",
         f.Tipo switch { TipoExtrato.RECEITAS => "Só receitas", TipoExtrato.DESPESAS => "Só despesas", _ => null },
+        LancamentosFinanceirosService.NomeFiltroSituacao(f.Situacao) is { } s ? $"Situação: {s}" : null,
         conta is null ? null : $"Conta: {conta}",
         Texto.Limpo(f.Busca) is { } b ? $"Busca: “{b}”" : null,
     }.Where(x => x is not null));

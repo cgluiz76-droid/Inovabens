@@ -43,6 +43,16 @@
             </select>
         </label>
         <label class="campo-inline">
+            <span>Situação</span>
+            <select class="input" @bind="filtro.Situacao" @bind:after="AoMudarSituacao">
+                <option value="@FiltroSituacao.TODAS">Todas</option>
+                <option value="@FiltroSituacao.LIQUIDADO">Liquidado</option>
+                <option value="@FiltroSituacao.ABERTO">Aberto</option>
+                <option value="@FiltroSituacao.EM_ATRASO">Em atraso</option>
+                <option value="@FiltroSituacao.PREVISTO">Previsto</option>
+            </select>
+        </label>
+        <label class="campo-inline">
             <span>Conta</span>
             <select class="input" @bind="ContaFiltro">
                 <option value="">Todas</option>
@@ -438,7 +448,12 @@
     private string ModoSaldo
     {
         get => filtro.Projetado ? "projetado" : "real";
-        set => filtro.Projetado = value == "projetado";
+        set
+        {
+            filtro.Projetado = value == "projetado";
+            // aberto, em atraso e previsto não existem no saldo real
+            if (!filtro.Projetado && filtro.SituacaoExigeProjetado) filtro.Situacao = FiltroSituacao.TODAS;
+        }
     }
     private IReadOnlyList<ContaOrcamentaria> contas = [];
     private IReadOnlyDictionary<Guid, int> contagem = new Dictionary<Guid, int>();
@@ -481,6 +496,13 @@
     }
 
     /// <summary>Os mesmos filtros da tela, para o PDF e o Excel.</summary>
+    /// <summary>Aberto, em atraso e previsto não entram no saldo real: a tela passa para o saldo projetado.</summary>
+    private Task AoMudarSituacao()
+    {
+        if (filtro.SituacaoExigeProjetado) filtro.Projetado = true;
+        return Carregar();
+    }
+
     private string Consulta
     {
         get
@@ -492,6 +514,7 @@
             if (filtro.ContaId is { } c) partes.Add($"conta={c}");
             if (Texto.Limpo(filtro.Busca) is { } b) partes.Add($"busca={Uri.EscapeDataString(b)}");
             if (filtro.Projetado) partes.Add("projetado=true");
+            if (filtro.Situacao != FiltroSituacao.TODAS) partes.Add($"situacao={filtro.Situacao}");
             return partes.Count == 0 ? "" : "?" + string.Join("&", partes);
         }
     }

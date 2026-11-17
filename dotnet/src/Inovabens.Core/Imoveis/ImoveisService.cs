@@ -87,13 +87,13 @@ public sealed class ImoveisService(
         return [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id) })];
     }
 
-    /// <summary>Cidades dos imóveis que o usuário vê, para o filtro.</summary>
+    /// <summary>Cidades onde há imóvel Disponível (entre os que o usuário vê), para o filtro.</summary>
     public async Task<IReadOnlyList<string>> CidadesAsync(UsuarioAtual u)
     {
         u.Exigir(P.ImoveisVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        return await db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null && i.Cidade != null && i.Cidade != "").VisiveisPara(u)
-            .Select(i => i.Cidade!).Distinct().OrderBy(c => c).ToListAsync();
+        return await db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null && i.Situacao == SituacaoImovel.DISPONIVEL && i.Cidade != null && i.Cidade != "")
+            .VisiveisPara(u).Select(i => i.Cidade!).Distinct().OrderBy(c => c).ToListAsync();
     }
 
     /// <summary>

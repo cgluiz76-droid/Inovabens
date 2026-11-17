@@ -88,8 +88,10 @@
             }
             if (modulo is not null && !ReferenceEquals(desenhados, Itens))
             {
+                // ao abrir o mapa: sempre o centro de Rio Preto (raio de 20 km); depois, filtro ativo enquadra os resultados
+                var abrindo = desenhados is null;
                 desenhados = Itens;
-                await modulo.InvokeVoidAsync("desenhar", elemento, Itens.Where(TemLocal).Select(Alfinete), !FiltroAtivo);
+                await modulo.InvokeVoidAsync("desenhar", elemento, Itens.Where(TemLocal).Select(Alfinete), abrindo || !FiltroAtivo);
             }
         }
         catch (JSDisconnectedException) { }

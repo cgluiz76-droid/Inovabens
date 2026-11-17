@@ -120,7 +120,8 @@ else
             </select>
             <select class="input filtro" aria-label="Cidade" @bind="cidade" @bind:after="Filtrar">
                 <option value="">Todas as cidades</option>
-                @foreach (var c in cidades)
+                @* a cidade já escolhida continua na lista mesmo sem imóvel disponível (veio de um link, por exemplo) *@
+                @foreach (var c in cidade != "" && !cidades.Contains(cidade) ? cidades.Append(cidade).Order().ToList() : cidades)
                 {
                     <option value="@c">@c</option>
                 }

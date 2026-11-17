@@ -12,6 +12,9 @@ namespace Inovabens.Core.Financeiro;
 
 public enum TipoExtrato { TODOS, RECEITAS, DESPESAS }
 
+/// <summary>Filtro de situação dos títulos. EM_ATRASO = aberto ou previsto com vencimento antes de hoje.</summary>
+public enum FiltroSituacao { TODAS, LIQUIDADO, ABERTO, EM_ATRASO, PREVISTO }
+
 /// <summary>Filtros da aba Lançamentos Financeiros (os mesmos do PDF e do Excel). Datas inclusivas.</summary>
 public sealed class FiltroLancamentos
 {
@@ -26,6 +29,12 @@ public sealed class FiltroLancamentos
     /// os previstos, na data de vencimento.
     /// </summary>
     public bool Projetado { get; set; }
+
+    /// <summary>Situação dos títulos. Aberto, em atraso e previsto nunca entram no saldo real: com eles o extrato é sempre projetado.</summary>
+    public FiltroSituacao Situacao { get; set; } = FiltroSituacao.TODAS;
+
+    /// <summary>A situação escolhida só existe no saldo projetado.</summary>
+    public bool SituacaoExigeProjetado => Situacao is FiltroSituacao.ABERTO or FiltroSituacao.EM_ATRASO or FiltroSituacao.PREVISTO;
 
     /// <summary>Padrão da tela: o mês corrente (do dia 1 ao último dia).</summary>
     public static FiltroLancamentos MesAtual()
@@ -153,6 +162,8 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
         await using (var db0 = await fabrica.CreateDbContextAsync())
             codigo = (await Acesso.ImovelComAcesso(db0, u, imovelId, rastrear: false)).Codigo;
         await GerarPrevistosAsync(LimitePrevistos(f.Ate), imovelId);
+        if (f.SituacaoExigeProjetado) f.Projetado = true;
+        var hoje = DatasBR.Hoje();
 
         await using var db = await fabrica.CreateDbContextAsync();
         var todos = await db.LancamentosFinanceiros.AsNoTracking()
@@ -164,15 +175,23 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
             })
             .ToListAsync();
 
-        bool Passa(decimal valor, Guid conta, params string?[] campos) =>
+        bool Passa(SituacaoLancamento situacao, DateOnly vencimento, decimal valor, Guid conta, params string?[] campos) =>
             (f.Tipo != TipoExtrato.RECEITAS || valor > 0) && (f.Tipo != TipoExtrato.DESPESAS || valor < 0)
-            && (f.ContaId is null || conta == f.ContaId) && ContemBusca(f.Busca, campos);
+            && (f.ContaId is null || conta == f.ContaId) && ContemBusca(f.Busca, campos)
+            && f.Situacao switch
+            {
+                FiltroSituacao.LIQUIDADO => situacao == SituacaoLancamento.LIQUIDADO,
+                FiltroSituacao.ABERTO => situacao == SituacaoLancamento.ABERTO,
+                FiltroSituacao.PREVISTO => situacao == SituacaoLancamento.PREVISTO,
+                FiltroSituacao.EM_ATRASO => situacao is SituacaoLancamento.ABERTO or SituacaoLancamento.PREVISTO && vencimento < hoje,
+                _ => true,
+            };
 
         var saldoAtual = todos.Where(l => l.Situacao == SituacaoLancamento.LIQUIDADO).Sum(l => l.Valor);
         var noSaldo = todos.Where(l => l.Situacao == SituacaoLancamento.LIQUIDADO || f.Projetado)
             .Select(l => new { L = l, Quando = l.Situacao == SituacaoLancamento.LIQUIDADO ? l.DataLiquidacao ?? l.Data : l.Data })
             .OrderBy(x => x.Quando).ThenBy(x => x.L.Situacao).ThenBy(x => x.L.Numero).ToList();
-        var filtrados = noSaldo.Where(x => Passa(x.L.Valor, x.L.ContaId, x.L.Descricao, x.L.Conta, x.L.Observacao, x.L.PessoaNome, FormatarNumero(codigo, x.L.Numero))).ToList();
+        var filtrados = noSaldo.Where(x => Passa(x.L.Situacao, x.L.Data, x.L.Valor, x.L.ContaId, x.L.Descricao, x.L.Conta, x.L.Observacao, x.L.PessoaNome, FormatarNumero(codigo, x.L.Numero))).ToList();
         var saldoAnterior = f.De is { } de ? filtrados.Where(x => x.Quando < de).Sum(x => x.L.Valor) : 0;
 
         var saldo = saldoAnterior;
@@ -184,11 +203,10 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
                 x.L.Valor, saldo, x.L.Recorrente, x.L.OrigemId is not null, x.L.PessoaNome));
         }
 
-        var hoje = DatasBR.Hoje();
         // pendentes do período e, além deles, os já atrasados de antes do início (não podem sumir da tela)
         bool Pendente(DateOnly venc) => (f.Ate is null || venc <= f.Ate) && (f.De is null || venc >= f.De || venc < hoje);
         List<TituloPendente> Lista(SituacaoLancamento s) => todos
-            .Where(l => l.Situacao == s && Pendente(l.Data) && Passa(l.Valor, l.ContaId, l.Descricao, l.Conta, l.Observacao, l.PessoaNome, FormatarNumero(codigo, l.Numero)))
+            .Where(l => l.Situacao == s && Pendente(l.Data) && Passa(l.Situacao, l.Data, l.Valor, l.ContaId, l.Descricao, l.Conta, l.Observacao, l.PessoaNome, FormatarNumero(codigo, l.Numero)))
             .OrderBy(l => l.Data).ThenBy(l => l.Descricao)
             .Select(l => new TituloPendente(l.Id, FormatarNumero(codigo, l.Numero), l.Situacao, l.Data, l.Descricao, l.Conta, l.Valor,
                 Math.Max(0, hoje.DayNumber - l.Data.DayNumber), l.Recorrente, l.PessoaNome))
@@ -467,6 +485,16 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
             .Select(p => p.Id).Take(2).ToListAsync();
         return achadas.Count == 1 ? achadas[0] : null;
     }
+
+    /// <summary>Rótulo do filtro de situação (null = todas).</summary>
+    public static string? NomeFiltroSituacao(FiltroSituacao s) => s switch
+    {
+        FiltroSituacao.LIQUIDADO => "Liquidado",
+        FiltroSituacao.ABERTO => "Aberto",
+        FiltroSituacao.EM_ATRASO => "Em atraso",
+        FiltroSituacao.PREVISTO => "Previsto",
+        _ => null,
+    };
 
     private static bool ContemBusca(string? busca, params string?[] campos) =>
         Texto.Limpo(busca) is not { } b || campos.Any(c => c?.Contains(b, StringComparison.CurrentCultureIgnoreCase) == true);

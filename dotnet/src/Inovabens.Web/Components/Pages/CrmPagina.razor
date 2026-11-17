@@ -29,13 +29,6 @@
         {
             <button class="aba @(funil == f ? "ativa" : "")" @onclick="() => TrocarFunil(f)">@Funis.Nome(f)</button>
         }
-        @if (Usuario.Pode(Permissoes.ProcessosVer))
-        {
-            @foreach (var f in Funis.DeProcessos)
-            {
-                <a class="aba aba-link" href="processos?funil=@f" title="Processos do imóvel">@Funis.Nome(f) ↗</a>
-            }
-        }
     </div>
     <div class="filtros-crm">
         <label class="filtro-imovel">

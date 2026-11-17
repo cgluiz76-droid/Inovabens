@@ -49,11 +49,16 @@ function precoCurto(v) {
     return "R$ " + Math.round(v).toLocaleString("pt-BR");
 }
 
-/** Retângulo que contém o círculo de raio r km em volta do ponto. */
-function caixaDoRaio({ lat, lng, raioKm }) {
-    const dLat = raioKm / 111.32;
-    const dLng = raioKm / (111.32 * Math.cos(lat * Math.PI / 180));
-    return { south: lat - dLat, north: lat + dLat, west: lng - dLng, east: lng + dLng };
+/**
+ * Centro de Rio Preto com o raio de 20 km inteiro na tela: zoom calculado pelo tamanho do elemento (fitBounds num mapa
+ * que ainda não tem tamanho cai num zoom de mundo inteiro).
+ */
+function focarRioPreto(mapa, elemento) {
+    const lado = Math.min(elemento.clientWidth || 800, elemento.clientHeight || 600);
+    const metrosPorPixel = (2 * RIO_PRETO.raioKm * 1000) / Math.max(lado - 40, 200);
+    const zoom = Math.log2(156543.03392 * Math.cos(RIO_PRETO.lat * Math.PI / 180) / metrosPorPixel);
+    mapa.setCenter({ lat: RIO_PRETO.lat, lng: RIO_PRETO.lng });
+    mapa.setZoom(Math.max(8, Math.min(14, Math.floor(zoom))));
 }
 
 /** Camada com os alfinetes e o resumo em HTML, posicionados pela projeção do mapa a cada movimento. */
@@ -102,7 +107,7 @@ export async function iniciar(elemento, dotnet, chave) {
         scaleControl: true,
         tilt: 0,
     });
-    mapa.fitBounds(caixaDoRaio(RIO_PRETO), 0);
+    focarRioPreto(mapa, elemento);
 
     const camada = criarCamada();
     camada.setMap(mapa);
@@ -123,8 +128,8 @@ export function base(elemento, nome) {
 }
 
 /**
- * Recebe os imóveis com coordenadas. focoPadrao = sem filtro ativo: abre em Rio Preto (raio 20 km);
- * com filtro, enquadra todos os resultados.
+ * Recebe os imóveis com coordenadas. focoPadrao = ao abrir o mapa ou sem filtro ativo: centro de Rio Preto, raio de
+ * 20 km (os alfinetes de fora aparecem ao afastar); com filtro, enquadra todos os resultados.
  */
 export function desenhar(elemento, itens, focoPadrao) {
     const estado = mapas.get(elemento);
@@ -139,7 +144,7 @@ export function desenhar(elemento, itens, focoPadrao) {
     estado.lista.close();
 
     if (focoPadrao || itens.length === 0) {
-        estado.mapa.fitBounds(caixaDoRaio(RIO_PRETO), 0);
+        focarRioPreto(estado.mapa, elemento);
     } else if (itens.length === 1) {
         estado.mapa.setCenter({ lat: itens[0].lat, lng: itens[0].lng });
         estado.mapa.setZoom(16);
