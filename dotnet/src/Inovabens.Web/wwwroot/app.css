@@ -1166,3 +1166,16 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
 .interruptor-saldo { border: 1px solid var(--borda); border-radius: var(--raio, .5rem); padding: var(--e-2) var(--e-3); margin: var(--e-3) 0; display: flex; flex-wrap: wrap; gap: var(--e-3); }
 .interruptor-saldo legend { font-weight: 600; padding: 0 var(--e-1); }
 .tabela.cenarios th.cenario-oficial { color: var(--acento); }
+
+/* páginas públicas de texto: política de privacidade e termos de uso */
+.documento-fundo { min-height: 100vh; display: flex; flex-direction: column; background: var(--fundo, var(--superficie)); }
+.documento-topo { background: linear-gradient(180deg, var(--marinho-2), var(--marinho)); padding: var(--e-4) var(--e-5); }
+.documento-topo .marca { padding: 0; }
+.documento { width: 100%; max-width: 46rem; margin: 0 auto; padding: var(--e-6) var(--e-4) var(--e-8, 3rem); line-height: var(--a-texto); }
+.documento h1 { font-size: var(--t-3xl); color: var(--titulo); margin: 0 0 var(--e-2); }
+.documento h2 { font-size: var(--t-lg); color: var(--titulo); margin: var(--e-6) 0 var(--e-2); }
+.documento p, .documento li { color: var(--texto); }
+.documento ul { padding-left: 1.25rem; }
+.documento li + li { margin-top: var(--e-2); }
+.documento-rodape { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--e-5); justify-content: center; padding: var(--e-5) var(--e-4); border-top: 1px solid var(--borda); font-size: var(--t-sm); color: var(--mudo); }
+.login-legal { display: flex; gap: var(--e-4); justify-content: center; font-size: var(--t-xs); margin: var(--e-3) 0 0; }

@@ -1,0 +1,23 @@
+@inherits LayoutComponentBase
+@* Páginas públicas de texto (política de privacidade, termos de uso): sem menu, legíveis sem login. *@
+
+<div class="documento-fundo">
+    <header class="documento-topo">
+        <a class="marca" href="login">
+            <img src="img/marca.svg" alt="" width="40" height="40" />
+            <span class="marca-texto">
+                <span class="marca-nome">INOVA<b>BENS</b></span>
+                <span class="marca-sub">Gestão patrimonial</span>
+            </span>
+        </a>
+    </header>
+    <main class="documento">
+        @Body
+    </main>
+    <footer class="documento-rodape">
+        <a href="privacidade">Política de privacidade</a>
+        <a href="termos">Termos de uso</a>
+        <a href="login">Entrar no sistema</a>
+        <span>Inova Bens Gestão Patrimonial · CRECI 50457-J</span>
+    </footer>
+</div>
