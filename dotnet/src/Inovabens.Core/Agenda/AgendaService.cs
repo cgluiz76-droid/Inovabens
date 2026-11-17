@@ -17,7 +17,9 @@ public sealed record CompromissoDetalhe(
     public bool Vencido => Dados.Status == StatusCompromisso.PENDENTE && Dados.FimEm < DateTime.UtcNow;
 }
 
-public sealed record FiltroAgenda(DateTime? De = null, DateTime? Ate = null, Guid? ImovelId = null, Guid? ResponsavelId = null, StatusCompromisso? Status = null);
+/// <param name="SituacaoImovel">Só compromissos de imóveis nessa situação (os sem imóvel, ligados só a um lead, continuam).</param>
+public sealed record FiltroAgenda(DateTime? De = null, DateTime? Ate = null, Guid? ImovelId = null, Guid? ResponsavelId = null,
+    StatusCompromisso? Status = null, SituacaoImovel? SituacaoImovel = null);
 
 /// <summary>Datas em horário de Brasília (como digitadas na tela); o serviço converte para UTC.</summary>
 public sealed class CompromissoForm : IValidatableObject
@@ -105,6 +107,7 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
         if (f.ImovelId is { } im) q = q.Where(c => c.ImovelId == im);
         if (f.ResponsavelId is { } r) q = q.Where(c => c.ResponsavelId == r);
         if (f.Status is { } s) q = q.Where(c => c.Status == s);
+        if (f.SituacaoImovel is { } si) q = q.Where(c => c.ImovelId == null || c.Imovel!.Situacao == si);
         return await Detalhar(db, q);
     }
 

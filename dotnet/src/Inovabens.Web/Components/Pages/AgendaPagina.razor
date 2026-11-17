@@ -72,14 +72,27 @@
             <option value="@s">@Texto.Rotulo(s)</option>
         }
     </select>
-    <select class="input filtro" aria-label="Imóvel" @bind="imovelFiltro" @bind:after="Carregar">
-        <option value="">Todos os imóveis</option>
-        @foreach (var i in imoveis)
+    <select class="input filtro" aria-label="Situação do imóvel" @bind="situacaoImovel" @bind:after="AoMudarSituacao">
+        <option value="">Imóveis: todas as situações</option>
+        @foreach (var s in Enum.GetValues<SituacaoImovel>())
         {
-            <option value="@i.Id">@i.Nome</option>
+            <option value="@s">Imóveis: @Texto.Rotulo(s)</option>
         }
     </select>
+    @* digitar código ou nome filtra as sugestões; a escolha vale ao sair do campo ou ao escolher na lista *@
+    <input class="input filtro busca-imovel-agenda" type="search" list="agenda-imoveis" aria-label="Imóvel" placeholder="Todos os imóveis (digite código ou nome)"
+           @bind="imovelTexto" @bind:after="AoEscolherImovel" />
+    <datalist id="agenda-imoveis">
+        @foreach (var i in ImoveisDaSituacao)
+        {
+            <option value="@i.Nome"></option>
+        }
+    </datalist>
 </div>
+@if (imovelNaoEncontrado)
+{
+    <p class="pequeno texto-erro">Nenhum imóvel @(SituacaoEscolhida is { } se ? $"em \"{Texto.Rotulo(se)}\" " : "")com "@imovelTexto". Mostrando todos.</p>
+}
 
 @if (itens is null)
 {
@@ -102,13 +115,13 @@ else
                 {
                     <label class="campo col-2">
                         <span>Imóvel *</span>
-                        <select class="input" @bind="imovelNovo">
-                            <option value="">Selecione…</option>
+                        <input class="input" type="search" list="agenda-imoveis-novo" placeholder="Digite código ou nome" @bind="imovelNovoTexto" />
+                        <datalist id="agenda-imoveis-novo">
                             @foreach (var i in imoveis)
                             {
-                                <option value="@i.Id">@i.Nome</option>
+                                <option value="@i.Nome"></option>
                             }
-                        </select>
+                        </datalist>
                     </label>
                 }
             </Extra>
@@ -120,16 +133,19 @@ else
     [SupplyParameterFromQuery(Name = "google")] public string? GoogleRetorno { get; set; }
 
     private IReadOnlyList<CompromissoDetalhe>? itens;
-    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<OpcaoImovel> imoveis = [];
     private IReadOnlyList<Opcao>? responsaveis;
     private StatusGoogle? google;
     private DateTime mes = PrimeiroDia(DatasBR.Agora());
     private string status = "";
     private string imovelFiltro = "";
+    private string imovelTexto = "";
+    private bool imovelNaoEncontrado;
+    private string situacaoImovel = nameof(SituacaoImovel.DISPONIVEL); // padrão: só imóveis disponíveis
 
     private CompromissoForm? form;
     private Guid? editandoId;
-    private string imovelNovo = "";
+    private string imovelNovoTexto = "";
     private string? erroForm;
 
     private static DateTime PrimeiroDia(DateTime d) => new(d.Year, d.Month, 1);
@@ -138,7 +154,7 @@ else
     {
         await Executar(async () =>
         {
-            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            imoveis = await Opcoes.ImoveisComSituacaoAsync(Usuario);
             if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
             google = await Google.StatusAsync(Usuario.Id);
         });
@@ -156,7 +172,46 @@ else
             De: DatasBR.ParaUtc(mes),
             Ate: DatasBR.ParaUtc(mes.AddMonths(1)),
             ImovelId: Guid.TryParse(imovelFiltro, out var im) ? im : null,
-            Status: Enum.TryParse<StatusCompromisso>(status, out var s) ? s : null)));
+            Status: Enum.TryParse<StatusCompromisso>(status, out var s) ? s : null,
+            SituacaoImovel: SituacaoEscolhida)));
+
+    private SituacaoImovel? SituacaoEscolhida => Enum.TryParse<SituacaoImovel>(situacaoImovel, out var si) ? si : null;
+
+    private IEnumerable<OpcaoImovel> ImoveisDaSituacao =>
+        SituacaoEscolhida is { } si ? imoveis.Where(i => i.Situacao == si) : imoveis;
+
+    /// <summary>Texto digitado → imóvel: nome exato da lista, ou um único que contenha o texto (código ou parte do nome).</summary>
+    private static OpcaoImovel? Achar(IEnumerable<OpcaoImovel> lista, string texto)
+    {
+        var t = texto.Trim();
+        if (t.Length == 0) return null;
+        var exato = lista.FirstOrDefault(i => string.Equals(i.Nome, t, StringComparison.OrdinalIgnoreCase));
+        if (exato is not null) return exato;
+        var parecidos = lista.Where(i => i.Nome.Contains(t, StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
+        return parecidos.Count == 1 ? parecidos[0] : null;
+    }
+
+    private Task AoEscolherImovel()
+    {
+        var achado = Achar(ImoveisDaSituacao, imovelTexto);
+        imovelNaoEncontrado = achado is null && imovelTexto.Trim().Length > 0;
+        imovelFiltro = achado?.Id.ToString() ?? "";
+        if (achado is not null) imovelTexto = achado.Nome;
+        return Carregar();
+    }
+
+    private Task AoMudarSituacao()
+    {
+        // o imóvel escolhido que não está na nova situação deixa de filtrar
+        // (e o texto que não virou imóvel nenhum é limpo)
+        if (!Guid.TryParse(imovelFiltro, out var id) || !ImoveisDaSituacao.Any(i => i.Id == id))
+        {
+            imovelFiltro = "";
+            imovelTexto = "";
+        }
+        imovelNaoEncontrado = false;
+        return Carregar();
+    }
 
     private Task Mudar(int meses)
     {
@@ -174,7 +229,7 @@ else
     {
         erroForm = null;
         editandoId = null;
-        imovelNovo = imovelFiltro;
+        imovelNovoTexto = imoveis.FirstOrDefault(i => i.Id.ToString() == imovelFiltro)?.Nome ?? "";
         form = CompromissoForm.Novo();
     }
 
@@ -190,8 +245,8 @@ else
         var ok = await Executar(async () =>
         {
             if (editandoId is { } id) await Servico.AtualizarAsync(Usuario, id, form!);
-            else if (Guid.TryParse(imovelNovo, out var im)) await Servico.CriarAsync(Usuario, im, form!);
-            else throw new RegraNegocioException("imovelId", "Selecione o imóvel.");
+            else if (Achar(imoveis, imovelNovoTexto) is { } im) await Servico.CriarAsync(Usuario, im.Id, form!);
+            else throw new RegraNegocioException("imovelId", "Escolha o imóvel na lista (digite o código ou parte do nome).");
         });
         if (!ok)
         {

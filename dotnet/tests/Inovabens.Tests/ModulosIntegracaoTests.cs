@@ -205,6 +205,13 @@ public class ModulosIntegracaoTests
         Assert.True(doMes.Single(c => c.Dados.Id == vencido).Vencido);
         var compAdmin = await agenda.CriarAsync(a.Admin, doAdmin, CompromissoFormComTitulo($"Do admin {sufixo}"));
         Assert.DoesNotContain(await agenda.ListarAsync(a.Corretor, new FiltroAgenda()), c => c.Dados.Id == compAdmin);
+
+        // filtro pela situação do imóvel (a Agenda abre em "Disponível"); a lista de imóveis traz a situação
+        var opcoes = await a.S<OpcoesService>().ImoveisComSituacaoAsync(a.Corretor);
+        var situacaoCarla = opcoes.Single(o => o.Id == daCarla).Situacao;
+        var outraSituacao = situacaoCarla == SituacaoImovel.VENDIDO ? SituacaoImovel.LOCADO : SituacaoImovel.VENDIDO;
+        Assert.Contains(await agenda.ListarAsync(a.Corretor, new FiltroAgenda(SituacaoImovel: situacaoCarla)), c => c.Dados.Id == futuro);
+        Assert.DoesNotContain(await agenda.ListarAsync(a.Corretor, new FiltroAgenda(SituacaoImovel: outraSituacao)), c => c.Dados.Id == futuro);
         await Assert.ThrowsAsync<NaoEncontradoException>(() => agenda.ObterAsync(a.Corretor, compAdmin)); // não revela que existe
 
         // job: gera 1 alerta (idempotente) para a responsável

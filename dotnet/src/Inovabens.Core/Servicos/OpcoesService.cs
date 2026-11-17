@@ -41,6 +41,17 @@ public sealed class OpcoesService(IDbContextFactory<InovabensDb> fabrica)
             .ToListAsync();
     }
 
+    /// <summary>Imóveis visíveis ao usuário com a situação, para filtrar por situação na própria tela (Agenda).</summary>
+    public async Task<IReadOnlyList<OpcaoImovel>> ImoveisComSituacaoAsync(UsuarioAtual u)
+    {
+        if (!u.Pode(Dominio.Permissoes.ImoveisVer)) return [];
+        await using var db = await fabrica.CreateDbContextAsync();
+        return await db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null).VisiveisPara(u)
+            .OrderBy(i => i.Codigo)
+            .Select(i => new OpcaoImovel(i.Id, i.Codigo + " · " + i.Titulo, i.Situacao))
+            .ToListAsync();
+    }
+
     /// <summary>Imóveis que podem virar interesse de um lead: os visíveis, menos vendidos e arquivados.</summary>
     public async Task<IReadOnlyList<Opcao>> ImoveisParaInteresseAsync(UsuarioAtual u)
     {
@@ -53,3 +64,6 @@ public sealed class OpcoesService(IDbContextFactory<InovabensDb> fabrica)
             .ToListAsync();
     }
 }
+
+/// <summary>Imóvel numa lista de escolha, com a situação (permite filtrar sem ir de novo ao banco).</summary>
+public sealed record OpcaoImovel(Guid Id, string Nome, Dominio.SituacaoImovel Situacao);
