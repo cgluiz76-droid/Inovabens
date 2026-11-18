@@ -7,6 +7,7 @@
 <section class="card">
     <h2>Fotos e documentos <span class="pequeno mudo">· @Fotos de @RegrasImovel.MaximoFotos fotos</span></h2>
     <MensagemErro Texto="@Erro" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
 
     @if (!Servico.ArmazenamentoHabilitado)
     {
@@ -26,10 +27,36 @@
         </p>
     }
 
+    @if (pastasVisiveis.Count > 1)
+    {
+        <label class="campo filtro-pasta">
+            <span>Pasta</span>
+            <select class="input" @bind="pastaFiltro" @bind:after="AoTrocarPasta">
+                @foreach (var (numero, nome) in pastasVisiveis)
+                {
+                    <option value="@numero">@nome</option>
+                }
+            </select>
+        </label>
+    }
+
+    @if (PodeMelhorar)
+    {
+        @* soltar aqui uma foto da galeria: o Magnific melhora e a nova versão volta com o mesmo nome, no lugar da anterior *@
+        <div class="zona-melhoria @(sobreZona ? "ativa" : "")"
+             @ondragenter="() => sobreZona = true" @ondragleave="() => sobreZona = false"
+             @ondragover:preventDefault @ondrop="SoltarParaMelhorar" @ondrop:preventDefault>
+            ✨ Arraste aqui as fotos que devem ser melhoradas pelo Magnific (consome créditos)
+        </div>
+    }
+
     <div class="midias">
-        @foreach (var m in midias)
+        @foreach (var m in Exibidas)
         {
-            <div class="midia">
+            var arrastavel = PodeMelhorar && m.Midia.Tipo == TipoMidia.FOTO
+                             && m.Midia.MelhoriaStatus is not (StatusMelhoria.PENDENTE or StatusMelhoria.PROCESSANDO);
+            <div class="midia" draggable="@(arrastavel ? "true" : "false")"
+                 @ondragstart="() => arrastada = arrastavel ? m.Midia.Id : null" @ondragend="() => sobreZona = false">
                 @if (m.Url is not null && m.Midia.Tipo == TipoMidia.FOTO)
                 {
                     <img src="@(m.Miniatura ?? m.Url)" alt="@(m.Midia.Legenda ?? "")" loading="lazy" decoding="async" />
@@ -94,20 +121,15 @@
                             <button class="btn-ghost mini" disabled="@Ocupado" title="Volta a exibir a foto como foi enviada"
                                     @onclick="() => RestaurarOriginal(m.Midia.Id)">Original</button>
                         }
-                        else if (Melhoria.Habilitada && m.Midia.Tipo == TipoMidia.FOTO && m.Midia.MelhoriaStatus is null or StatusMelhoria.FALHA)
-                        {
-                            <button class="btn-ghost mini" disabled="@Ocupado" title="Melhorar esta foto com o Magnific (consome créditos)"
-                                    @onclick="() => Melhorar(m.Midia.Id)">✨ Melhorar</button>
-                        }
                         <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Remover(m.Midia.Id)">Excluir</button>
                     </div>
                 }
             </div>
         }
     </div>
-    @if (midias.Count == 0)
+    @if (!Exibidas.Any())
     {
-        <p class="pequeno mudo">Nenhum arquivo enviado.</p>
+        <p class="pequeno mudo">Nenhum arquivo nesta pasta.</p>
     }
 
     @if (Editar && Servico.ArmazenamentoHabilitado)
@@ -116,7 +138,7 @@
             <label class="campo">
                 <span>Pasta de destino no Drive</span>
                 <select class="input" @bind="subpasta" disabled="@Ocupado">
-                    @foreach (var (numero, nome) in SubpastasDrive.Todas)
+                    @foreach (var (numero, nome) in pastasVisiveis)
                     {
                         <option value="@numero">@nome</option>
                     }
@@ -140,7 +162,7 @@
             Até @RegrasImovel.MaximoFotos fotos por imóvel (JPG, PNG, WebP...), 25 MB por arquivo. Selecione vários de uma vez.
             @if (Melhoria.Habilitada)
             {
-                <span>As fotos novas são melhoradas automaticamente pelo Magnific em alguns minutos.</span>
+                <span>As fotos novas são melhoradas automaticamente pelo Magnific em alguns minutos; a versão melhorada fica com o mesmo nome, no lugar da enviada.</span>
             }
         </p>
     }
@@ -158,6 +180,15 @@
     private bool publica;
 
     private IReadOnlyList<MidiaDetalhe> midias = [];
+    private IReadOnlyList<(int Numero, string Nome)> pastasVisiveis = [];
+    /// <summary>A galeria abre só em "04 - Fotos e Vídeos"; as pastas de documentos ficam no filtro, conforme as permissões.</summary>
+    private int pastaFiltro = SubpastasDrive.FotosVideos;
+    private Guid? arrastada;
+    private bool sobreZona;
+
+    private IEnumerable<MidiaDetalhe> Exibidas => midias.Where(m => SubpastasDrive.DaMidia(m.Midia) == pastaFiltro);
+
+    private bool PodeMelhorar => Editar && Melhoria.Habilitada && pastaFiltro == SubpastasDrive.FotosVideos;
     private CancellationTokenSource? acompanhamento;
 
     private int Fotos => midias.Count(m => m.Midia.Tipo == TipoMidia.FOTO);
@@ -170,6 +201,7 @@
     protected override void OnParametersSet()
     {
         midias = Detalhe.Midias;
+        pastasVisiveis = SubpastasDrive.Visiveis(Usuario);
         Acompanhar();
     }
 
@@ -196,9 +228,18 @@
         });
     }
 
-    private async Task Melhorar(Guid midiaId)
+    /// <summary>O envio para o Drive segue a pasta escolhida no filtro.</summary>
+    private void AoTrocarPasta() => subpasta = pastaFiltro;
+
+    private async Task SoltarParaMelhorar()
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Melhorar esta foto com o Magnific? Consome créditos da conta Magnific.")) return;
+        sobreZona = false;
+        if (arrastada is not { } midiaId) return;
+        arrastada = null;
+        var foto = midias.FirstOrDefault(m => m.Midia.Id == midiaId)?.Midia;
+        var nome = foto?.NomeOriginal ?? "esta foto";
+        var aviso = foto?.MelhoriaStatus == StatusMelhoria.CONCLUIDA ? " Ela já foi melhorada uma vez." : "";
+        if (!await JS.InvokeAsync<bool>("confirm", $"Melhorar \"{nome}\" com o Magnific?{aviso} A versão melhorada substitui a atual, com o mesmo nome. Consome créditos da conta Magnific.")) return;
         if (!await Executar(() => Melhoria.SolicitarAsync(Usuario, midiaId))) return;
         midias = await Servico.MidiasAsync(Usuario, Detalhe.Dados.Id);
         Acompanhar();
@@ -235,7 +276,9 @@
         }
 
         var enviados = 0;
-        await Executar(async () =>
+        var nomes = new List<string>();
+        var pastaEnvio = subpasta;
+        var ok = await Executar(async () =>
         {
             foreach (var f in arquivos)
             {
@@ -249,10 +292,19 @@
                     string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType, subpasta,
                     publica && subpasta == SubpastasDrive.FotosVideos);
                 enviados++;
+                nomes.Add(f.Name);
             }
         });
         progresso = null;
-        if (enviados > 0) await Atualizar();
+        if (enviados > 0)
+        {
+            // confirmação ao final do envio (no erro, diz o que já tinha sido anexado)
+            var msg = EnvioDrive.MensagemAnexados(nomes, SubpastasDrive.Nome(pastaEnvio));
+            if (ok) Sucesso = msg;
+            else Erro += $" (antes do erro: {msg})";
+            pastaFiltro = pastaEnvio; // mostra a pasta onde os arquivos entraram
+            await Atualizar();
+        }
     }
 
     private async Task CriarPastas()

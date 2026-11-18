@@ -46,6 +46,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<PessoaPapel> PessoaPapeis => Set<PessoaPapel>();
     public DbSet<PerfilPessoa> PerfisPessoa => Set<PerfilPessoa>();
     public DbSet<TipoImovel> TiposImovel => Set<TipoImovel>();
+    public DbSet<TipoRegularizacao> TiposRegularizacao => Set<TipoRegularizacao>();
     public DbSet<Configuracao> Configuracoes => Set<Configuracao>();
     public DbSet<Memorando> Memorandos => Set<Memorando>();
     public DbSet<Compromisso> Compromissos => Set<Compromisso>();
@@ -74,7 +75,6 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             n.MapEnum<FinalidadeImovel>("finalidade_imovel", nameTranslator: semTraducao);
             n.MapEnum<SituacaoImovel>("situacao_imovel", nameTranslator: semTraducao);
             n.MapEnum<TipoMidia>("tipo_midia", nameTranslator: semTraducao);
-            n.MapEnum<TipoRegularizacao>("tipo_regularizacao", nameTranslator: semTraducao);
             n.MapEnum<StatusRegularizacao>("status_regularizacao", nameTranslator: semTraducao);
             n.MapEnum<TipoItemAquisicao>("tipo_item_aquisicao", nameTranslator: semTraducao);
             n.MapEnum<TipoConta>("tipo_conta", nameTranslator: semTraducao);
@@ -94,7 +94,10 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             n.MapEnum<TipoItemProposta>("tipo_item_proposta", nameTranslator: semTraducao);
             n.MapEnum<GarantiaLocacao>("garantia_locacao", nameTranslator: semTraducao);
             n.MapEnum<TipoModeloDocumento>("tipo_modelo_documento", nameTranslator: semTraducao);
-        });
+        })
+        // o sistema monta um único contêiner de serviços; quem monta vários é a suíte de testes (um por classe de
+        // integração), e passando de 20 o EF transformava esse aviso em erro e derrubava testes sem relação
+        .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning));
 
     /// <summary>Aceita tanto "Host=...;Database=..." quanto a URL do Node (postgres://user:senha@host:5432/banco).</summary>
     public static string NormalizarConexao(string valor)

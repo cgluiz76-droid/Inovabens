@@ -35,6 +35,34 @@
     </section>
 
     <section class="card">
+        <h2>Tipos de regularização</h2>
+        @if (tiposReg is not null)
+        {
+            <table class="tabela">
+                <tbody>
+                    @foreach (var t in tiposReg)
+                    {
+                        <tr>
+                            <td><input class="input" value="@t.Nome" @onchange="e => SalvarTipoReg(t, e.Value?.ToString() ?? string.Empty, t.Ativo)" /></td>
+                            <td class="acoes-linha">
+                                <label class="check">
+                                    <input type="checkbox" checked="@t.Ativo" @onchange="e => SalvarTipoReg(t, t.Nome, (bool)e.Value!)" /> Ativo
+                                </label>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <div class="linha-form">
+            <input class="input w-desc" placeholder="Novo tipo de regularização" @bind="novoTipoReg" />
+            <button class="btn-primary" disabled="@Ocupado" @onclick="CriarTipoReg">Adicionar</button>
+        </div>
+        <p class="pequeno mudo">Tipos oferecidos na aba Regularização do imóvel (Escritura, Registro…). Renomear altera também as
+            regularizações já lançadas. Tipo fora de uso: desative-o.</p>
+    </section>
+
+    <section class="card">
         <h2>Perfis de pessoa</h2>
         @if (perfis is not null)
         {
@@ -68,6 +96,8 @@
 @code {
     private IReadOnlyList<TipoImovel>? tipos;
     private IReadOnlyList<PerfilPessoa>? perfis;
+    private IReadOnlyList<TipoRegularizacao>? tiposReg;
+    private string novoTipoReg = "";
     private string novoTipo = "";
     private string novoPerfil = "";
 
@@ -75,6 +105,24 @@
     {
         await CarregarTipos();
         await CarregarPerfis();
+        await CarregarTiposReg();
+    }
+
+    private Task CarregarTiposReg() => Executar(async () => tiposReg = await Servico.TiposRegularizacaoAsync(incluirInativos: true));
+
+    private async Task SalvarTipoReg(TipoRegularizacao t, string nome, bool ativo)
+    {
+        var ok = await Executar(() => Servico.AtualizarTipoRegularizacaoAsync(Usuario, t.Id, new TipoRegularizacaoForm { Nome = nome, Ativo = ativo }));
+        var erro = Erro;
+        await CarregarTiposReg();
+        if (!ok) Erro = erro;
+    }
+
+    private async Task CriarTipoReg()
+    {
+        if (!await Executar(() => Servico.CriarTipoRegularizacaoAsync(Usuario, new TipoRegularizacaoForm { Nome = novoTipoReg }))) return;
+        novoTipoReg = "";
+        await CarregarTiposReg();
     }
 
     private Task CarregarTipos() => Executar(async () => tipos = await Servico.TiposImovelAsync(incluirInativos: true));

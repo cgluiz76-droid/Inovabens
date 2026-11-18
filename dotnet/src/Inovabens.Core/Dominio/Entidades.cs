@@ -33,6 +33,11 @@ public class Imovel
     public string? Matricula { get; set; }
     public string? Cartorio { get; set; }
     public string? InscricaoMunicipal { get; set; }
+    /// <summary>Contas de consumo: concessionária e código da conta (cliente/instalação) de água e de luz.</summary>
+    public string? ConcessionariaAgua { get; set; }
+    public string? CodigoContaAgua { get; set; }
+    public string? ConcessionariaLuz { get; set; }
+    public string? CodigoContaLuz { get; set; }
     public decimal? AreaTotalM2 { get; set; }
     public decimal? AreaConstruidaM2 { get; set; }
     public decimal? AreaUtilM2 { get; set; }
@@ -70,7 +75,7 @@ public class Imovel
     public DateOnly? ProjetoPrevisaoEntrega { get; set; }
     public bool DivulgarSite { get; set; }
     public Guid? CorretorResponsavelId { get; set; }
-    /// <summary>Nome da pasta principal do imóvel no Google Drive ("Nome para Drive do Empreendimento").</summary>
+    /// <summary>Nome da pasta principal do imóvel no Google Drive (campo "Nome do Imóvel", também exibido na lista).</summary>
     public string? NomeDrive { get; set; }
     /// <summary>Id da pasta principal no Drive; null enquanto ainda não foi criada.</summary>
     public string? DrivePastaId { get; set; }
@@ -162,6 +167,15 @@ public class Configuracao
     public Guid? AtualizadoPor { get; set; }
 }
 
+/// <summary>Tipo de regularização (Escritura, Registro...): cadastro da Administração; regularizacoes.tipo guarda o nome.</summary>
+[Table("tipos_regularizacao")]
+public class TipoRegularizacao
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Nome { get; set; } = "";
+    public bool Ativo { get; set; } = true;
+}
+
 /// <summary>Tipo de imóvel, mantido na Administração; imoveis.tipo guarda o nome (renomear propaga por FK).</summary>
 [Table("tipos_imovel")]
 public class TipoImovel
@@ -190,7 +204,8 @@ public class Regularizacao
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ImovelId { get; set; }
-    public TipoRegularizacao Tipo { get; set; }
+    /// <summary>Nome do tipo (tipos_regularizacao.nome).</summary>
+    public string Tipo { get; set; } = "";
     public StatusRegularizacao Status { get; set; } = StatusRegularizacao.NAO_INICIADA;
     public Guid? ProfissionalId { get; set; }
     public DateOnly? PrazoPrevisto { get; set; }

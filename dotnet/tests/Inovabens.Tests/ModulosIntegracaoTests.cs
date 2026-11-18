@@ -72,15 +72,50 @@ public class ModulosIntegracaoTests
         await a.S<ImoveisService>().CriarAsync(dono, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = titulo, Tipo = "casa", CorretorResponsavelId = dono.Id });
 
     [Fact]
+    public async Task Cadastro_de_tipos_de_regularizacao()
+    {
+        await using var a = await new Ambiente().Entrar();
+        var c = a.S<CadastrosService>();
+        var imoveis = a.S<ImoveisService>();
+
+        // a migração traz os tipos pedidos pela equipe e os antigos do enum
+        var nomes = (await c.TiposRegularizacaoAsync()).Select(t => t.Nome).ToList();
+        Assert.Contains("Escritura", nomes);
+        Assert.Contains("Instrumento Particular", nomes);
+        Assert.Contains("Registro", nomes);
+        Assert.Contains("Retificação de área", nomes);
+
+        // quem edita imóveis cadastra pelo "+ Novo" da aba; renomear/desativar é só da administração
+        var tipo = await c.CriarTipoRegularizacaoAsync(a.Corretor, new TipoRegularizacaoForm { Nome = $"Usucapião {sufixo}" });
+        await Assert.ThrowsAsync<RegraNegocioException>(() => c.CriarTipoRegularizacaoAsync(a.Admin, new TipoRegularizacaoForm { Nome = $"USUCAPIÃO {sufixo}" }));
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => c.AtualizarTipoRegularizacaoAsync(a.Corretor, tipo.Id, new TipoRegularizacaoForm { Nome = "x y" }));
+
+        // regularização só aceita tipo cadastrado; renomear vale para as já lançadas
+        var id = await NovoImovel(a, a.Admin, "Casa a regularizar");
+        await Assert.ThrowsAsync<RegraNegocioException>(() => imoveis.CriarRegularizacaoAsync(a.Admin, id, new RegularizacaoForm { Tipo = $"inexistente {sufixo}" }));
+        await imoveis.CriarRegularizacaoAsync(a.Admin, id, new RegularizacaoForm { Tipo = tipo.Nome });
+        await c.AtualizarTipoRegularizacaoAsync(a.Admin, tipo.Id, new TipoRegularizacaoForm { Nome = $"Usucapião extrajudicial {sufixo}" });
+        var reg = Assert.Single(await imoveis.ListarRegularizacoesAsync(a.Admin, id));
+        Assert.Equal($"Usucapião extrajudicial {sufixo}", reg.Dados.Tipo);
+
+        // desativado: some da lista, mas a regularização que já o tem continua editável
+        await c.AtualizarTipoRegularizacaoAsync(a.Admin, tipo.Id, new TipoRegularizacaoForm { Nome = reg.Dados.Tipo, Ativo = false });
+        Assert.DoesNotContain(await c.TiposRegularizacaoAsync(), t => t.Id == tipo.Id);
+        var form = RegularizacaoForm.De(reg.Dados);
+        form.Descricao = "Em andamento no cartório";
+        await imoveis.AtualizarRegularizacaoAsync(a.Admin, reg.Dados.Id, form);
+    }
+
+    [Fact]
     public async Task Cadastros_tipo_de_imovel_e_perfil_de_pessoa()
     {
         await using var a = await new Ambiente().Entrar();
         var c = a.S<CadastrosService>();
         var imoveis = a.S<ImoveisService>();
 
-        // só a administração cadastra; nome repetido (sem diferenciar maiúsculas) é recusado
-        await Assert.ThrowsAsync<AcessoNegadoException>(() => c.CriarTipoImovelAsync(a.Corretor, new TipoImovelForm { Nome = $"Chácara {sufixo}" }));
-        var tipo = await c.CriarTipoImovelAsync(a.Admin, new TipoImovelForm { Nome = $"Chácara {sufixo}" });
+        // quem cadastra imóveis cria pelo "+ Novo" da Ficha; renomear é só da administração; nome repetido é recusado
+        var tipo = await c.CriarTipoImovelAsync(a.Corretor, new TipoImovelForm { Nome = $"Chácara {sufixo}" });
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => c.AtualizarTipoImovelAsync(a.Corretor, tipo.Id, new TipoImovelForm { Nome = $"Granja {sufixo}" }));
         await Assert.ThrowsAsync<RegraNegocioException>(() => c.CriarTipoImovelAsync(a.Admin, new TipoImovelForm { Nome = $"CHÁCARA {sufixo}" }));
 
         // imóvel só aceita tipo cadastrado; renomear o tipo vale para os imóveis dele

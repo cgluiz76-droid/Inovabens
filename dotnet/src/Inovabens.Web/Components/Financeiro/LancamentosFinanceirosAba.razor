@@ -276,8 +276,14 @@
                 </label>
                 <label class="campo col-2">
                     <span>@(form.Tipo == TipoConta.RECEITA ? "Pessoa (quem pagou)" : "Pessoa (a quem foi pago)")</span>
-                    <InputText class="input" list="pessoas-lancamento" maxlength="200" placeholder="Digite o nome ou escolha uma pessoa cadastrada"
-                               @bind-Value="form.Pessoa" />
+                    <div class="com-novo">
+                        <InputText class="input" list="pessoas-lancamento" maxlength="200" placeholder="Digite o nome ou escolha uma pessoa cadastrada"
+                                   @bind-Value="form.Pessoa" />
+                        @if (Usuario.Pode(Permissoes.PessoasCriar))
+                        {
+                            <button type="button" class="btn-ghost mini" title="Cadastrar uma pessoa que não está na lista" @onclick="() => novaPessoa = true">+ Nova</button>
+                        }
+                    </div>
                     <datalist id="pessoas-lancamento">
                         @foreach (var nome in pessoas)
                         {
@@ -288,13 +294,16 @@
                 </label>
                 <label class="campo col-2">
                     <span>Conta orçamentária</span>
-                    <select class="input" @bind="ContaForm">
-                        <option value="">Selecione…</option>
-                        @foreach (var c in contas.Where(c => c.Tipo == form.Tipo && (c.Ativo || c.Id == form.ContaId)))
-                        {
-                            <option value="@c.Id">@c.Nome</option>
-                        }
-                    </select>
+                    <div class="com-novo">
+                        <select class="input" @bind="ContaForm">
+                            <option value="">Selecione…</option>
+                            @foreach (var c in contas.Where(c => c.Tipo == form.Tipo && (c.Ativo || c.Id == form.ContaId)))
+                            {
+                                <option value="@c.Id">@c.Nome</option>
+                            }
+                        </select>
+                        <button type="button" class="btn-ghost mini" title="Cadastrar uma conta que não está na lista" @onclick="() => novaConta = true">+ Nova</button>
+                    </div>
                     <ValidationMessage For="() => form.ContaId" />
                 </label>
                 <label class="check col-2">
@@ -382,6 +391,17 @@
             </div>
         </EditForm>
     </Modal>
+}
+
+@* pop-ups do "+ Nova" por cima do formulário do lançamento *@
+@if (novaPessoa)
+{
+    <NovaPessoa AoCriar="PessoaCriada" AoFechar="() => novaPessoa = false" />
+}
+@if (novaConta && form is not null)
+{
+    <CadastroRapido Titulo="@($"Nova conta de {(form.Tipo == TipoConta.RECEITA ? "receita" : "despesa")}")" Placeholder="Ex.: Jardinagem"
+                    Criar="CriarConta" AoFechar="() => novaConta = false" />
 }
 
 @if (confirmando is not null)
@@ -487,6 +507,24 @@
     {
         get => filtro.ContaId?.ToString() ?? "";
         set => filtro.ContaId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    private bool novaPessoa, novaConta;
+
+    private async Task PessoaCriada(Opcao p)
+    {
+        pessoas = (await Opcoes.PessoasAsync(Usuario)).Select(x => x.Nome).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (form is not null) form.Pessoa = p.Nome;
+        novaPessoa = false;
+    }
+
+    /// <summary>A conta nova é do mesmo tipo (receita/despesa) do lançamento e já fica selecionada.</summary>
+    private async Task CriarConta(string nome)
+    {
+        var c = await Servico.CriarContaAsync(Usuario, new ContaForm { Nome = nome, Tipo = form!.Tipo });
+        contas = await Servico.ContasAsync(incluirInativas: true);
+        form.ContaId = c.Id;
+        novaConta = false;
     }
 
     private string ContaForm

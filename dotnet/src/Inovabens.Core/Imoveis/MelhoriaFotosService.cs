@@ -9,9 +9,10 @@ using P = Inovabens.Core.Dominio.Permissoes;
 namespace Inovabens.Core.Imoveis;
 
 /// <summary>
-/// Melhoria automática das fotos pelo Magnific. O envio da foto não espera: ela entra como PENDENTE e a rotina
-/// <c>MelhoriaFotosJob</c> (a cada minuto) cria a tarefa no Magnific, acompanha e, quando pronta, troca o arquivo
-/// exibido pela versão melhorada, guardando o original para poder restaurá-lo.
+/// Melhoria das fotos pelo Magnific. O pedido não espera: a foto entra como PENDENTE e a rotina
+/// <c>MelhoriaFotosJob</c> (a cada minuto) cria a tarefa no Magnific, acompanha e, quando pronta, grava a versão
+/// melhorada com o mesmo nome e formato na mesma pasta do Drive, no lugar da anterior (que vai para a lixeira do
+/// Drive, recuperável por 30 dias).
 /// </summary>
 public sealed class MelhoriaFotosService(
     IDbContextFactory<InovabensDb> fabrica, IArmazenamento storage, MagnificCliente magnific, AuditService audit,
@@ -25,7 +26,7 @@ public sealed class MelhoriaFotosService(
 
     /* ------------------------------ Usuário ------------------------------ */
 
-    /// <summary>Pede (de novo) a melhoria de uma foto: fotos antigas ou que falharam.</summary>
+    /// <summary>Pede a melhoria de uma foto (área "arraste aqui para melhorar" da galeria). Pode repetir numa foto já melhorada.</summary>
     public async Task SolicitarAsync(UsuarioAtual u, Guid midiaId)
     {
         u.Exigir(P.ImoveisEditar);
@@ -34,7 +35,6 @@ public sealed class MelhoriaFotosService(
         var m = await MidiaComAcesso(db, u, midiaId);
         if (m.Tipo != TipoMidia.FOTO) throw new RegraNegocioException("midia", "Só fotos podem ser melhoradas.");
         if (m.MelhoriaStatus is StatusMelhoria.PENDENTE or StatusMelhoria.PROCESSANDO) return;
-        if (m.MelhoriaStatus == StatusMelhoria.CONCLUIDA) throw new RegraNegocioException("midia", "Esta foto já foi melhorada.");
         Marcar(m, StatusMelhoria.PENDENTE);
         audit.Registrar(db, u.Id, "imovel_midias", m.Id, "MELHORIA_SOLICITADA");
         await db.SaveChangesAsync();
@@ -74,15 +74,18 @@ public sealed class MelhoriaFotosService(
         var concluidas = 0;
         foreach (var m in abertas)
         {
-            string? chaveNova = null;
+            string? chaveNova = null, anterior = null;
             try
             {
                 if (DateTime.UtcNow - m.MelhoriaAtualizadaEm > TempoMaximo)
                     Falhar(m, "Tempo esgotado no Magnific.");
                 else if (m.MelhoriaStatus == StatusMelhoria.PENDENTE)
                     await Enviar(m, ct);
-                else if ((chaveNova = await Acompanhar(m, ct)) is not null)
+                else if (await Acompanhar(m, ct) is { } troca)
+                {
+                    (chaveNova, anterior) = troca;
                     concluidas++;
+                }
             }
             catch (MagnificRecusouException e)
             {
@@ -96,6 +99,8 @@ public sealed class MelhoriaFotosService(
             try
             {
                 await db.SaveChangesAsync(ct);
+                // só depois de gravado: a foto anterior vai para a lixeira do Drive
+                if (anterior is not null) await storage.RemoverAsync(anterior);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -116,8 +121,11 @@ public sealed class MelhoriaFotosService(
         Marcar(m, StatusMelhoria.PROCESSANDO);
     }
 
-    /// <summary>Consulta a tarefa; se pronta, grava a foto melhorada e devolve a chave dela no armazenamento.</summary>
-    private async Task<string?> Acompanhar(ImovelMidia m, CancellationToken ct)
+    /// <summary>
+    /// Consulta a tarefa; se pronta, grava a foto melhorada no Drive com o mesmo nome e formato da atual, aponta a
+    /// mídia para ela e devolve (chave nova, chave anterior). A anterior só é removida depois de salvo no banco.
+    /// </summary>
+    private async Task<(string Nova, string Anterior)?> Acompanhar(ImovelMidia m, CancellationToken ct)
     {
         if (m.MelhoriaTarefa is not { } id) { Marcar(m, StatusMelhoria.PENDENTE); return null; }
         var tarefa = await magnific.ConsultarAsync(id, ct);
@@ -128,23 +136,32 @@ public sealed class MelhoriaFotosService(
             return null;
         }
 
-        var resultado = ImagemFoto.PrepararResultado(await magnific.BaixarResultadoAsync(tarefa.UrlResultado, ct))
+        var nome = string.IsNullOrWhiteSpace(m.NomeOriginal) ? "foto.jpg" : m.NomeOriginal;
+        var tipo = TipoPelaExtensao(nome);
+        var resultado = ImagemFoto.PrepararResultado(await magnific.BaixarResultadoAsync(tarefa.UrlResultado, ct), tipo)
             ?? throw new MagnificRecusouException("Imagem gerada inválida.");
-        // a versão melhorada fica na mesma pasta do Drive que a original, com " (melhorada)" no nome
         var pasta = await storage.PastaDoArquivoAsync(m.ArquivoChave, ct)
-            ?? throw new MagnificRecusouException("A foto original não está mais no Google Drive.");
-        var nome = $"{Path.GetFileNameWithoutExtension(m.NomeOriginal ?? "foto")} (melhorada).jpg";
+            ?? throw new MagnificRecusouException("A foto não está mais no Google Drive.");
         string chave;
         using (var conteudo = new MemoryStream(resultado))
-            chave = await storage.EnviarAsync(pasta, nome, conteudo, "image/jpeg", ct);
+            chave = await storage.EnviarAsync(pasta, nome, conteudo, ImagemFoto.ContentTypeResultado(tipo), ct);
 
-        m.ArquivoOriginalChave ??= m.ArquivoChave;
+        var anterior = m.ArquivoChave;
         m.ArquivoChave = chave;
         m.MelhoriaTarefa = null;
         Marcar(m, StatusMelhoria.CONCLUIDA);
         log.LogInformation("Foto {Midia} melhorada pelo Magnific", m.Id);
-        return chave;
+        // fotos melhoradas no modelo antigo guardam a original à parte (botão "Original"): essa continua guardada
+        return (chave, anterior);
     }
+
+    /// <summary>Formato a gravar, pela extensão do nome: assim o arquivo melhorado mantém o mesmo nome.</summary>
+    private static string TipoPelaExtensao(string nome) => Path.GetExtension(nome).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".webp" => "image/webp",
+        _ => "image/jpeg",
+    };
 
     private static void Marcar(ImovelMidia m, StatusMelhoria status)
     {

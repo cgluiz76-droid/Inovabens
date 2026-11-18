@@ -24,6 +24,15 @@ public sealed class TipoImovelForm
     public string? PrefixoCodigo { get; set; }
 }
 
+public sealed class TipoRegularizacaoForm
+{
+    [Required(ErrorMessage = "Informe o nome.")]
+    [StringLength(80, MinimumLength = 2, ErrorMessage = "O nome deve ter de 2 a 80 caracteres.")]
+    public string Nome { get; set; } = "";
+
+    public bool Ativo { get; set; } = true;
+}
+
 public sealed class PerfilPessoaForm
 {
     [Required(ErrorMessage = "Informe o nome.")]
@@ -47,9 +56,10 @@ public sealed class CadastrosService(IDbContextFactory<InovabensDb> fabrica, Aud
         return await db.TiposImovel.AsNoTracking().Where(t => incluirInativos || t.Ativo).OrderBy(t => t.Nome).ToListAsync();
     }
 
+    /// <summary>Administração ou quem cadastra/edita imóveis (pelo "+ Novo" da Ficha); renomear e desativar só na Administração.</summary>
     public async Task<TipoImovel> CriarTipoImovelAsync(UsuarioAtual u, TipoImovelForm form)
     {
-        u.Exigir(P.AdminConfig);
+        if (!u.Pode(P.AdminConfig) && !u.Pode(P.ImoveisCriar)) u.Exigir(P.ImoveisEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         var nome = form.Nome.Trim();
@@ -80,6 +90,48 @@ public sealed class CadastrosService(IDbContextFactory<InovabensDb> fabrica, Aud
         await db.SaveChangesAsync();
     }
 
+    /* ------------------------- Tipos de regularização ------------------------- */
+
+    public async Task<IReadOnlyList<TipoRegularizacao>> TiposRegularizacaoAsync(bool incluirInativos = false)
+    {
+        await using var db = await fabrica.CreateDbContextAsync();
+        return await db.TiposRegularizacao.AsNoTracking().Where(t => incluirInativos || t.Ativo).OrderBy(t => t.Nome).ToListAsync();
+    }
+
+    /// <summary>
+    /// Cadastra um tipo novo. Além da Administração, quem edita imóveis pode cadastrar pelo "+ Novo" da aba
+    /// Regularização (quando o tipo não está na lista); renomear e desativar continuam só na Administração.
+    /// </summary>
+    public async Task<TipoRegularizacao> CriarTipoRegularizacaoAsync(UsuarioAtual u, TipoRegularizacaoForm form)
+    {
+        if (!u.Pode(P.AdminConfig)) u.Exigir(P.ImoveisEditar);
+        Validacao.Validar(form);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var nome = form.Nome.Trim();
+        await ExigirNomeLivre(db.TiposRegularizacao.Where(t => t.Nome.ToLower() == nome.ToLower()), "Já existe um tipo de regularização com esse nome.");
+        var t = new TipoRegularizacao { Nome = nome, Ativo = form.Ativo };
+        db.TiposRegularizacao.Add(t);
+        audit.Registrar(db, u.Id, "tipos_regularizacao", t.Id, "CRIAR", depois: t);
+        await db.SaveChangesAsync();
+        return t;
+    }
+
+    /// <summary>Renomear vale para as regularizações já lançadas com o tipo (FK com ON UPDATE CASCADE).</summary>
+    public async Task AtualizarTipoRegularizacaoAsync(UsuarioAtual u, Guid id, TipoRegularizacaoForm form)
+    {
+        u.Exigir(P.AdminConfig);
+        Validacao.Validar(form);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var t = await db.TiposRegularizacao.SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Tipo de regularização não encontrado.");
+        var nome = form.Nome.Trim();
+        await ExigirNomeLivre(db.TiposRegularizacao.Where(x => x.Id != id && x.Nome.ToLower() == nome.ToLower()), "Já existe um tipo de regularização com esse nome.");
+        var antes = new TipoRegularizacao { Id = t.Id, Nome = t.Nome, Ativo = t.Ativo };
+        t.Nome = nome;
+        t.Ativo = form.Ativo;
+        audit.Registrar(db, u.Id, "tipos_regularizacao", id, "ATUALIZAR", antes, t);
+        await db.SaveChangesAsync();
+    }
+
     /* --------------------------- Perfis de pessoa --------------------------- */
 
     public async Task<IReadOnlyList<PerfilPessoa>> PerfisPessoaAsync(bool incluirInativos = false)
@@ -89,9 +141,10 @@ public sealed class CadastrosService(IDbContextFactory<InovabensDb> fabrica, Aud
             .OrderBy(p => p.Ordem).ThenBy(p => p.Nome).ToListAsync();
     }
 
+    /// <summary>Administração ou quem cadastra/edita pessoas (pelo "+ Novo perfil"); renomear e desativar só na Administração.</summary>
     public async Task<PerfilPessoa> CriarPerfilPessoaAsync(UsuarioAtual u, PerfilPessoaForm form)
     {
-        u.Exigir(P.AdminConfig);
+        if (!u.Pode(P.AdminConfig) && !u.Pode(P.PessoasCriar)) u.Exigir(P.PessoasEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         var nome = form.Nome.Trim();

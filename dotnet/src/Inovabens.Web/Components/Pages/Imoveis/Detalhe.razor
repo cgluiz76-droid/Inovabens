@@ -103,10 +103,12 @@ else
     else if (aba == Aba.Memorandos)
     {
         <MemorandosAba ImovelId="Id" />
+        <EnvioDrive ImovelId="Id" AoEnviar="Recarregar" />
     }
     else if (aba == Aba.Agenda)
     {
         <AgendaImovelAba ImovelId="Id" />
+        <EnvioDrive ImovelId="Id" AoEnviar="Recarregar" />
     }
     else if (aba == Aba.Interessados)
     {
@@ -119,6 +121,7 @@ else
     else
     {
         <RegularizacoesAba ImovelId="Id" Editar="Editar" />
+        <EnvioDrive ImovelId="Id" PastaPadrao="SubpastasDrive.Protocolos" AoEnviar="Recarregar" />
     }
 }
 

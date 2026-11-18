@@ -202,6 +202,7 @@ else
                             @p.Nome
                         </label>
                     }
+                    <button type="button" class="btn-ghost mini" title="Cadastrar um perfil que não está na lista" @onclick="() => novoPerfil = true">+ Novo perfil</button>
                 </div>
             @foreach (var papelForm in form.Papeis)
             {
@@ -258,6 +259,11 @@ else
             }
         </EditForm>
     </Modal>
+}
+
+@if (novoPerfil)
+{
+    <CadastroRapido Titulo="Novo perfil de pessoa" Placeholder="Ex.: Síndico" Maximo="60" Criar="CriarPerfil" AoFechar="() => novoPerfil = false" />
 }
 
 @code {
@@ -369,6 +375,17 @@ else
     }
 
     private bool TemPapel(string p) => form!.Papeis.Any(x => x.Papel == p);
+
+    private bool novoPerfil;
+
+    /// <summary>"+ Novo perfil": cadastra, recarrega a lista e já marca o perfil na pessoa.</summary>
+    private async Task CriarPerfil(string nome)
+    {
+        var criado = await Cadastros.CriarPerfilPessoaAsync(Usuario, new PerfilPessoaForm { Nome = nome });
+        perfis = await Cadastros.PerfisPessoaAsync(incluirInativos: true);
+        if (form is not null) AlternarPapel(criado.Codigo, true);
+        novoPerfil = false;
+    }
 
     private void AlternarPapel(string p, bool marcado)
     {

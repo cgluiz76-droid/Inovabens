@@ -88,16 +88,22 @@
                     <InputNumber class="input" step="0.01" @bind-Value="form.OutrosCustos" />
                     <ValidationMessage For="() => form.OutrosCustos" />
                 </label>
-                <label class="campo">
-                    <span>Comprador</span>
-                    <select class="input" @bind="Comprador">
-                        <option value="">—</option>
-                        @foreach (var p in pessoas)
+                <div class="campo">
+                    <label for="comprador-investimento">Comprador</label>
+                    <div class="com-novo">
+                        <select id="comprador-investimento" class="input" @bind="Comprador">
+                            <option value="">—</option>
+                            @foreach (var p in pessoas)
+                            {
+                                <option value="@p.Id">@p.Nome</option>
+                            }
+                        </select>
+                        @if (Usuario.Pode(Permissoes.PessoasCriar))
                         {
-                            <option value="@p.Id">@p.Nome</option>
+                            <button type="button" class="btn-ghost mini" title="Cadastrar uma pessoa que não está na lista" @onclick="() => novoComprador = true">+ Nova</button>
                         }
-                    </select>
-                </label>
+                    </div>
+                </div>
                 <div class="campo col-2">
                     <span>Venda líquida</span>
                     <p class="valor-kpi">@Texto.Moeda(form.Liquido)</p>
@@ -127,6 +133,11 @@
     }
 </section>
 
+@if (novoComprador)
+{
+    <NovaPessoa Titulo="Novo comprador" AoCriar="CompradorCriado" AoFechar="() => novoComprador = false" />
+}
+
 <RetornoSecao @ref="retorno" ImovelId="ImovelId" />
 
 <ConfirmarExclusao @ref="confirmar" />
@@ -144,6 +155,15 @@
     private ConfirmarExclusao confirmar = default!;
 
     private static string Sinal(decimal v) => v < 0 ? "−" + Texto.Moeda(-v) : Texto.Moeda(v);
+
+    private bool novoComprador;
+
+    private async Task CompradorCriado(Opcao p)
+    {
+        pessoas = await Opcoes.PessoasAsync(Usuario);
+        if (form is not null) form.CompradorId = p.Id;
+        novoComprador = false;
+    }
 
     private string Comprador
     {

@@ -34,6 +34,30 @@ public static class SubpastasDrive
     public static string Nome(int numero) =>
         Valida(numero) ? Todas[numero - 1].Nome : throw new RegraNegocioException("subpasta", "Selecione a pasta de destino.");
 
+    /// <summary>
+    /// Permissão para ver e enviar arquivos da subpasta. "04 - Fotos e Vídeos" não tem (basta imoveis:ver); as demais
+    /// guardam documentos (matrícula, contratos, protocolos) e só aparecem para quem tem a permissão da pasta.
+    /// </summary>
+    public static string? Permissao(int numero) => numero switch
+    {
+        Matricula => Permissoes.ImoveisPastaMatricula,
+        Projetos => Permissoes.ImoveisPastaProjetos,
+        Comercial => Permissoes.ImoveisPastaComercial,
+        Documentos => Permissoes.ImoveisPastaDocumentos,
+        Protocolos => Permissoes.ImoveisPastaProtocolos,
+        _ => null,
+    };
+
+    public static bool PodeVer(UsuarioAtual u, int numero) => Permissao(numero) is not { } p || u.Pode(p);
+
+    /// <summary>Subpastas que o usuário enxerga, na ordem do Drive ("04" sempre).</summary>
+    public static IReadOnlyList<(int Numero, string Nome)> Visiveis(UsuarioAtual u) => [.. Todas.Where(s => PodeVer(u, s.Numero))];
+
+    /// <summary>Subpasta da mídia; as antigas, sem subpasta gravada, contam pelo tipo (foto/vídeo em "04", o resto em "05").</summary>
+    public static int DaMidia(ImovelMidia m) => m.Subpasta ?? Sugerida(m.Tipo);
+
+    public static bool PodeVer(UsuarioAtual u, ImovelMidia m) => PodeVer(u, DaMidia(m));
+
     /// <summary>Pasta sugerida para o arquivo: fotos e vídeos em "04", o resto em "05".</summary>
     public static int Sugerida(TipoMidia tipoArquivo) =>
         tipoArquivo is TipoMidia.FOTO or TipoMidia.VIDEO ? FotosVideos : Documentos;
@@ -52,7 +76,10 @@ public static class SubpastasDrive
 /// </summary>
 public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, IArmazenamento armazenamento)
 {
-    /// <summary>Garante a pasta principal e as seis subpastas; devolve o id da pasta principal.</summary>
+    /// <summary>Pastas criadas junto com a do imóvel: as seis de documentos e a "07 - Financeiro" (comprovantes).</summary>
+    private static IEnumerable<string> PastasPadrao => SubpastasDrive.Todas.Select(s => s.Nome).Append(SubpastasDrive.Financeiro);
+
+    /// <summary>Garante a pasta principal e as subpastas (01 a 07); devolve o id da pasta principal.</summary>
     public async Task<string> GarantirAsync(Guid imovelId, CancellationToken ct = default)
     {
         ExigirHabilitado();
@@ -61,17 +88,17 @@ public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, I
         if (im.DrivePastaId is { } existente) return existente;
         if (Texto.Limpo(im.NomeDrive) is not { } nome)
             throw new RegraNegocioException(nameof(Imovel.NomeDrive),
-                "Preencha o campo \"Nome para Drive do Empreendimento\" nos dados do imóvel antes de enviar arquivos.");
+                "Preencha o campo \"Nome do Imóvel\" nos dados do imóvel antes de enviar arquivos.");
 
         var raiz = await Chamar(async () =>
         {
             var existente = await armazenamento.BuscarPastaAsync(nome, null, ct);
             var id = existente ?? await armazenamento.CriarPastaAsync(nome, null, ct);
             // em paralelo (cada chamada ao Drive leva ~0,5 s); pasta recém-criada não precisa de busca
-            await Task.WhenAll(SubpastasDrive.Todas.Select(async s =>
+            await Task.WhenAll(PastasPadrao.Select(async s =>
             {
-                if (existente is null || await armazenamento.BuscarPastaAsync(s.Nome, id, ct) is null)
-                    await armazenamento.CriarPastaAsync(s.Nome, id, ct);
+                if (existente is null || await armazenamento.BuscarPastaAsync(s, id, ct) is null)
+                    await armazenamento.CriarPastaAsync(s, id, ct);
             }));
             return id;
         });
@@ -104,6 +131,37 @@ public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, I
             return await armazenamento.BuscarPastaAsync(nomeAno, financeiro, ct)
                 ?? await armazenamento.CriarPastaAsync(nomeAno, financeiro, ct);
         });
+    }
+
+    /// <summary>
+    /// Cria a "07 - Financeiro" nos imóveis que já têm pasta no Drive e ainda não a têm (comando
+    /// <c>criar-pasta-financeiro</c>). Pode rodar de novo: quem já tem é pulado. Devolve (criadas, já existiam, falhas).
+    /// </summary>
+    public async Task<(int Criadas, int Existentes, int Falhas)> CriarPastaFinanceiroExistentesAsync(Action<string>? progresso = null,
+        CancellationToken ct = default)
+    {
+        ExigirHabilitado();
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var imoveis = await db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null && i.DrivePastaId != null)
+            .OrderBy(i => i.Codigo).Select(i => new { i.Codigo, Pasta = i.DrivePastaId! }).ToListAsync(ct);
+        int criadas = 0, existentes = 0, falhas = 0;
+        foreach (var im in imoveis)
+        {
+            try
+            {
+                if (await armazenamento.BuscarPastaAsync(SubpastasDrive.Financeiro, im.Pasta, ct) is not null) { existentes++; continue; }
+                await armazenamento.CriarPastaAsync(SubpastasDrive.Financeiro, im.Pasta, ct);
+                criadas++;
+                progresso?.Invoke($"{im.Codigo}: pasta \"{SubpastasDrive.Financeiro}\" criada.");
+            }
+            catch (Exception e) when (e is Google.GoogleApiException or HttpRequestException)
+            {
+                // ex.: pasta do imóvel apagada no Drive; segue com os demais
+                falhas++;
+                progresso?.Invoke($"{im.Codigo}: falhou ({e.Message}).");
+            }
+        }
+        return (criadas, existentes, falhas);
     }
 
     public Task RenomearAsync(string pastaId, string nome, CancellationToken ct = default) =>

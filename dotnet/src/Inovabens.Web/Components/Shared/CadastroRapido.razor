@@ -1,0 +1,44 @@
+@inherits ComponenteBase
+
+@* Pop-up "+ Novo" de cadastros simples (tipo de imóvel, tipo de regularização, conta orçamentária, perfil de pessoa):
+   quando o item não está na lista, o usuário cadastra sem sair da tela. Campos extras vão em ChildContent. *@
+<Modal Titulo="@Titulo" AoFechar="AoFechar">
+    <form class="formulario" @onsubmit="Salvar" @onsubmit:preventDefault>
+        <MensagemErro Texto="@Erro" />
+        <label class="campo">
+            <span>@Rotulo *</span>
+            <input class="input" @bind="nome" maxlength="@Maximo" placeholder="@Placeholder" />
+        </label>
+        @ChildContent
+        <div class="acoes">
+            <button type="submit" class="btn-primary" disabled="@Ocupado">Cadastrar</button>
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+        </div>
+    </form>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    [Parameter] public string Rotulo { get; set; } = "Nome";
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public int Maximo { get; set; } = 80;
+    /// <summary>
+    /// Grava o item (o serviço valida nome e permissão); a tela recarrega a lista e seleciona o novo. EventCallback
+    /// (e não Func) para a tela de baixo se redesenhar ao terminar; um erro volta para cá e aparece no pop-up.
+    /// </summary>
+    [Parameter, EditorRequired] public EventCallback<string> Criar { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string nome = "";
+
+    private async Task Salvar()
+    {
+        if (string.IsNullOrWhiteSpace(nome))
+        {
+            Erro = $"Informe: {Rotulo.ToLowerInvariant()}.";
+            return;
+        }
+        await Executar(() => Criar.InvokeAsync(nome.Trim()));
+    }
+}

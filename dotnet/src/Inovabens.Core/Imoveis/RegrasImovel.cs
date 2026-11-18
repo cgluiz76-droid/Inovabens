@@ -74,6 +74,14 @@ public static partial class RegrasImovel
         return completo.Length <= 120 ? completo : completo[..120].TrimEnd();
     }
 
+    /// <summary>"CO0001 - Casa Centro" → "Casa Centro" (o código já aparece na sua coluna). Null se não houver nome.</summary>
+    public static string? NomeSemCodigo(string codigo, string? nomeDrive)
+    {
+        if (Texto.Limpo(nomeDrive) is not { } nome) return null;
+        var resto = nome.StartsWith(codigo, StringComparison.OrdinalIgnoreCase) ? nome[codigo.Length..].TrimStart(' ', '-') : nome;
+        return resto.Length > 0 ? resto : null;
+    }
+
     [GeneratedRegex(@"^[A-Z]{2}\d{4}$")]
     private static partial Regex CodigoPadrao();
 

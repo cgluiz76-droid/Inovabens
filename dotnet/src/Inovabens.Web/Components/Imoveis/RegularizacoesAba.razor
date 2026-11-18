@@ -1,6 +1,7 @@
 @inherits ComponenteBase
 @inject ImoveisService Servico
 @inject OpcoesService Opcoes
+@inject CadastrosService Cadastros
 @inject IJSRuntime JS
 
 <section class="card">
@@ -12,6 +13,7 @@
         }
     </div>
     <MensagemErro Texto="@Erro" />
+    <MensagemErro Texto="@Sucesso" Sucesso />
 
     @if (form is not null)
     {
@@ -19,15 +21,25 @@
             <DataAnnotationsValidator />
             <h3>@(editandoId is null ? "Nova regularização" : "Editar regularização")</h3>
             <div class="grade-4">
-                <label class="campo">
-                    <span>Tipo</span>
-                    <InputSelect class="input" @bind-Value="form.Tipo">
-                        @foreach (var t in Enum.GetValues<TipoRegularizacao>())
-                        {
-                            <option value="@t">@Texto.Rotulo(t)</option>
-                        }
-                    </InputSelect>
-                </label>
+                <div class="campo">
+                    <label for="tipo-regularizacao">Tipo de regularização *</label>
+                    @* lista do cadastro (Administração → Cadastros); se o tipo não estiver lá, "+ Novo" cadastra num pop-up *@
+                    <div class="com-novo">
+                        <InputSelect id="tipo-regularizacao" class="input" @bind-Value="form.Tipo">
+                            <option value="">Selecione…</option>
+                            @foreach (var t in tipos)
+                            {
+                                <option value="@t.Nome">@t.Nome</option>
+                            }
+                            @if (form.Tipo is { Length: > 0 } atual && tipos.All(t => t.Nome != atual))
+                            {
+                                <option value="@atual">@atual (inativo)</option>
+                            }
+                        </InputSelect>
+                        <button type="button" class="btn-ghost mini" title="Cadastrar um tipo que não está na lista" @onclick="AbrirNovoTipo">+ Novo</button>
+                    </div>
+                    <ValidationMessage For="() => form.Tipo" />
+                </div>
                 <label class="campo">
                     <span>Status</span>
                     <InputSelect class="input" @bind-Value="form.Status">
@@ -37,16 +49,22 @@
                         }
                     </InputSelect>
                 </label>
-                <label class="campo">
-                    <span>Profissional</span>
-                    <select class="input" @bind="ProfissionalSelecionado">
-                        <option value="">(nenhum)</option>
-                        @foreach (var p in pessoas)
+                <div class="campo">
+                    <label for="profissional-regularizacao">Profissional</label>
+                    <div class="com-novo">
+                        <select id="profissional-regularizacao" class="input" @bind="ProfissionalSelecionado">
+                            <option value="">(nenhum)</option>
+                            @foreach (var p in pessoas)
+                            {
+                                <option value="@p.Id">@p.Nome</option>
+                            }
+                        </select>
+                        @if (Usuario.Pode(Permissoes.PessoasCriar))
                         {
-                            <option value="@p.Id">@p.Nome</option>
+                            <button type="button" class="btn-ghost mini" title="Cadastrar uma pessoa que não está na lista" @onclick="() => novaPessoa = true">+ Nova</button>
                         }
-                    </select>
-                </label>
+                    </div>
+                </div>
                 <label class="campo">
                     <span>Custo estimado (R$)</span>
                     <InputNumber class="input" step="0.01" @bind-Value="form.CustoEstimado" />
@@ -85,7 +103,7 @@
                     @foreach (var r in itens)
                     {
                         <tr>
-                            <td>@Texto.Rotulo(r.Dados.Tipo)</td>
+                            <td>@r.Dados.Tipo</td>
                             <td><span class="badge">@Texto.Rotulo(r.Dados.Status)</span></td>
                             <td>@(r.ProfissionalNome ?? "—")</td>
                             <td>@Texto.Data(r.Dados.PrazoPrevisto)</td>
@@ -107,6 +125,16 @@
     }
 </section>
 
+@* pop-ups do "+ Novo": fora do EditForm (formulário dentro de formulário não é válido no HTML) *@
+@if (novoTipo)
+{
+    <CadastroRapido Titulo="Novo tipo de regularização" Placeholder="Ex.: Escritura" Criar="CriarTipo" AoFechar="() => novoTipo = false" />
+}
+@if (novaPessoa)
+{
+    <NovaPessoa Titulo="Novo profissional" AoCriar="PessoaCriada" AoFechar="() => novaPessoa = false" />
+}
+
 @code {
     [Parameter, EditorRequired] public Guid ImovelId { get; set; }
     [Parameter] public bool Editar { get; set; }
@@ -115,6 +143,8 @@
     private IReadOnlyList<Opcao> pessoas = [];
     private RegularizacaoForm? form;
     private Guid? editandoId;
+    private IReadOnlyList<TipoRegularizacao> tipos = [];
+    private bool novoTipo, novaPessoa;
 
     private string ProfissionalSelecionado
     {
@@ -125,6 +155,7 @@
     protected override async Task OnInitializedAsync()
     {
         pessoas = await Opcoes.PessoasAsync(Usuario);
+        tipos = await Cadastros.TiposRegularizacaoAsync();
         await Carregar();
     }
 
@@ -140,6 +171,24 @@
     {
         editandoId = r.Id;
         form = RegularizacaoForm.De(r);
+    }
+
+    private void AbrirNovoTipo() => novoTipo = true;
+
+    /// <summary>Cadastra o tipo, recarrega a lista e já o deixa selecionado na regularização.</summary>
+    private async Task CriarTipo(string nome)
+    {
+        var criado = await Cadastros.CriarTipoRegularizacaoAsync(Usuario, new TipoRegularizacaoForm { Nome = nome });
+        tipos = await Cadastros.TiposRegularizacaoAsync();
+        if (form is not null) form.Tipo = criado.Nome;
+        novoTipo = false;
+    }
+
+    private async Task PessoaCriada(Opcao p)
+    {
+        pessoas = await Opcoes.PessoasAsync(Usuario);
+        if (form is not null) form.ProfissionalId = p.Id;
+        novaPessoa = false;
     }
 
     private void Cancelar()

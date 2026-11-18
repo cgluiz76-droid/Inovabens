@@ -22,6 +22,15 @@ public static class Permissoes
     public const string ImoveisExportar = "imoveis:exportar";
     /// <summary>Botão "Exportar Excel" da lista de Imóveis (só o Administrador recebe por padrão).</summary>
     public const string ImoveisExportarLista = "imoveis:exportar_lista";
+    /// <summary>
+    /// Ver e enviar arquivos das subpastas do Drive do imóvel além de "04 - Fotos e Vídeos" (que todos com imoveis:ver
+    /// enxergam). Só o Administrador recebe por padrão; os demais perfis ganham na tela de Perfis.
+    /// </summary>
+    public const string ImoveisPastaMatricula = "imoveis:pasta_matricula";
+    public const string ImoveisPastaProjetos = "imoveis:pasta_projetos";
+    public const string ImoveisPastaComercial = "imoveis:pasta_comercial";
+    public const string ImoveisPastaDocumentos = "imoveis:pasta_documentos";
+    public const string ImoveisPastaProtocolos = "imoveis:pasta_protocolos";
 
     public const string FinanceiroVer = "financeiro:ver";
     public const string FinanceiroEditar = "financeiro:editar";
@@ -55,6 +64,7 @@ public static class Permissoes
         UsuariosGerir, RbacGerir, AdminConfig, AuditoriaVer,
         PessoasVer, PessoasCriar, PessoasEditar, PessoasExcluir, PessoasExportarLista,
         ImoveisVer, ImoveisCriar, ImoveisEditar, ImoveisExcluir, ImoveisExportar, ImoveisExportarLista,
+        ImoveisPastaMatricula, ImoveisPastaProjetos, ImoveisPastaComercial, ImoveisPastaDocumentos, ImoveisPastaProtocolos,
         FinanceiroVer, FinanceiroEditar, FinanceiroExportar, FinanceiroInvestimento,
         MemorandosVer, MemorandosCriar, MemorandosEditar, MemorandosExcluir,
         AgendaVer, AgendaCriar, AgendaEditar, AgendaExcluir,

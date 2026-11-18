@@ -14,11 +14,50 @@ public static class ImagemFoto
     /// <summary>Formatos que a melhoria aceita (HEIC/AVIF/GIF ficam como foram enviados).</summary>
     public static bool Suportado(string contentType) => contentType is "image/jpeg" or "image/png" or "image/webp";
 
-    /// <summary>Foto pronta para o Magnific: na orientação correta, com até <see cref="LadoMaximoEntrada"/> px, em JPEG. Null se não decodificar.</summary>
-    public static byte[]? PrepararEntrada(byte[] dados) => Converter(dados, LadoMaximoEntrada, qualidade: 92);
+    /// <summary>
+    /// Teto do JPEG enviado ao Magnific. A foto vai em base64 dentro do JSON (+33%) e o Magnific responde 413 a
+    /// corpos grandes: fotos com muito detalhe (ex.: PNG de 2048 px) passavam de 2 MB e eram recusadas.
+    /// </summary>
+    public const int TamanhoMaximoEntrada = 1_500_000;
 
-    /// <summary>Resultado do Magnific (PNG/JPEG grande) regravado como JPEG para ocupar menos espaço.</summary>
-    public static byte[]? PrepararResultado(byte[] dados) => Converter(dados, ladoMaximo: null, qualidade: 90);
+    /// <summary>
+    /// Foto pronta para o Magnific: na orientação correta, com até <see cref="LadoMaximoEntrada"/> px, em JPEG e com até
+    /// <see cref="TamanhoMaximoEntrada"/> bytes (baixa a qualidade e, se preciso, o tamanho). Null se não decodificar.
+    /// </summary>
+    public static byte[]? PrepararEntrada(byte[] dados)
+    {
+        // primeiro baixa a qualidade (quase invisível); depois reduz o lado em 20% por vez, até 512 px
+        int lado = LadoMaximoEntrada, qualidade = 92;
+        while (true)
+        {
+            var jpeg = Converter(dados, lado, qualidade);
+            if (jpeg is null || jpeg.Length <= TamanhoMaximoEntrada || lado <= 512) return jpeg;
+            if (qualidade > 75) qualidade -= 8;
+            else lado = Math.Max(512, (int)(lado * 0.8));
+        }
+    }
+
+    /// <summary>
+    /// Resultado do Magnific regravado no mesmo formato da foto original (JPEG, PNG ou WebP), para que volte ao
+    /// sistema com o mesmo nome de arquivo. Outros formatos viram JPEG.
+    /// </summary>
+    public static byte[]? PrepararResultado(byte[] dados, string contentTypeOriginal) =>
+        Converter(dados, ladoMaximo: null, qualidade: 90, FormatoDe(contentTypeOriginal));
+
+    /// <summary>Content-type gravado por <see cref="PrepararResultado"/>.</summary>
+    public static string ContentTypeResultado(string contentTypeOriginal) => FormatoDe(contentTypeOriginal) switch
+    {
+        SKEncodedImageFormat.Png => "image/png",
+        SKEncodedImageFormat.Webp => "image/webp",
+        _ => "image/jpeg",
+    };
+
+    private static SKEncodedImageFormat FormatoDe(string contentType) => contentType switch
+    {
+        "image/png" => SKEncodedImageFormat.Png,
+        "image/webp" => SKEncodedImageFormat.Webp,
+        _ => SKEncodedImageFormat.Jpeg,
+    };
 
     /// <summary>
     /// Versões da foto para o site, em WebP, uma por largura máxima (nunca amplia). A regravação descarta o EXIF,
@@ -49,7 +88,7 @@ public static class ImagemFoto
         return versoes;
     }
 
-    private static byte[]? Converter(byte[] dados, int? ladoMaximo, int qualidade)
+    private static byte[]? Converter(byte[] dados, int? ladoMaximo, int qualidade, SKEncodedImageFormat formato = SKEncodedImageFormat.Jpeg)
     {
         using var codec = SKCodec.Create(new SKMemoryStream(dados));
         if (codec is null) return null;
@@ -65,8 +104,8 @@ public static class ImagemFoto
             : null;
 
         using var imagem = SKImage.FromBitmap(reduzida ?? bitmap);
-        using var jpeg = imagem.Encode(SKEncodedImageFormat.Jpeg, qualidade);
-        return jpeg?.ToArray();
+        using var codificada = imagem.Encode(formato, qualidade);
+        return codificada?.ToArray();
     }
 
     /// <summary>Gira a imagem conforme o EXIF (fotos de celular). Espelhamentos, raros, ficam como estão. Null = já está certa.</summary>

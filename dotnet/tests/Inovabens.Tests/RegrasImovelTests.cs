@@ -64,6 +64,14 @@ public class RegrasImovelTests
     [InlineData("", "CA0060")]
     public void Pasta_do_drive_comeca_pelo_codigo(string nome, string esperado) =>
         Assert.Equal(esperado, RegrasImovel.NomeDriveComCodigo("CA0060", nome));
+
+    [Theory]
+    [InlineData("CA0060 - Casa São Francisco", "Casa São Francisco")]
+    [InlineData("Casa sem código", "Casa sem código")]
+    [InlineData("CA0060", null)]
+    [InlineData(null, null)]
+    public void Nome_do_imovel_na_lista_sem_o_codigo(string? nomeDrive, string? esperado) =>
+        Assert.Equal(esperado, RegrasImovel.NomeSemCodigo("CA0060", nomeDrive));
 }
 
 public class ArquivoSeguroTests

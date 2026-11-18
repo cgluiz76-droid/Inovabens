@@ -432,6 +432,13 @@ td.vazio::before { display: none; }
 .acoes-midia { display: flex; flex-wrap: wrap; gap: var(--e-1); margin-top: var(--e-2); }
 .melhoria { color: #7c3aed; }
 .enviar { margin-top: var(--e-3); cursor: pointer; }
+/* filtro de pasta da galeria e área "arraste aqui para melhorar" (Magnific) */
+.filtro-pasta { max-width: 18rem; margin: 0 0 var(--e-3); }
+.zona-melhoria { display: flex; align-items: center; justify-content: center; gap: var(--e-2); min-height: 4.5rem; margin-bottom: var(--e-4);
+    padding: var(--e-3); border: 2px dashed var(--acento-borda); border-radius: var(--raio); background: var(--acento-suave); color: var(--acento-forte);
+    font-size: var(--t-sm); text-align: center; transition: border-color var(--dur) var(--curva), background-color var(--dur) var(--curva); }
+.zona-melhoria.ativa { border-color: var(--acento); border-style: solid; }
+.midia[draggable="true"] { cursor: grab; }
 .envio-midias { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--e-3); margin-top: var(--e-3); }
 .envio-midias .campo { min-width: 16rem; margin: 0; }
 .envio-midias .enviar { margin-top: 0; }
@@ -477,6 +484,10 @@ td.vazio::before { display: none; }
 .acoes-topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2); }
 .espaco-topo { margin-top: var(--e-5); }
 .direita { justify-content: flex-end; }
+/* select + botão "+ Novo" lado a lado (cadastro rápido em pop-up quando o item não está na lista) */
+.com-novo { display: flex; align-items: center; gap: var(--e-2); }
+.com-novo > select, .com-novo > .input { flex: 1; min-width: 0; }
+.com-novo > button { flex: none; }
 .linha-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--e-2); margin-top: var(--e-3); }
 .campo-inline { display: flex; flex-direction: column; font-size: var(--t-xs); font-weight: 500; color: var(--mudo); gap: var(--e-1); }
 .resumo-validacao { flex-basis: 100%; color: var(--erro); font-size: var(--t-xs); margin: 0; padding-left: var(--e-4); }

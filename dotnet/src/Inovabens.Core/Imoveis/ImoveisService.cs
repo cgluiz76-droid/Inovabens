@@ -36,7 +36,7 @@ public sealed class ImoveisService(
         var itens = await q.OrderByDescending(i => i.CriadoEm)
             .Skip((pagina - 1) * tamanho).Take(tamanho)
             .Select(i => new ImovelListaItem(i.Id, i.Codigo, i.Titulo, i.Tipo, i.Situacao, i.Finalidade, i.Cidade, i.Bairro, i.Uf,
-                i.PrecoVenda, i.PrecoLocacao, i.Corretor != null ? i.Corretor.Nome : null))
+                i.PrecoVenda, i.PrecoLocacao, i.Corretor != null ? i.Corretor.Nome : null, null, i.NomeDrive))
             .ToListAsync();
 
         // miniatura: a foto de capa (ou a primeira foto); publicada no site, vem direto do R2, senão pelo sistema (Drive)
@@ -103,7 +103,8 @@ public sealed class ImoveisService(
         if (Texto.Limpo(f.Termo) is { } termo)
         {
             var t = $"%{Texto.LikeLiteral(termo)}%";
-            q = q.Where(i => EF.Functions.ILike(i.Titulo, t, @"\") || EF.Functions.ILike(i.Codigo, t, @"\")
+            q = q.Where(i => EF.Functions.ILike(i.Titulo, t, @"\") || EF.Functions.ILike(i.NomeDrive!, t, @"\")
+                || EF.Functions.ILike(i.Codigo, t, @"\")
                 || EF.Functions.ILike(i.CodigoAntigo!, t, @"\")
                 || EF.Functions.ILike(i.Bairro!, t, @"\") || EF.Functions.ILike(i.Cidade!, t, @"\")
                 || EF.Functions.ILike(i.Logradouro!, t, @"\") || EF.Functions.ILike(i.Matricula!, t, @"\"));
@@ -178,7 +179,8 @@ public sealed class ImoveisService(
     {
         var im = await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         var carac = await db.ImovelCaracteristicas.AsNoTracking().Where(c => c.ImovelId == id).OrderBy(c => c.Grupo).ThenBy(c => c.Chave).ToListAsync();
-        var midias = await db.ImovelMidias.AsNoTracking().Where(m => m.ImovelId == id).OrderBy(m => m.Ordem).ToListAsync();
+        var midias = (await db.ImovelMidias.AsNoTracking().Where(m => m.ImovelId == id).OrderBy(m => m.Ordem).ToListAsync())
+            .Where(m => SubpastasDrive.PodeVer(u, m)); // pastas de documentos só com a permissão da pasta
         var props = await db.ImovelProprietarios.AsNoTracking().Where(p => p.ImovelId == id)
             .Select(p => new ProprietarioDetalhe(p.PessoaId, p.Pessoa!.NomeRazao, p.Percentual, p.Principal, p.InicioEm, p.FimEm))
             .ToListAsync();
@@ -415,6 +417,7 @@ public sealed class ImoveisService(
         if (!armazenamento.Habilitado)
             throw new ServicoIndisponivelException("Google Drive não configurado (GOOGLE_DRIVE_ID e GOOGLE_DRIVE_CREDENCIAIS).");
         SubpastasDrive.Nome(subpasta); // valida
+        if (!SubpastasDrive.PodeVer(u, subpasta)) throw new AcessoNegadoException();
 
         var tipo = SubpastasDrive.TipoNaPasta(subpasta, RegrasImovel.ArquivoSeguro(nomeOriginal, contentType).Tipo);
         if (tipo == TipoMidia.FOTO && await db.ImovelMidias.CountAsync(m => m.ImovelId == id && m.Tipo == TipoMidia.FOTO, ct) >= RegrasImovel.MaximoFotos)
@@ -456,7 +459,7 @@ public sealed class ImoveisService(
         await using var db = await fabrica.CreateDbContextAsync();
         await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
         var midias = await db.ImovelMidias.AsNoTracking().Where(m => m.ImovelId == id).OrderBy(m => m.Ordem).ToListAsync();
-        return [.. midias.Select(Detalhar)];
+        return [.. midias.Where(m => SubpastasDrive.PodeVer(u, m)).Select(Detalhar)];
     }
 
     /// <summary>Só confere se o usuário pode abrir o arquivo da mídia (sem baixar do Drive); usado com a foto reduzida em cache.</summary>
@@ -467,7 +470,8 @@ public sealed class ImoveisService(
         var m = await db.ImovelMidias.AsNoTracking().SingleOrDefaultAsync(x => x.Id == midiaId, ct)
             ?? throw new NaoEncontradoException("Arquivo não encontrado.");
         await Acesso.ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
-        if (arquivoId != m.ArquivoChave && arquivoId != m.ArquivoOriginalChave) throw new NaoEncontradoException("Arquivo não encontrado.");
+        if (arquivoId != m.ArquivoChave && arquivoId != m.ArquivoOriginalChave || !SubpastasDrive.PodeVer(u, m))
+            throw new NaoEncontradoException("Arquivo não encontrado.");
     }
 
     /// <summary>
@@ -481,7 +485,8 @@ public sealed class ImoveisService(
         var m = await db.ImovelMidias.AsNoTracking().SingleOrDefaultAsync(x => x.Id == midiaId, ct)
             ?? throw new NaoEncontradoException("Arquivo não encontrado.");
         await Acesso.ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
-        if (arquivoId != m.ArquivoChave && arquivoId != m.ArquivoOriginalChave) throw new NaoEncontradoException("Arquivo não encontrado.");
+        if (arquivoId != m.ArquivoChave && arquivoId != m.ArquivoOriginalChave || !SubpastasDrive.PodeVer(u, m))
+            throw new NaoEncontradoException("Arquivo não encontrado.");
         var conteudo = await armazenamento.BaixarAsync(arquivoId, ct) ?? throw new NaoEncontradoException("Arquivo não encontrado no Google Drive.");
         // só imagem, vídeo e PDF abrem no navegador; o resto (HTML, SVG...) é sempre baixado
         var seguro = RegrasImovel.ArquivoSeguro(m.NomeOriginal ?? "arquivo", conteudo.Tipo);
@@ -531,6 +536,7 @@ public sealed class ImoveisService(
         var m = await db.ImovelMidias.SingleOrDefaultAsync(x => x.Id == midiaId)
             ?? throw new NaoEncontradoException("Mídia não encontrada.");
         await Acesso.ImovelComAcesso(db, u, m.ImovelId, rastrear: false);
+        if (!SubpastasDrive.PodeVer(u, m)) throw new NaoEncontradoException("Mídia não encontrada.");
         return m;
     }
 
@@ -555,6 +561,7 @@ public sealed class ImoveisService(
         await using var db = await fabrica.CreateDbContextAsync();
         await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
         var r = new Regularizacao { ImovelId = imovelId };
+        await ExigirTipoRegularizacao(db, form.Tipo, atual: null);
         form.AplicarEm(r);
         db.Regularizacoes.Add(r);
         audit.Registrar(db, u.Id, "regularizacoes", r.Id, "CRIAR", depois: r);
@@ -568,6 +575,7 @@ public sealed class ImoveisService(
         await using var db = await fabrica.CreateDbContextAsync();
         var r = await RegComAcesso(db, u, regId);
         var antes = r.Copia();
+        await ExigirTipoRegularizacao(db, form.Tipo, atual: r.Tipo);
         form.AplicarEm(r);
         audit.Registrar(db, u.Id, "regularizacoes", regId, "ATUALIZAR", antes, r);
         await db.SaveChangesAsync();
@@ -581,6 +589,14 @@ public sealed class ImoveisService(
         audit.Registrar(db, u.Id, "regularizacoes", regId, "EXCLUIR", antes: r.Copia());
         r.ExcluidoEm = DateTime.UtcNow;
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>O tipo tem de estar no cadastro e ativo (o que a regularização já tinha pode ser mantido mesmo desativado).</summary>
+    private static async Task ExigirTipoRegularizacao(InovabensDb db, string tipo, string? atual)
+    {
+        if (tipo == atual) return;
+        if (!await db.TiposRegularizacao.AnyAsync(t => t.Nome == tipo && t.Ativo))
+            throw new RegraNegocioException(nameof(RegularizacaoForm.Tipo), "Tipo de regularização não cadastrado ou inativo.");
     }
 
     private static async Task<Regularizacao> RegComAcesso(InovabensDb db, UsuarioAtual u, Guid regId)

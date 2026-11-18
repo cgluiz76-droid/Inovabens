@@ -12,6 +12,13 @@
         return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "escuro" : "claro";
     }
 
+    // Arrastar cartões da galeria (área "melhorar" do imóvel): o Firefox só inicia o arraste com dados no
+    // dataTransfer, e o Blazor não preenche; o que importa (qual foto) fica no próprio componente.
+    document.addEventListener("dragstart", function (e) {
+        var alvo = e.target.closest && e.target.closest('[draggable="true"]');
+        if (alvo && e.dataTransfer && !e.dataTransfer.types.length) e.dataTransfer.setData("text/plain", "");
+    });
+
     document.addEventListener("click", function (e) {
         var botao = e.target.closest && e.target.closest("[data-alternar-tema]");
         if (botao) e.preventDefault();

@@ -128,7 +128,7 @@ public class ImoveisIntegracaoTests
             s.EnviarMidiaAsync(admin, id1, new MemoryStream([1, 2, 3]), "foto.jpg", "image/jpeg", SubpastasDrive.FotosVideos));
 
         // --- regularizações ---
-        await s.CriarRegularizacaoAsync(admin, id1, new RegularizacaoForm { Tipo = TipoRegularizacao.RETIFICACAO_AREA, ProfissionalId = pessoas[0].Id, CustoEstimado = 3500.5m, PrazoPrevisto = new DateOnly(2026, 12, 15) });
+        await s.CriarRegularizacaoAsync(admin, id1, new RegularizacaoForm { Tipo = "Retificação de área", ProfissionalId = pessoas[0].Id, CustoEstimado = 3500.5m, PrazoPrevisto = new DateOnly(2026, 12, 15) });
         var regs = await s.ListarRegularizacoesAsync(admin, id1);
         var reg = Assert.Single(regs);
         Assert.Equal(pessoas[0].Nome, reg.ProfissionalNome);

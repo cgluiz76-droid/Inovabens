@@ -12,8 +12,6 @@ public enum TipoMidia { FOTO, VIDEO, PLANTA, DOCUMENTO }
 /// <summary>Melhoria da foto pelo Magnific. Gravado como texto (varchar + CHECK), não é enum do PostgreSQL.</summary>
 public enum StatusMelhoria { PENDENTE, PROCESSANDO, CONCLUIDA, FALHA }
 
-public enum TipoRegularizacao { DOCUMENTACAO, TRIBUTOS_ATRASO, DESMEMBRAMENTO, FRACIONAMENTO, RETIFICACAO_AREA, OUTRO }
-
 public enum StatusRegularizacao { NAO_INICIADA, EM_ANDAMENTO, CONCLUIDA, CANCELADA }
 
 public enum TipoItemAquisicao { IMPOSTO, TAXA, DESPESA }

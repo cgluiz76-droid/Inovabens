@@ -1,0 +1,56 @@
+@inherits ComponenteBase
+@inject PessoasService Pessoas
+
+@* Pop-up "+ Nova pessoa": cadastro rápido (nome, contato) quando a pessoa não está na lista. O restante dos dados
+   (CPF, endereço, perfis) é completado depois na tela de Pessoas. *@
+<Modal Titulo="@Titulo" AoFechar="AoFechar">
+    <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+        <DataAnnotationsValidator />
+        <MensagemErro Texto="@Erro" />
+        <div class="grade-2">
+            <label class="campo">
+                <span>@(form.Tipo == TipoPessoa.PJ ? "Razão social *" : "Nome *")</span>
+                <InputText class="input" @bind-Value="form.NomeRazao" />
+                <ValidationMessage For="() => form.NomeRazao" />
+            </label>
+            <label class="campo">
+                <span>Tipo</span>
+                <InputSelect class="input" @bind-Value="form.Tipo">
+                    <option value="@TipoPessoa.PF">Pessoa física</option>
+                    <option value="@TipoPessoa.PJ">Pessoa jurídica</option>
+                </InputSelect>
+            </label>
+            <label class="campo">
+                <span>Telefone / WhatsApp</span>
+                <InputText class="input" @bind-Value="form.Telefone" placeholder="(17) 98765-4321" />
+                <ValidationMessage For="() => form.Telefone" />
+            </label>
+            <label class="campo">
+                <span>E-mail</span>
+                <InputText class="input" @bind-Value="form.Email" />
+                <ValidationMessage For="() => form.Email" />
+            </label>
+        </div>
+        <p class="pequeno mudo">Os demais dados (CPF/CNPJ, endereço, perfis) podem ser completados depois em Pessoas.</p>
+        <div class="acoes">
+            <button type="submit" class="btn-primary" disabled="@Ocupado">Cadastrar</button>
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "Nova pessoa";
+    /// <summary>Recebe a pessoa criada: a tela recarrega a lista e já a deixa selecionada.</summary>
+    [Parameter] public EventCallback<Opcao> AoCriar { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+
+    private readonly PessoaForm form = new();
+
+    private async Task Salvar()
+    {
+        Guid id = default;
+        if (!await Executar(async () => id = await Pessoas.CriarAsync(Usuario, form))) return;
+        await AoCriar.InvokeAsync(new Opcao(id, form.NomeRazao.Trim()));
+    }
+}

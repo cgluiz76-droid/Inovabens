@@ -1,0 +1,96 @@
+@inherits ComponenteBase
+@inject ImoveisService Servico
+
+@* Envio de documentos para a pasta do imóvel no Google Drive a partir das abas Memorandos, Agenda e Regularização.
+   Os arquivos entram como mídias do imóvel (aparecem na galeria, no filtro da pasta escolhida). *@
+@if (Usuario.Pode(Permissoes.ImoveisEditar) && Servico.ArmazenamentoHabilitado)
+{
+    <section class="card">
+        <h2>Enviar documento para o Google Drive</h2>
+        <MensagemErro Texto="@Erro" />
+        <MensagemErro Texto="@Sucesso" Sucesso />
+        <div class="envio-midias">
+            <label class="campo">
+                <span>Pasta de destino no Drive</span>
+                <select class="input" @bind="subpasta" disabled="@Ocupado">
+                    @foreach (var (numero, nome) in pastas)
+                    {
+                        <option value="@numero">@nome</option>
+                    }
+                </select>
+            </label>
+            <label class="btn-ghost enviar">
+                @(Ocupado ? progresso ?? "Enviando…" : "⤒ Enviar arquivos para esta pasta")
+                <InputFile OnChange="Enviar" class="oculto" disabled="@Ocupado" multiple />
+            </label>
+        </div>
+        <p class="pequeno mudo">Até @MaximoPorEnvio arquivos por vez, 25 MB cada. Os arquivos ficam na pasta do imóvel no Drive e na aba Ficha (Fotos e documentos).</p>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    /// <summary>Pasta sugerida ao abrir (ex.: Protocolos na Regularização); se o usuário não puder vê-la, a primeira que puder.</summary>
+    [Parameter] public int PastaPadrao { get; set; } = SubpastasDrive.Documentos;
+    [Parameter] public Func<Task>? AoEnviar { get; set; }
+
+    private const int MaximoPorEnvio = 30;
+    private IReadOnlyList<(int Numero, string Nome)> pastas = [];
+    private int subpasta;
+    private string? progresso;
+
+    protected override void OnInitialized()
+    {
+        pastas = SubpastasDrive.Visiveis(Usuario);
+        subpasta = pastas.Any(p => p.Numero == PastaPadrao) ? PastaPadrao : pastas.FirstOrDefault().Numero;
+    }
+
+    /// <summary>Envia um a um; ao final confirma o que foi anexado (ou mostra o erro e o que já tinha ido).</summary>
+    private async Task Enviar(InputFileChangeEventArgs e)
+    {
+        Sucesso = null;
+        if (e.FileCount > MaximoPorEnvio)
+        {
+            Erro = $"Selecione no máximo {MaximoPorEnvio} arquivos por vez.";
+            return;
+        }
+        var arquivos = e.GetMultipleFiles(MaximoPorEnvio);
+        var grandes = arquivos.Where(f => f.Size > ImoveisService.TamanhoMaximoArquivo).Select(f => f.Name).ToList();
+        if (grandes.Count > 0)
+        {
+            Erro = "Arquivo maior que 25 MB: " + string.Join(", ", grandes);
+            return;
+        }
+
+        var enviados = new List<string>();
+        var pasta = SubpastasDrive.Nome(subpasta);
+        var ok = await Executar(async () =>
+        {
+            foreach (var f in arquivos)
+            {
+                progresso = $"Enviando {enviados.Count + 1} de {arquivos.Count}…";
+                StateHasChanged();
+                await using var origem = f.OpenReadStream(ImoveisService.TamanhoMaximoArquivo);
+                using var buffer = new MemoryStream();
+                await origem.CopyToAsync(buffer);
+                buffer.Position = 0;
+                await Servico.EnviarMidiaAsync(Usuario, ImovelId, buffer, f.Name,
+                    string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType, subpasta);
+                enviados.Add(f.Name);
+            }
+        });
+        progresso = null;
+        if (enviados.Count > 0)
+        {
+            var msg = MensagemAnexados(enviados, pasta);
+            if (ok) Sucesso = msg;
+            else Erro += $" (antes do erro: {msg})";
+            if (AoEnviar is not null) await AoEnviar();
+        }
+    }
+
+    public static string MensagemAnexados(IReadOnlyList<string> nomes, string pasta) =>
+        nomes.Count == 1
+            ? $"✓ Documento \"{nomes[0]}\" anexado à pasta \"{pasta}\" no Google Drive."
+            : $"✓ {nomes.Count} documentos anexados à pasta \"{pasta}\" no Google Drive: {string.Join(", ", nomes)}.";
+}

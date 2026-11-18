@@ -10,29 +10,39 @@
 
     <fieldset class="secao-form">
     <legend>Identificação</legend>
+    @* Nome do Imóvel primeiro: é o nome da lista e da pasta no Drive. Grade de 4 colunas em 3 linhas cheias. *@
     <div class="grade-4">
         <label class="campo col-2">
-            <span>Título *</span>
-            <InputText class="input" @bind-Value="Form.Titulo" />
-            <ValidationMessage For="() => Form.Titulo" />
-        </label>
-        <label class="campo">
-            <span>Tipo</span>
-            <InputSelect class="input" @bind-Value="Form.Tipo">
-                <option value="">Selecione…</option>
-                @foreach (var t in TiposDisponiveis)
-                {
-                    <option value="@t">@t</option>
-                }
-            </InputSelect>
-            <ValidationMessage For="() => Form.Tipo" />
+            <span>Nome do Imóvel *</span>
+            <InputText class="input" @bind-Value="Form.NomeDrive" placeholder="Ex.: Residencial Gonzaga - Apto 52" />
+            <ValidationMessage For="() => Form.NomeDrive" />
+            <span class="pequeno mudo">Esse nome será usado para criar o Drive do Imóvel (pasta com as subpastas 01 a 07) e aparece na lista de imóveis. Mudar aqui renomeia a pasta.</span>
         </label>
         <label class="campo">
             <span>Código</span>
             @* gerado pelo tipo ao salvar (prefixo + sequencial do Imobibrasil); é o mesmo no site, portais e Drive *@
             <input class="input" readonly value="@(Form.Referencia ?? "Gerado ao salvar (pelo tipo)")" />
         </label>
-        <label class="campo">
+        <div class="campo">
+            <label for="tipo-imovel">Tipo</label>
+            <div class="com-novo">
+                <InputSelect id="tipo-imovel" class="input" @bind-Value="Form.Tipo">
+                    <option value="">Selecione…</option>
+                    @foreach (var t in TiposDisponiveis)
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </InputSelect>
+                <button type="button" class="btn-ghost mini" title="Cadastrar um tipo que não está na lista" @onclick="() => novoTipo = true">+ Novo</button>
+            </div>
+            <ValidationMessage For="() => Form.Tipo" />
+        </div>
+        <label class="campo col-2">
+            <span>Título *</span>
+            <InputText class="input" @bind-Value="Form.Titulo" />
+            <ValidationMessage For="() => Form.Titulo" />
+        </label>
+        <label class="campo col-2">
             <span>Corretor responsável</span>
             <select class="input" @bind="CorretorSelecionado" disabled="@Usuario.EscopoProprio">
                 <option value="">(eu / automático)</option>
@@ -42,7 +52,7 @@
                 }
             </select>
         </label>
-        <label class="campo">
+        <label class="campo col-2">
             <span>Finalidade</span>
             <InputSelect class="input" @bind-Value="Form.Finalidade">
                 @foreach (var f in Enum.GetValues<FinalidadeImovel>())
@@ -51,7 +61,7 @@
                 }
             </InputSelect>
         </label>
-        <label class="campo">
+        <label class="campo col-2">
             <span>Situação</span>
             <InputSelect class="input" @bind-Value="Form.Situacao">
                 @foreach (var s in Enum.GetValues<SituacaoImovel>())
@@ -59,15 +69,6 @@
                     <option value="@s">@Texto.Rotulo(s)</option>
                 }
             </InputSelect>
-        </label>
-    </div>
-
-    <div class="grade-4">
-        <label class="campo col-2">
-            <span>Nome para Drive do Empreendimento *</span>
-            <InputText class="input" @bind-Value="Form.NomeDrive" placeholder="Ex.: Residencial Gonzaga - Apto 52" />
-            <ValidationMessage For="() => Form.NomeDrive" />
-            <span class="pequeno mudo">Nome da pasta do imóvel no Google Drive (com as subpastas 01 a 06). Mudar aqui renomeia a pasta.</span>
         </label>
     </div>
     </fieldset>
@@ -119,6 +120,23 @@
         <label class="campo"><span>Cartório</span><InputText class="input" @bind-Value="Form.Cartorio" /><ValidationMessage For="() => Form.Cartorio" /></label>
         <label class="campo"><span>Inscrição municipal</span><InputText class="input" @bind-Value="Form.InscricaoMunicipal" /><ValidationMessage For="() => Form.InscricaoMunicipal" /></label>
     </div>
+    </fieldset>
+
+    <fieldset class="secao-form">
+    <legend>Contas de água e luz</legend>
+    @* texto livre: as sugestões são as concessionárias da região; código = nº do cliente/instalação impresso na conta *@
+    <div class="grade-4">
+        <label class="campo"><span>Concessionária de água</span><InputText class="input" list="concessionarias-agua" @bind-Value="Form.ConcessionariaAgua" /><ValidationMessage For="() => Form.ConcessionariaAgua" /></label>
+        <label class="campo"><span>Código da conta de água</span><InputText class="input" @bind-Value="Form.CodigoContaAgua" /><ValidationMessage For="() => Form.CodigoContaAgua" /></label>
+        <label class="campo"><span>Concessionária de luz</span><InputText class="input" list="concessionarias-luz" @bind-Value="Form.ConcessionariaLuz" /><ValidationMessage For="() => Form.ConcessionariaLuz" /></label>
+        <label class="campo"><span>Código da conta de luz</span><InputText class="input" @bind-Value="Form.CodigoContaLuz" /><ValidationMessage For="() => Form.CodigoContaLuz" /></label>
+    </div>
+    <datalist id="concessionarias-agua">
+        <option value="SeMAE" /><option value="Sabesp" /><option value="Águas de Mirassol" />
+    </datalist>
+    <datalist id="concessionarias-luz">
+        <option value="CPFL Paulista" /><option value="Elektro (Neoenergia)" /><option value="CPFL Santa Cruz" />
+    </datalist>
     </fieldset>
 
     <fieldset class="secao-form">
@@ -212,6 +230,14 @@
     </div>
 </EditForm>
 
+@* fora do EditForm: formulário dentro de formulário não é válido no HTML *@
+@if (novoTipo)
+{
+    <CadastroRapido Titulo="Novo tipo de imóvel" Placeholder="Ex.: chácara" Maximo="40" Criar="CriarTipo" AoFechar="() => novoTipo = false">
+        <p class="pequeno mudo">O prefixo do código (2 letras) é sugerido pelo nome e pode ser ajustado em Administração → Cadastros.</p>
+    </CadastroRapido>
+}
+
 @code {
     [Parameter, EditorRequired] public ImovelForm Form { get; set; } = default!;
     [Parameter, EditorRequired] public Func<ImovelForm, Task> AoSalvar { get; set; } = default!;
@@ -223,6 +249,16 @@
 
     private IReadOnlyList<Opcao> corretores = [];
     private IReadOnlyList<string> tipos = [];
+    private bool novoTipo;
+
+    /// <summary>"+ Novo": cadastra o tipo, recarrega a lista e já o deixa selecionado.</summary>
+    private async Task CriarTipo(string nome)
+    {
+        var criado = await Cadastros.CriarTipoImovelAsync(Usuario, new TipoImovelForm { Nome = nome });
+        tipos = [.. (await Cadastros.TiposImovelAsync()).Select(t => t.Nome)];
+        Form.Tipo = criado.Nome;
+        novoTipo = false;
+    }
     private string coordenadas = "";
     private string? erroCoordenadas;
     private bool localizando;

@@ -126,6 +126,16 @@ if (args.Contains("localizar-imoveis"))
     return;
 }
 
+// `dotnet Inovabens.Web.dll criar-pasta-financeiro`: cria "07 - Financeiro" na pasta do Drive dos imóveis que ainda não têm.
+if (args.Contains("criar-pasta-financeiro"))
+{
+    using var escopo = app.Services.CreateScope();
+    var (criadas, existentes, falhas) = await escopo.ServiceProvider.GetRequiredService<Inovabens.Core.Imoveis.PastasDriveService>()
+        .CriarPastaFinanceiroExistentesAsync(Console.WriteLine);
+    Console.WriteLine($"Concluído: {criadas} criadas, {existentes} já existiam, {falhas} falhas.");
+    return;
+}
+
 // `dotnet Inovabens.Web.dll importar-imobibrasil [--usuario=email] [--site=https://...] [--sem-fotos]`
 // traz os anúncios ativos do site atual (Imobibrasil); rodar de novo atualiza sem duplicar.
 if (args.Contains("importar-imobibrasil"))

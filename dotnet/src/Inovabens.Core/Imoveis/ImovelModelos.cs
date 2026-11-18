@@ -21,7 +21,11 @@ public sealed record FiltroImoveis
 public sealed record ImovelListaItem(
     Guid Id, string Codigo, string Titulo, string Tipo, SituacaoImovel Situacao, FinalidadeImovel Finalidade,
     string? Cidade, string? Bairro, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, string? CorretorNome,
-    string? CapaUrl = null);
+    string? CapaUrl = null, string? NomeDrive = null)
+{
+    /// <summary>Nome do imóvel na lista: o "Nome do Imóvel" (pasta do Drive) sem o código na frente; sem ele, o título.</summary>
+    public string Nome => RegrasImovel.NomeSemCodigo(Codigo, NomeDrive) ?? Titulo;
+}
 
 /// <summary>Imóvel no mapa: coordenadas (nulas = sem localização) e o resumo do balão.</summary>
 public sealed record ImovelMapaItem(Guid Id, string Codigo, string? Referencia, string Titulo, string Tipo, SituacaoImovel Situacao, string? Bairro,
@@ -73,9 +77,9 @@ public sealed class ImovelForm : IValidatableObject
     [StringLength(200, MinimumLength = 3, ErrorMessage = "O título deve ter de 3 a 200 caracteres.")]
     public string Titulo { get; set; } = "";
 
-    /// <summary>Nome da pasta principal do imóvel no Google Drive.</summary>
-    [Required(ErrorMessage = "Informe o nome da pasta do imóvel no Drive.")]
-    [StringLength(120, MinimumLength = 2, ErrorMessage = "O nome da pasta deve ter de 2 a 120 caracteres.")]
+    /// <summary>"Nome do Imóvel": nome exibido na lista de imóveis e da pasta principal do imóvel no Google Drive.</summary>
+    [Required(ErrorMessage = "Informe o nome do imóvel.")]
+    [StringLength(120, MinimumLength = 2, ErrorMessage = "O nome do imóvel deve ter de 2 a 120 caracteres.")]
     public string NomeDrive { get; set; } = "";
 
     public string? DescricaoPublica { get; set; }
@@ -97,6 +101,11 @@ public sealed class ImovelForm : IValidatableObject
     [StringLength(40)] public string? Matricula { get; set; }
     [StringLength(120)] public string? Cartorio { get; set; }
     [StringLength(40)] public string? InscricaoMunicipal { get; set; }
+
+    [StringLength(120, ErrorMessage = "Até 120 caracteres.")] public string? ConcessionariaAgua { get; set; }
+    [StringLength(60, ErrorMessage = "Até 60 caracteres.")] public string? CodigoContaAgua { get; set; }
+    [StringLength(120, ErrorMessage = "Até 120 caracteres.")] public string? ConcessionariaLuz { get; set; }
+    [StringLength(60, ErrorMessage = "Até 60 caracteres.")] public string? CodigoContaLuz { get; set; }
 
     public decimal? AreaTotalM2 { get; set; }
     public decimal? AreaConstruidaM2 { get; set; }
@@ -180,6 +189,8 @@ public sealed class ImovelForm : IValidatableObject
         Cep = i.Cep, Logradouro = i.Logradouro, Numero = i.Numero, Complemento = i.Complemento, Bairro = i.Bairro, Cidade = i.Cidade, Uf = i.Uf,
         Latitude = i.Latitude, Longitude = i.Longitude, EnderecoPublico = i.EnderecoPublico,
         Matricula = i.Matricula, Cartorio = i.Cartorio, InscricaoMunicipal = i.InscricaoMunicipal,
+        ConcessionariaAgua = i.ConcessionariaAgua, CodigoContaAgua = i.CodigoContaAgua,
+        ConcessionariaLuz = i.ConcessionariaLuz, CodigoContaLuz = i.CodigoContaLuz,
         AreaTotalM2 = i.AreaTotalM2, AreaConstruidaM2 = i.AreaConstruidaM2, AreaUtilM2 = i.AreaUtilM2,
         Quartos = i.Quartos, Suites = i.Suites, Banheiros = i.Banheiros, Vagas = i.Vagas,
         PrecoVenda = i.PrecoVenda, PrecoLocacao = i.PrecoLocacao, DivulgarSite = i.DivulgarSite,
@@ -204,6 +215,8 @@ public sealed class ImovelForm : IValidatableObject
         i.Uf = Texto.Limpo(Uf)?.ToUpperInvariant();
         i.Latitude = Latitude; i.Longitude = Longitude; i.EnderecoPublico = EnderecoPublico;
         i.Matricula = Texto.Limpo(Matricula); i.Cartorio = Texto.Limpo(Cartorio); i.InscricaoMunicipal = Texto.Limpo(InscricaoMunicipal);
+        i.ConcessionariaAgua = Texto.Limpo(ConcessionariaAgua); i.CodigoContaAgua = Texto.Limpo(CodigoContaAgua);
+        i.ConcessionariaLuz = Texto.Limpo(ConcessionariaLuz); i.CodigoContaLuz = Texto.Limpo(CodigoContaLuz);
         i.AreaTotalM2 = AreaTotalM2; i.AreaConstruidaM2 = AreaConstruidaM2; i.AreaUtilM2 = AreaUtilM2;
         i.Quartos = Quartos; i.Suites = Suites; i.Banheiros = Banheiros; i.Vagas = Vagas;
         i.PrecoVenda = PrecoVenda; i.PrecoLocacao = PrecoLocacao; i.DivulgarSite = DivulgarSite;
@@ -259,7 +272,9 @@ public sealed class MidiaAlteracao
 
 public sealed class RegularizacaoForm : IValidatableObject
 {
-    public TipoRegularizacao Tipo { get; set; } = TipoRegularizacao.DOCUMENTACAO;
+    [Required(ErrorMessage = "Selecione o tipo de regularização.")]
+    [StringLength(80)]
+    public string Tipo { get; set; } = "";
     public StatusRegularizacao Status { get; set; } = StatusRegularizacao.NAO_INICIADA;
     public Guid? ProfissionalId { get; set; }
     public DateOnly? PrazoPrevisto { get; set; }

@@ -111,9 +111,10 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
             .ToListAsync();
     }
 
+    /// <summary>Administração ou quem edita o financeiro (pelo "+ Nova" do lançamento); renomear e desativar só na Administração.</summary>
     public async Task<ContaOrcamentaria> CriarContaAsync(UsuarioAtual u, ContaForm form)
     {
-        u.Exigir(P.AdminConfig);
+        if (!u.Pode(P.AdminConfig)) u.Exigir(P.FinanceiroEditar);
         Validacao.Validar(form);
         await using var db = await fabrica.CreateDbContextAsync();
         var nome = form.Nome.Trim();
