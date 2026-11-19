@@ -1,0 +1,143 @@
+@inherits ComponenteBase
+@inject BpoService Servico
+@inject IJSRuntime JS
+
+@* Botão "Cartão BPO" do lançamento: pop-up com os dados para o responsável financeiro do imóvel (copiar para o
+   WhatsApp, abrir a conversa, baixar anexos ou o PDF único) e a marcação "Enviado ao BPO" (auditada).
+   Envio manual enquanto a API da Meta não está configurada; o automático vai gravar a mesma marcação. *@
+
+<button type="button" class="btn-ghost mini @(Enviado ? "btn-bpo-enviado" : "")" title="@(Enviado ? "Cartão BPO (já enviado)" : "Cartão BPO: enviar ao responsável financeiro")"
+        @onclick="Abrir">📤 @(Enviado ? "BPO ✓" : "BPO")</button>
+
+@if (aberto)
+{
+    <Modal Titulo="Cartão BPO" AoFechar="Fechar">
+        @* o pop-up nasce dentro da célula de ações da tabela: o wrapper desfaz o alinhamento à direita e o nowrap *@
+        <div class="cartao-bpo-pop">
+        <MensagemErro Texto="@Erro" />
+        @if (cartao is null)
+        {
+            <p class="carregando">Carregando…</p>
+        }
+        else
+        {
+            var c = cartao;
+            <div class="cartao-bpo">
+                <div class="cartao-bpo-responsavel">
+                    <span class="pequeno mudo">Responsável financeiro</span>
+                    <b>@(c.ResponsavelNome ?? "— não cadastrado —")</b>
+                    <span class="pequeno">
+                        @if (c.ResponsavelWhatsapp is not null) { <span>📱 @c.ResponsavelWhatsapp</span> }
+                        @if (c.ResponsavelEmail is not null) { <span> · ✉️ <a href="mailto:@c.ResponsavelEmail">@c.ResponsavelEmail</a></span> }
+                    </span>
+                </div>
+                <dl class="cartao-bpo-campos">
+                    <dt>Valor</dt>
+                    <dd><b class="@(c.Receita ? "texto-ok" : "texto-erro")">@c.ValorTexto</b> <span class="badge badge-neutro">@c.Tipo</span></dd>
+                    <dt>Descrição</dt>
+                    <dd>@c.Descricao</dd>
+                    <dt>Empreendimento</dt>
+                    <dd>@c.Empreendimento</dd>
+                    <dt>Observação</dt>
+                    <dd>@(c.Observacao ?? "—")</dd>
+                    <dt>Lançamento</dt>
+                    <dd class="pequeno">@c.Numero · @c.Situacao · vencimento @Texto.Data(c.Vencimento)@(c.Liquidacao is { } d ? $" · {(c.Receita ? "recebido" : "pago")} em {Texto.Data(d)}" : "")</dd>
+                    <dt>Anexos</dt>
+                    <dd>
+                        @if (c.Anexos.Count == 0)
+                        {
+                            <span class="mudo">Sem anexos.</span>
+                        }
+                        else
+                        {
+                            <ul class="lista-comprovantes">
+                                @foreach (var a in c.Anexos)
+                                {
+                                    <li><a href="financeiro/comprovantes/@a.Id" target="_blank" rel="noopener" download="@a.Nome">📎 @a.Nome</a></li>
+                                }
+                            </ul>
+                        }
+                    </dd>
+                </dl>
+            </div>
+
+            <div class="acoes-bpo">
+                <a class="btn-primary" href="financeiro/lancamentos/@c.LancamentoId/bpo.pdf" download>⬇ Baixar PDF</a>
+                <button type="button" class="btn-ghost" @onclick="Copiar">📋 Copiar texto</button>
+                @if (c.LinkWhatsapp is { } link)
+                {
+                    <a class="btn-ghost" href="@link" target="_blank" rel="noopener" @onclick="() => perguntar = c.EnviadoEm is null">💬 Abrir conversa</a>
+                }
+            </div>
+            <p class="pequeno mudo">PDF único: o cartão e os comprovantes (imagens e PDFs) num arquivo só, para anexar na conversa.</p>
+            @if (c.LinkWhatsapp is null)
+            {
+                <p class="pequeno texto-erro">Sem WhatsApp válido do responsável: cadastre no imóvel (Dados → Financeiro/BPO).</p>
+            }
+
+            @if (perguntar)
+            {
+                <div class="aviso-whatsapp">
+                    Mandou a mensagem e o PDF? <button type="button" class="btn-primary mini" disabled="@Ocupado" @onclick="() => Marcar(true)">Marcar como enviado</button>
+                    <button type="button" class="btn-ghost mini" @onclick="() => perguntar = false">Ainda não</button>
+                </div>
+            }
+
+            <label class="check espaco-topo">
+                <input type="checkbox" checked="@(c.EnviadoEm is not null)" disabled="@Ocupado" @onchange="e => Marcar((bool)e.Value!)" />
+                Enviado ao BPO
+            </label>
+            <SeloBpo EnviadoEm="c.EnviadoEm" Por="@c.EnviadoPor" />
+            @if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+        }
+        </div>
+    </Modal>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid LancamentoId { get; set; }
+    /// <summary>Só muda a aparência do botão (a lista já sabe se foi enviado).</summary>
+    [Parameter] public bool Enviado { get; set; }
+    /// <summary>Depois de marcar/desmarcar o envio: a lista recarrega (selo e filtro "Não enviados").</summary>
+    [Parameter] public EventCallback AoAlterar { get; set; }
+
+    private bool aberto, perguntar;
+    private CartaoBpo? cartao;
+
+    private async Task Abrir()
+    {
+        aberto = true;
+        perguntar = false;
+        cartao = null;
+        await Executar(async () => cartao = await Servico.CartaoAsync(Usuario, LancamentoId));
+    }
+
+    private void Fechar() => aberto = false;
+
+    private async Task Copiar()
+    {
+        if (cartao is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", cartao.TextoWhatsapp);
+            Sucesso = "Texto copiado: cole no WhatsApp e anexe o PDF.";
+        }
+        catch (JSException)
+        {
+            Erro = "O navegador bloqueou a cópia. Selecione o texto e copie manualmente.";
+        }
+    }
+
+    private async Task Marcar(bool enviado)
+    {
+        var ok = await Executar(async () =>
+        {
+            await Servico.MarcarEnviadoAsync(Usuario, LancamentoId, enviado);
+            cartao = await Servico.CartaoAsync(Usuario, LancamentoId);
+        });
+        if (!ok) return;
+        perguntar = false;
+        Sucesso = enviado ? "Marcado como enviado ao BPO." : "Marcação de envio removida.";
+        await AoAlterar.InvokeAsync();
+    }
+}

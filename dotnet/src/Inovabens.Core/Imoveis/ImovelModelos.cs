@@ -107,6 +107,11 @@ public sealed class ImovelForm : IValidatableObject
     [StringLength(120, ErrorMessage = "Até 120 caracteres.")] public string? ConcessionariaLuz { get; set; }
     [StringLength(60, ErrorMessage = "Até 60 caracteres.")] public string? CodigoContaLuz { get; set; }
 
+    /// <summary>Financeiro/BPO: responsável financeiro que recebe os lançamentos.</summary>
+    [StringLength(200, ErrorMessage = "Até 200 caracteres.")] public string? BpoNome { get; set; }
+    [StringLength(30)] public string? BpoWhatsapp { get; set; }
+    [StringLength(200, ErrorMessage = "Até 200 caracteres.")] public string? BpoEmail { get; set; }
+
     public decimal? AreaTotalM2 { get; set; }
     public decimal? AreaConstruidaM2 { get; set; }
     public decimal? AreaUtilM2 { get; set; }
@@ -146,6 +151,12 @@ public sealed class ImovelForm : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {
+        if (Texto.Limpo(BpoEmail) is { } e && !Formatos.Email().IsMatch(e))
+            yield return new ValidationResult("E-mail inválido.", [nameof(BpoEmail)]);
+        if (Formatos.TelefoneDigitos(BpoWhatsapp) is { } w && !Formatos.TelefoneValido(w))
+            yield return new ValidationResult("WhatsApp com DDD: (11) 98765-4321.", [nameof(BpoWhatsapp)]);
+        if ((Texto.Limpo(BpoWhatsapp) is not null || Texto.Limpo(BpoEmail) is not null) && Texto.Limpo(BpoNome) is null)
+            yield return new ValidationResult("Informe o nome do responsável financeiro.", [nameof(BpoNome)]);
         if (Texto.Limpo(VideoUrl) is { } v && RegrasImovel.IdYoutube(v) is null)
             yield return new ValidationResult("Cole o link de um vídeo do YouTube.", [nameof(VideoUrl)]);
         foreach (var (nome, valor) in new (string, decimal?)[]
@@ -191,6 +202,7 @@ public sealed class ImovelForm : IValidatableObject
         Matricula = i.Matricula, Cartorio = i.Cartorio, InscricaoMunicipal = i.InscricaoMunicipal,
         ConcessionariaAgua = i.ConcessionariaAgua, CodigoContaAgua = i.CodigoContaAgua,
         ConcessionariaLuz = i.ConcessionariaLuz, CodigoContaLuz = i.CodigoContaLuz,
+        BpoNome = i.BpoNome, BpoWhatsapp = i.BpoWhatsapp, BpoEmail = i.BpoEmail,
         AreaTotalM2 = i.AreaTotalM2, AreaConstruidaM2 = i.AreaConstruidaM2, AreaUtilM2 = i.AreaUtilM2,
         Quartos = i.Quartos, Suites = i.Suites, Banheiros = i.Banheiros, Vagas = i.Vagas,
         PrecoVenda = i.PrecoVenda, PrecoLocacao = i.PrecoLocacao, DivulgarSite = i.DivulgarSite,
@@ -217,6 +229,9 @@ public sealed class ImovelForm : IValidatableObject
         i.Matricula = Texto.Limpo(Matricula); i.Cartorio = Texto.Limpo(Cartorio); i.InscricaoMunicipal = Texto.Limpo(InscricaoMunicipal);
         i.ConcessionariaAgua = Texto.Limpo(ConcessionariaAgua); i.CodigoContaAgua = Texto.Limpo(CodigoContaAgua);
         i.ConcessionariaLuz = Texto.Limpo(ConcessionariaLuz); i.CodigoContaLuz = Texto.Limpo(CodigoContaLuz);
+        i.BpoNome = Texto.Limpo(BpoNome);
+        i.BpoWhatsapp = Formatos.TelefoneDigitos(BpoWhatsapp) is { } w ? Formatos.TelefoneFormatado(w) : null;
+        i.BpoEmail = Texto.Limpo(BpoEmail)?.ToLowerInvariant();
         i.AreaTotalM2 = AreaTotalM2; i.AreaConstruidaM2 = AreaConstruidaM2; i.AreaUtilM2 = AreaUtilM2;
         i.Quartos = Quartos; i.Suites = Suites; i.Banheiros = Banheiros; i.Vagas = Vagas;
         i.PrecoVenda = PrecoVenda; i.PrecoLocacao = PrecoLocacao; i.DivulgarSite = DivulgarSite;

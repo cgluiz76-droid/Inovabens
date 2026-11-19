@@ -161,7 +161,7 @@ public class FinanceiroIntegracaoTests
     {
         var servicos = new ServiceCollection();
         foreach (var t in new[] { typeof(AquisicaoService), typeof(LancamentosFinanceirosService), typeof(FechamentoService), typeof(IndicesService),
-                     typeof(RetornoService), typeof(ComprovantesService), typeof(OpcoesService) })
+                     typeof(RetornoService), typeof(ComprovantesService), typeof(BpoService), typeof(OpcoesService) })
             servicos.AddSingleton(t, sp.GetRequiredService(t));
         servicos.AddSingleton(sp.GetRequiredService<ILoggerFactory>());
         servicos.AddSingleton<IJSRuntime, SemJs>();

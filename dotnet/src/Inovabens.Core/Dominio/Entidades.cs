@@ -38,6 +38,10 @@ public class Imovel
     public string? CodigoContaAgua { get; set; }
     public string? ConcessionariaLuz { get; set; }
     public string? CodigoContaLuz { get; set; }
+    /// <summary>Financeiro/BPO: responsável que recebe os lançamentos (cartão no WhatsApp) — ver <c>BpoService</c>.</summary>
+    public string? BpoNome { get; set; }
+    public string? BpoWhatsapp { get; set; }
+    public string? BpoEmail { get; set; }
     public decimal? AreaTotalM2 { get; set; }
     public decimal? AreaConstruidaM2 { get; set; }
     public decimal? AreaUtilM2 { get; set; }

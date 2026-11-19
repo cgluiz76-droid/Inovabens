@@ -33,6 +33,9 @@ public sealed class FiltroLancamentos
     /// <summary>Situação dos títulos. Aberto, em atraso e previsto nunca entram no saldo real: com eles o extrato é sempre projetado.</summary>
     public FiltroSituacao Situacao { get; set; } = FiltroSituacao.TODAS;
 
+    /// <summary>Só os lançamentos ainda não enviados ao responsável financeiro (BPO); previstos não contam (ainda não existem).</summary>
+    public bool NaoEnviadosBpo { get; set; }
+
     /// <summary>A situação escolhida só existe no saldo projetado.</summary>
     public bool SituacaoExigeProjetado => Situacao is FiltroSituacao.ABERTO or FiltroSituacao.EM_ATRASO or FiltroSituacao.PREVISTO;
 
@@ -51,12 +54,12 @@ public sealed class FiltroLancamentos
 /// </summary>
 public sealed record LinhaLancamento(
     Guid Id, string Numero, SituacaoLancamento Situacao, DateOnly Data, DateOnly Vencimento, string Descricao, string Conta, string? Observacao,
-    decimal Valor, decimal Saldo, bool Recorrente, bool DeRecorrencia, string? Pessoa = null);
+    decimal Valor, decimal Saldo, bool Recorrente, bool DeRecorrencia, string? Pessoa = null, DateTime? BpoEnviadoEm = null);
 
 /// <summary>Título ABERTO (a pagar/receber) ou PREVISTO (recorrência): fora do saldo até ser liquidado.</summary>
 public sealed record TituloPendente(
     Guid Id, string Numero, SituacaoLancamento Situacao, DateOnly Vencimento, string Descricao, string Conta, decimal Valor, int DiasAtraso,
-    bool Recorrente, string? Pessoa = null)
+    bool Recorrente, string? Pessoa = null, DateTime? BpoEnviadoEm = null)
 {
     public bool Atrasado => DiasAtraso > 0;
 }
@@ -172,12 +175,13 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
             .Select(l => new
             {
                 l.Id, l.Numero, l.Situacao, l.Data, l.DataLiquidacao, l.Valor, l.Descricao, l.ContaId, Conta = l.Conta!.Nome, l.Observacao,
-                l.Recorrente, l.OrigemId, l.PessoaNome,
+                l.Recorrente, l.OrigemId, l.PessoaNome, l.BpoEnviadoEm,
             })
             .ToListAsync();
 
-        bool Passa(SituacaoLancamento situacao, DateOnly vencimento, decimal valor, Guid conta, params string?[] campos) =>
-            (f.Tipo != TipoExtrato.RECEITAS || valor > 0) && (f.Tipo != TipoExtrato.DESPESAS || valor < 0)
+        bool Passa(SituacaoLancamento situacao, DateOnly vencimento, decimal valor, Guid conta, DateTime? bpo, params string?[] campos) =>
+            (!f.NaoEnviadosBpo || (bpo is null && situacao != SituacaoLancamento.PREVISTO))
+            && (f.Tipo != TipoExtrato.RECEITAS || valor > 0) && (f.Tipo != TipoExtrato.DESPESAS || valor < 0)
             && (f.ContaId is null || conta == f.ContaId) && ContemBusca(f.Busca, campos)
             && f.Situacao switch
             {
@@ -192,7 +196,7 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
         var noSaldo = todos.Where(l => l.Situacao == SituacaoLancamento.LIQUIDADO || f.Projetado)
             .Select(l => new { L = l, Quando = l.Situacao == SituacaoLancamento.LIQUIDADO ? l.DataLiquidacao ?? l.Data : l.Data })
             .OrderBy(x => x.Quando).ThenBy(x => x.L.Situacao).ThenBy(x => x.L.Numero).ToList();
-        var filtrados = noSaldo.Where(x => Passa(x.L.Situacao, x.L.Data, x.L.Valor, x.L.ContaId, x.L.Descricao, x.L.Conta, x.L.Observacao, x.L.PessoaNome, FormatarNumero(codigo, x.L.Numero))).ToList();
+        var filtrados = noSaldo.Where(x => Passa(x.L.Situacao, x.L.Data, x.L.Valor, x.L.ContaId, x.L.BpoEnviadoEm, x.L.Descricao, x.L.Conta, x.L.Observacao, x.L.PessoaNome, FormatarNumero(codigo, x.L.Numero))).ToList();
         var saldoAnterior = f.De is { } de ? filtrados.Where(x => x.Quando < de).Sum(x => x.L.Valor) : 0;
 
         var saldo = saldoAnterior;
@@ -201,16 +205,16 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
         {
             saldo += x.L.Valor;
             linhas.Add(new LinhaLancamento(x.L.Id, FormatarNumero(codigo, x.L.Numero), x.L.Situacao, x.Quando, x.L.Data, x.L.Descricao, x.L.Conta, x.L.Observacao,
-                x.L.Valor, saldo, x.L.Recorrente, x.L.OrigemId is not null, x.L.PessoaNome));
+                x.L.Valor, saldo, x.L.Recorrente, x.L.OrigemId is not null, x.L.PessoaNome, x.L.BpoEnviadoEm));
         }
 
         // pendentes do período e, além deles, os já atrasados de antes do início (não podem sumir da tela)
         bool Pendente(DateOnly venc) => (f.Ate is null || venc <= f.Ate) && (f.De is null || venc >= f.De || venc < hoje);
         List<TituloPendente> Lista(SituacaoLancamento s) => todos
-            .Where(l => l.Situacao == s && Pendente(l.Data) && Passa(l.Situacao, l.Data, l.Valor, l.ContaId, l.Descricao, l.Conta, l.Observacao, l.PessoaNome, FormatarNumero(codigo, l.Numero)))
+            .Where(l => l.Situacao == s && Pendente(l.Data) && Passa(l.Situacao, l.Data, l.Valor, l.ContaId, l.BpoEnviadoEm, l.Descricao, l.Conta, l.Observacao, l.PessoaNome, FormatarNumero(codigo, l.Numero)))
             .OrderBy(l => l.Data).ThenBy(l => l.Descricao)
             .Select(l => new TituloPendente(l.Id, FormatarNumero(codigo, l.Numero), l.Situacao, l.Data, l.Descricao, l.Conta, l.Valor,
-                Math.Max(0, hoje.DayNumber - l.Data.DayNumber), l.Recorrente, l.PessoaNome))
+                Math.Max(0, hoje.DayNumber - l.Data.DayNumber), l.Recorrente, l.PessoaNome, l.BpoEnviadoEm))
             .ToList();
         var abertos = Lista(SituacaoLancamento.ABERTO);
         var previstos = Lista(SituacaoLancamento.PREVISTO);

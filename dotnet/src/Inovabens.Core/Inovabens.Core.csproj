@@ -15,6 +15,7 @@
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Otp.NET" Version="1.4.1" />
+    <PackageReference Include="PDFsharp" Version="6.1.1" />
     <PackageReference Include="QuestPDF" Version="2026.9.1" />
     <PackageReference Include="SkiaSharp" Version="4.153.2" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.2" />

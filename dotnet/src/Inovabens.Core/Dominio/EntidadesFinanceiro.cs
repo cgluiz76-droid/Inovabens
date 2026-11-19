@@ -88,6 +88,9 @@ public class LancamentoFinanceiro
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
     public DateTime? ExcluidoEm { get; set; }
+    /// <summary>Quando e por quem o lançamento foi enviado ao responsável financeiro (BPO) do imóvel.</summary>
+    public DateTime? BpoEnviadoEm { get; set; }
+    public Guid? BpoEnviadoPor { get; set; }
     [JsonIgnore] public ContaOrcamentaria? Conta { get; set; }
     [JsonIgnore] public Imovel? Imovel { get; set; }
 

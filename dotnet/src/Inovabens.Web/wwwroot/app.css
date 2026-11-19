@@ -640,6 +640,19 @@ tr.cancelado td { color: var(--mudo); text-decoration: line-through; }
 /* lead do WhatsApp sem imóvel vinculado */
 .cartao-lead.vincular { border-left: 3px solid var(--ok); }
 .aviso-vinculo { color: var(--ok); font-weight: 600; }
+/* Cartão BPO (lançamento → responsável financeiro) */
+.selo-bpo { display: inline-block; margin-top: var(--e-1); font-size: .75rem; color: var(--ok); background: var(--ok-fundo); border: 1px solid var(--ok-borda); border-radius: 999px; padding: 0 var(--e-2); }
+.btn-bpo-enviado { color: var(--ok); }
+.cartao-bpo-pop { text-align: left; white-space: normal; }
+.cartao-bpo { border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; }
+.cartao-bpo-responsavel { display: flex; flex-direction: column; gap: 2px; padding: var(--e-3) var(--e-4); background: var(--ok-fundo); border-bottom: 1px solid var(--ok-borda); }
+.cartao-bpo-responsavel b { font-size: 1.1rem; }
+.cartao-bpo-campos { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--e-2) var(--e-4); margin: 0; padding: var(--e-3) var(--e-4); }
+.cartao-bpo-campos dt { color: var(--mudo); font-size: var(--t-sm); }
+.cartao-bpo-campos dd { margin: 0; overflow-wrap: anywhere; }
+.cartao-bpo-campos .lista-comprovantes { margin: 0; padding: 0; list-style: none; }
+.acoes-bpo { display: flex; flex-wrap: wrap; gap: var(--e-2); margin-top: var(--e-4); }
+@media (max-width: 600px) { .cartao-bpo-campos { grid-template-columns: 1fr; gap: 0 0; } .cartao-bpo-campos dd { margin-bottom: var(--e-2); } }
 .aviso-whatsapp { background: var(--ok-fundo); border: 1px solid var(--ok-borda); border-left: 3px solid var(--ok); border-radius: var(--raio-p); padding: var(--e-3) var(--e-4); margin: var(--e-2) 0 var(--e-4); }
 .aviso-whatsapp p { margin: var(--e-1) 0; }
 .cartao-lead select { width: 100%; margin-top: var(--e-2); }

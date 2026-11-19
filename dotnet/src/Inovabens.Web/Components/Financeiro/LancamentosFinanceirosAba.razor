@@ -1,6 +1,7 @@
 @inherits ComponenteBase
 @inject LancamentosFinanceirosService Servico
 @inject ComprovantesService Comprovantes
+@inject BpoService Bpo
 @inject OpcoesService Opcoes
 
 @* Aba "Lançamentos Financeiros" do imóvel: títulos a receber (+) e a pagar (−) correntes. Situação: previsto (recorrência)
@@ -62,6 +63,12 @@
                 }
             </select>
         </label>
+        @if (temBpo)
+        {
+            <label class="check campo-inline" title="Só os lançamentos que ainda não foram mandados ao responsável financeiro">
+                <input type="checkbox" @bind="filtro.NaoEnviadosBpo" @bind:after="Carregar" /> Não enviados ao BPO
+            </label>
+        }
         <label class="campo-inline"><span>Buscar</span><input class="input" placeholder="nº, descrição, conta ou observação" @bind="filtro.Busca" /></label>
         <button type="submit" class="btn-primary" disabled="@Ocupado">Filtrar</button>
         <span class="atalhos-periodo">
@@ -138,6 +145,7 @@
                                 @if (l.Situacao == SituacaoLancamento.LIQUIDADO && l.Vencimento != l.Data) { <p class="pequeno mudo">vencimento @Texto.Data(l.Vencimento)</p> }
                                 @if (l.Pessoa is not null) { <p class="pequeno">👤 @l.Pessoa</p> }
                                 @if (l.Observacao is not null) { <p class="pequeno mudo">@l.Observacao</p> }
+                                <SeloBpo EnviadoEm="l.BpoEnviadoEm" />
                             </td>
                             <td>@l.Conta</td>
                             <td class="num @(l.Valor < 0 ? "texto-erro" : "texto-ok")">@Sinal(l.Valor)</td>
@@ -147,6 +155,7 @@
                                 {
                                     <ComprovantesAnexos LancamentoId="l.Id" Quantidade="@contagem.GetValueOrDefault(l.Id)"
                                                         Titulo="@($"{l.Numero} {l.Descricao}")" AoAlterar="CarregarContagem" />
+                                    @if (temBpo) { <CartaoBpoBotao LancamentoId="l.Id" Enviado="l.BpoEnviadoEm is not null" AoAlterar="Carregar" /> }
                                     @if (PodeEditar)
                                     {
                                         <button class="btn-ghost mini" title="Editar" aria-label="Editar" disabled="@Ocupado" @onclick="() => Editar(l.Id)"><Icone Nome="lapis" /></button>
@@ -185,7 +194,7 @@
                             <tr>
                                 <td class="nowrap mudo">@a.Numero</td>
                                 <td>@Texto.Data(a.Vencimento)</td>
-                                <td><b>@a.Descricao</b>@if (a.Recorrente) { <span class="badge badge-neutro">↻ recorrente</span> }@if (a.Pessoa is not null) { <p class="pequeno">👤 @a.Pessoa</p> }</td>
+                                <td><b>@a.Descricao</b>@if (a.Recorrente) { <span class="badge badge-neutro">↻ recorrente</span> }@if (a.Pessoa is not null) { <p class="pequeno">👤 @a.Pessoa</p> }<SeloBpo EnviadoEm="a.BpoEnviadoEm" /></td>
                                 <td>@a.Conta</td>
                                 <td>
                                     @if (a.Atrasado) { <span class="badge status-NAO_PAGO">Em atraso · @a.DiasAtraso dia(s)</span> }
@@ -195,6 +204,7 @@
                                 <td class="acoes-linha">
                                     <ComprovantesAnexos LancamentoId="a.Id" Quantidade="@contagem.GetValueOrDefault(a.Id)"
                                                         Titulo="@($"{a.Numero} {a.Descricao}")" AoAlterar="CarregarContagem" />
+                                    @if (temBpo && a.Situacao != SituacaoLancamento.PREVISTO) { <CartaoBpoBotao LancamentoId="a.Id" Enviado="a.BpoEnviadoEm is not null" AoAlterar="Carregar" /> }
                                     @if (PodeEditar)
                                     {
                                         <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => AbrirLiquidacao(a)">@(a.Valor < 0 ? "Pagar" : "Receber")</button>
@@ -553,6 +563,7 @@
             if (Texto.Limpo(filtro.Busca) is { } b) partes.Add($"busca={Uri.EscapeDataString(b)}");
             if (filtro.Projetado) partes.Add("projetado=true");
             if (filtro.Situacao != FiltroSituacao.TODAS) partes.Add($"situacao={filtro.Situacao}");
+            if (filtro.NaoEnviadosBpo) partes.Add("naoEnviadosBpo=true");
             return partes.Count == 0 ? "" : "?" + string.Join("&", partes);
         }
     }
@@ -579,7 +590,11 @@
     {
         ex = await Servico.ExtratoAsync(Usuario, ImovelId, filtro);
         contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId);
+        temBpo = await Bpo.TemResponsavelAsync(Usuario, ImovelId);
     });
+
+    /// <summary>O imóvel tem responsável financeiro (BPO): mostra o botão do cartão e o filtro "Não enviados".</summary>
+    private bool temBpo;
 
     private async Task CarregarContagem() => await Executar(async () => contagem = await Comprovantes.ContagemAsync(Usuario, ImovelId));
 

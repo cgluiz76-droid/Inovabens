@@ -8,6 +8,7 @@ using Inovabens.Core.Pessoas;
 using Inovabens.Core.Relatorios;
 using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Fluent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -401,5 +402,84 @@ public class ExtratoComprovantesTests : IAsyncLifetime
     {
         await using var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync();
         return await db.ComprovantesFinanceiros.Where(c => c.Id == comprovante).Select(c => c.ArquivoChave).SingleAsync();
+    }
+    [Fact]
+    public async Task Cartao_BPO_monta_texto_PDF_unico_e_marca_envio_auditado()
+    {
+        var (admin, id, _) = await Cenario();
+        var imoveis = S<ImoveisService>();
+        var bpo = S<BpoService>();
+        var lanc = S<LancamentosFinanceirosService>();
+
+        // sem responsável: não há cartão na tela; responsável pede nome quando há WhatsApp/e-mail
+        Assert.False(await bpo.TemResponsavelAsync(admin, id));
+        var form = (await imoveis.DetalheAsync(admin, id)).Dados;
+        var f = ImovelForm.De(form);
+        f.BpoWhatsapp = "17991234567";
+        Assert.Contains(f.Validate(new(f)), v => v.MemberNames.Contains(nameof(ImovelForm.BpoNome)));
+        f.BpoNome = "Escritório BPO"; f.BpoEmail = "BPO@Exemplo.com.br";
+        await imoveis.AtualizarAsync(admin, id, f);
+        Assert.True(await bpo.TemResponsavelAsync(admin, id));
+
+        var despesa = await lanc.CriarAsync(admin, id, Despesa(D(2026, 11, 10), 350.5m, "Condomínio nov", await Conta("Condomínio")) );
+        var c = await bpo.CartaoAsync(admin, despesa);
+        Assert.Equal("Escritório BPO", c.ResponsavelNome);
+        Assert.Equal("bpo@exemplo.com.br", c.ResponsavelEmail);
+        Assert.False(c.Receita);
+        Assert.Contains("*Valor:* R$", c.TextoWhatsapp);
+        Assert.Contains("350,50", c.TextoWhatsapp);
+        Assert.Contains("Condomínio nov", c.TextoWhatsapp);
+        Assert.StartsWith("https://wa.me/5517991234567?text=", c.LinkWhatsapp);
+
+        // PDF único: só o cartão, depois com imagem + PDF válidos + um PDF quebrado (listado, sem derrubar)
+        var soCartao = await bpo.PdfAsync(admin, despesa);
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(soCartao.Conteudo, 0, 4));
+        var comprovantes = S<ComprovantesService>();
+        var foto = Imagens.Gerar(800, 600);
+        await comprovantes.EnviarAsync(admin, despesa, new MemoryStream(foto), "boleto.jpg", "image/jpeg", foto.Length);
+        var pdf = Document.Create(d => d.Page(pg => pg.Content().Text("comprovante de pagamento"))).GeneratePdf();
+        await comprovantes.EnviarAsync(admin, despesa, new MemoryStream(pdf), "pagamento.pdf", "application/pdf", pdf.Length);
+        await comprovantes.EnviarAsync(admin, despesa, new MemoryStream([1, 2, 3]), "quebrado.pdf", "application/pdf", 3);
+        // A3 deitado: entra reduzido para A4 deitado
+        var a3 = Document.Create(d => d.Page(pg => { pg.Size(new QuestPDF.Helpers.PageSize(1190.55f, 841.89f)); pg.Content().Text("planta A3"); })).GeneratePdf();
+        await comprovantes.EnviarAsync(admin, despesa, new MemoryStream(a3), "planta.pdf", "application/pdf", a3.Length);
+        var unico = await bpo.PdfAsync(admin, despesa);
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(unico.Conteudo, 0, 4));
+        Assert.Equal(4, (await bpo.CartaoAsync(admin, despesa)).Anexos.Count);
+        using (var lido = PdfSharp.Pdf.IO.PdfReader.Open(new MemoryStream(unico.Conteudo), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
+        {
+            Assert.Equal(4, lido.PageCount); // cartão + imagem + PDF + A3 (o quebrado fica só listado)
+            foreach (var pg in lido.Pages)
+            {
+                var (w, h) = BpoService.TamanhoVisivel(pg);
+                Assert.True(BpoService.CabeEmA4(w, h), $"página {w}x{h} maior que A4");
+            }
+            var ultima = BpoService.TamanhoVisivel(lido.Pages[3]);
+            Assert.True(ultima.Largura > ultima.Altura, "A3 deitado continua deitado");
+        }
+
+        // observação enorme: o cartão continua numa página só
+        await using (var db0 = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+            await db0.LancamentosFinanceiros.Where(l => l.Id == despesa)
+                .ExecuteUpdateAsync(x => x.SetProperty(l => l.Observacao, string.Join(" ", Enumerable.Repeat("observação longa do lançamento", 400))));
+        await using (var db1 = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+            await db1.ComprovantesFinanceiros.Where(x => x.LancamentoId == despesa).ExecuteDeleteAsync();
+        using (var lido = PdfSharp.Pdf.IO.PdfReader.Open(new MemoryStream((await bpo.PdfAsync(admin, despesa)).Conteudo), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
+            Assert.Equal(1, lido.PageCount);
+
+        // filtro "Não enviados" e marcação (com quem e quando, auditada)
+        var filtro = new FiltroLancamentos { De = D(2026, 11, 1), Ate = D(2026, 11, 30), Projetado = true, NaoEnviadosBpo = true };
+        Assert.Single((await lanc.ExtratoAsync(admin, id, filtro)).Abertos);
+        await bpo.MarcarEnviadoAsync(admin, despesa, true);
+        c = await bpo.CartaoAsync(admin, despesa);
+        Assert.NotNull(c.EnviadoEm);
+        Assert.Equal(admin.Nome, c.EnviadoPor);
+        Assert.Empty((await lanc.ExtratoAsync(admin, id, filtro)).Abertos);
+        filtro.NaoEnviadosBpo = false;
+        Assert.NotNull((await lanc.ExtratoAsync(admin, id, filtro)).Abertos.Single().BpoEnviadoEm);
+        await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+            Assert.True(await db.AuditLog.AnyAsync(a => a.EntidadeId == despesa && a.Acao == "BPO_ENVIADO"));
+        await bpo.MarcarEnviadoAsync(admin, despesa, false);
+        Assert.Null((await bpo.CartaoAsync(admin, despesa)).EnviadoEm);
     }
 }

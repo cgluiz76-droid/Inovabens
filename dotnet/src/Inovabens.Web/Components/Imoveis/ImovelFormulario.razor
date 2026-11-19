@@ -140,6 +140,16 @@
     </fieldset>
 
     <fieldset class="secao-form">
+    <legend>Financeiro/BPO</legend>
+    <p class="pequeno mudo">Responsável financeiro do imóvel: recebe o cartão de cada receita/despesa (WhatsApp ou PDF) na aba Financeiro.</p>
+    <div class="grade-3">
+        <label class="campo"><span>Nome</span><InputText class="input" @bind-Value="Form.BpoNome" /><ValidationMessage For="() => Form.BpoNome" /></label>
+        <label class="campo"><span>WhatsApp</span><InputText class="input" type="tel" placeholder="(17) 98765-4321" @bind-Value="Form.BpoWhatsapp" /><ValidationMessage For="() => Form.BpoWhatsapp" /></label>
+        <label class="campo"><span>E-mail</span><InputText class="input" type="email" @bind-Value="Form.BpoEmail" /><ValidationMessage For="() => Form.BpoEmail" /></label>
+    </div>
+    </fieldset>
+
+    <fieldset class="secao-form">
     <legend>Áreas e cômodos</legend>
     <div class="grade-4">
         <label class="campo"><span>Área total (m²)</span><InputNumber class="input" step="0.01" @bind-Value="Form.AreaTotalM2" /><ValidationMessage For="() => Form.AreaTotalM2" /></label>

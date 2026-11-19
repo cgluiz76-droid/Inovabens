@@ -340,12 +340,12 @@ async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, T
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
 }
 imovel.MapGet("site", FichaSite).RequireAuthorization(Permissoes.ImoveisVer);
-// Extrato dos Lançamentos Financeiros com os mesmos filtros da tela: ?de=AAAA-MM-DD&ate=AAAA-MM-DD&tipo=RECEITAS|DESPESAS&conta=<id>&busca=texto&projetado=true
-imovel.MapGet("extrato.pdf", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato? tipo, Guid? conta, string? busca, bool? projetado, FiltroSituacao? situacao, HttpContext c, RelatoriosService r) =>
-    Baixar(c, u => r.ExtratoPdfAsync(u, id, new FiltroLancamentos { De = de, Ate = ate, Tipo = tipo ?? TipoExtrato.TODOS, ContaId = conta, Busca = busca, Projetado = projetado == true, Situacao = situacao ?? FiltroSituacao.TODAS })))
+// Extrato dos Lançamentos Financeiros com os mesmos filtros da tela: ?de=AAAA-MM-DD&ate=AAAA-MM-DD&tipo=RECEITAS|DESPESAS&conta=<id>&busca=texto&projetado=true&naoEnviadosBpo=true
+imovel.MapGet("extrato.pdf", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato? tipo, Guid? conta, string? busca, bool? projetado, FiltroSituacao? situacao, bool? naoEnviadosBpo, HttpContext c, RelatoriosService r) =>
+    Baixar(c, u => r.ExtratoPdfAsync(u, id, new FiltroLancamentos { De = de, Ate = ate, Tipo = tipo ?? TipoExtrato.TODOS, ContaId = conta, Busca = busca, Projetado = projetado == true, Situacao = situacao ?? FiltroSituacao.TODAS, NaoEnviadosBpo = naoEnviadosBpo == true })))
     .RequireAuthorization(Permissoes.FinanceiroExportar);
-imovel.MapGet("extrato.xlsx", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato? tipo, Guid? conta, string? busca, bool? projetado, FiltroSituacao? situacao, HttpContext c, RelatoriosService r) =>
-    Baixar(c, u => r.ExtratoXlsxAsync(u, id, new FiltroLancamentos { De = de, Ate = ate, Tipo = tipo ?? TipoExtrato.TODOS, ContaId = conta, Busca = busca, Projetado = projetado == true, Situacao = situacao ?? FiltroSituacao.TODAS })))
+imovel.MapGet("extrato.xlsx", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato? tipo, Guid? conta, string? busca, bool? projetado, FiltroSituacao? situacao, bool? naoEnviadosBpo, HttpContext c, RelatoriosService r) =>
+    Baixar(c, u => r.ExtratoXlsxAsync(u, id, new FiltroLancamentos { De = de, Ate = ate, Tipo = tipo ?? TipoExtrato.TODOS, ContaId = conta, Busca = busca, Projetado = projetado == true, Situacao = situacao ?? FiltroSituacao.TODAS, NaoEnviadosBpo = naoEnviadosBpo == true })))
     .RequireAuthorization(Permissoes.FinanceiroExportar);
 
 // Documento da proposta: PDF padrão ou modelo Word preenchido (?modelo=<id>); e o arquivo original de um modelo (admin)
@@ -437,6 +437,10 @@ app.MapGet("/financeiro/comprovantes/{id:guid}", async (Guid id, HttpContext c, 
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
 }).RequireAuthorization(Permissoes.FinanceiroEditar);
+
+// Cartão BPO em PDF único (cartão + comprovantes juntados) para mandar ao responsável financeiro do imóvel.
+app.MapGet("/financeiro/lancamentos/{id:guid}/bpo.pdf", (Guid id, HttpContext c, BpoService s) =>
+    Baixar(c, u => s.PdfAsync(u, id, c.RequestAborted))).RequireAuthorization(Permissoes.FinanceiroEditar);
 
 // Google Agenda: mesmos caminhos da API Node, para não mudar a configuração no Google Cloud Console.
 app.MapGet("/api/v1/integracoes/google/callback", async (string? code, string? state, string? error, GoogleService g, ILogger<Program> log) =>

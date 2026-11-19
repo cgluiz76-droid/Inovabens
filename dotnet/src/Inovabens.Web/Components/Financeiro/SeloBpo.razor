@@ -1,0 +1,10 @@
+@* Selo "Enviado ao BPO" na linha do lançamento (data/hora de Brasília). Quem enviou aparece no cartão. *@
+@if (EnviadoEm is { } quando)
+{
+    <span class="selo-bpo" title="Enviado ao responsável financeiro (BPO)">📤 Enviado ao BPO em @DatasBR.DeUtc(quando).ToString("dd/MM HH:mm")@(Por is null ? "" : $" por {Por}")</span>
+}
+
+@code {
+    [Parameter] public DateTime? EnviadoEm { get; set; }
+    [Parameter] public string? Por { get; set; }
+}

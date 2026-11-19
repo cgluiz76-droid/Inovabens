@@ -51,6 +51,7 @@ public static class Registro
         services.AddScoped<LancamentosFinanceirosService>();
         services.AddScoped<FechamentoService>();
         services.AddScoped<ComprovantesService>();
+        services.AddScoped<BpoService>();
         services.AddScoped<IndicesService>();
         services.AddScoped(s => new TaxasFinanciamentoService(
             s.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<InovabensDb>>(),
