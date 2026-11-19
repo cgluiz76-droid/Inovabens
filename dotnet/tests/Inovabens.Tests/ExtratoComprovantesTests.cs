@@ -440,32 +440,26 @@ public class ExtratoComprovantesTests : IAsyncLifetime
         var pdf = Document.Create(d => d.Page(pg => pg.Content().Text("comprovante de pagamento"))).GeneratePdf();
         await comprovantes.EnviarAsync(admin, despesa, new MemoryStream(pdf), "pagamento.pdf", "application/pdf", pdf.Length);
         await comprovantes.EnviarAsync(admin, despesa, new MemoryStream([1, 2, 3]), "quebrado.pdf", "application/pdf", 3);
-        // A3 deitado: entra reduzido para A4 deitado
+        // A3 deitado e um PDF de 8 páginas: tudo encaixado na mesma folha, até 6 páginas de anexo
         var a3 = Document.Create(d => d.Page(pg => { pg.Size(new QuestPDF.Helpers.PageSize(1190.55f, 841.89f)); pg.Content().Text("planta A3"); })).GeneratePdf();
         await comprovantes.EnviarAsync(admin, despesa, new MemoryStream(a3), "planta.pdf", "application/pdf", a3.Length);
         var unico = await bpo.PdfAsync(admin, despesa);
-        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(unico.Conteudo, 0, 4));
         Assert.Equal(4, (await bpo.CartaoAsync(admin, despesa)).Anexos.Count);
-        using (var lido = PdfSharp.Pdf.IO.PdfReader.Open(new MemoryStream(unico.Conteudo), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
-        {
-            Assert.Equal(4, lido.PageCount); // cartão + imagem + PDF + A3 (o quebrado fica só listado)
-            foreach (var pg in lido.Pages)
-            {
-                var (w, h) = BpoService.TamanhoVisivel(pg);
-                Assert.True(BpoService.CabeEmA4(w, h), $"página {w}x{h} maior que A4");
-            }
-            var ultima = BpoService.TamanhoVisivel(lido.Pages[3]);
-            Assert.True(ultima.Largura > ultima.Altura, "A3 deitado continua deitado");
-        }
+        UmaFolhaA4(unico.Conteudo);
+        Assert.True(unico.Conteudo.Length > soCartao.Conteudo.Length + foto.Length / 4, "anexos desenhados na folha");
+        File.WriteAllBytes(Path.Combine(Path.GetTempPath(), "bpo-amostra.pdf"), unico.Conteudo); // conferência visual manual
 
-        // observação enorme: o cartão continua numa página só
+        var oito = Document.Create(d => { for (var n = 1; n <= 8; n++) { var k = n; d.Page(pg => pg.Content().Text($"página {k}")); } }).GeneratePdf();
+        Assert.Equal(6, BpoService.PaginasDoPdf(oito)!.Count(x => x.Length > 0));
+        Assert.Null(BpoService.PaginasDoPdf([1, 2, 3]));
+        await comprovantes.EnviarAsync(admin, despesa, new MemoryStream(oito), "extrato.pdf", "application/pdf", oito.Length);
+        UmaFolhaA4((await bpo.PdfAsync(admin, despesa)).Conteudo);
+
+        // observação enorme: continua numa folha só
         await using (var db0 = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
             await db0.LancamentosFinanceiros.Where(l => l.Id == despesa)
                 .ExecuteUpdateAsync(x => x.SetProperty(l => l.Observacao, string.Join(" ", Enumerable.Repeat("observação longa do lançamento", 400))));
-        await using (var db1 = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
-            await db1.ComprovantesFinanceiros.Where(x => x.LancamentoId == despesa).ExecuteDeleteAsync();
-        using (var lido = PdfSharp.Pdf.IO.PdfReader.Open(new MemoryStream((await bpo.PdfAsync(admin, despesa)).Conteudo), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
-            Assert.Equal(1, lido.PageCount);
+        UmaFolhaA4((await bpo.PdfAsync(admin, despesa)).Conteudo);
 
         // filtro "Não enviados" e marcação (com quem e quando, auditada)
         var filtro = new FiltroLancamentos { De = D(2026, 11, 1), Ate = D(2026, 11, 30), Projetado = true, NaoEnviadosBpo = true };
@@ -481,5 +475,16 @@ public class ExtratoComprovantesTests : IAsyncLifetime
             Assert.True(await db.AuditLog.AnyAsync(a => a.EntidadeId == despesa && a.Acao == "BPO_ENVIADO"));
         await bpo.MarcarEnviadoAsync(admin, despesa, false);
         Assert.Null((await bpo.CartaoAsync(admin, despesa)).EnviadoEm);
+    }
+
+    /// <summary>O PDF do BPO tem exatamente uma página, do tamanho A4.</summary>
+    private static void UmaFolhaA4(byte[] pdf)
+    {
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(pdf, 0, 4));
+        using var doc = Docnet.Core.DocLib.Instance.GetDocReader(pdf, new Docnet.Core.Models.PageDimensions(1.0));
+        Assert.Equal(1, doc.GetPageCount());
+        using var pg = doc.GetPageReader(0);
+        Assert.InRange(pg.GetPageWidth(), 594, 596);
+        Assert.InRange(pg.GetPageHeight(), 841, 843);
     }
 }

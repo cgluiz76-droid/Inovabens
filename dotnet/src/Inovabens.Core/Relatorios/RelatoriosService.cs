@@ -436,8 +436,7 @@ public sealed class RelatoriosService(
 
     /* ------------------------------- PDF: apoio ------------------------------- */
 
-    internal static byte[] NovoPdf(string titulo, string subtitulo, string rodape, Action<ColumnDescriptor> conteudo,
-        bool numerarPaginas = true) =>
+    internal static byte[] NovoPdf(string titulo, string subtitulo, string rodape, Action<ColumnDescriptor> conteudo) =>
         Document.Create(doc => doc.Page(p =>
         {
             p.Size(PageSizes.A4);
@@ -461,7 +460,6 @@ public sealed class RelatoriosService(
             p.Footer().AlignCenter().Text(t =>
             {
                 t.DefaultTextStyle(s => s.FontSize(8).FontColor(Suave));
-                if (!numerarPaginas) { t.Span(rodape); return; }
                 t.Span($"{rodape}  ·  Página ");
                 t.CurrentPageNumber();
                 t.Span(" de ");

@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using SkiaSharp;
 using P = Inovabens.Core.Dominio.Permissoes;
 
 namespace Inovabens.Core.Financeiro;
@@ -58,7 +59,7 @@ public sealed record CartaoBpo(
 /// </summary>
 public sealed class BpoService(IDbContextFactory<InovabensDb> fabrica, IArmazenamento armazenamento, AuditService audit)
 {
-    // a junção de PDFs (DocumentOperation) também exige a licença, mesmo antes de qualquer relatório ter sido gerado
+    // o PDF do cartão pode ser o primeiro gerado desde a subida: garante a licença sem depender do RelatoriosService
     static BpoService() => QuestPDF.Settings.License = LicenseType.Community;
 
     /// <summary>O imóvel tem responsável financeiro cadastrado (grupo Financeiro/BPO)?</summary>
@@ -111,9 +112,15 @@ public sealed class BpoService(IDbContextFactory<InovabensDb> fabrica, IArmazena
 
     /* ------------------------------- PDF único ------------------------------- */
 
+    // Uma folha A4 (pontos, 1/72"): dados compactos no topo e os anexos encaixados no resto da folha
+    private const float Margem = 20, Espaco = 6, AlturaUtil = 841.89f - 2 * Margem;
+    /// <summary>Acima disso as miniaturas ficariam ilegíveis: as páginas excedentes são só citadas no cartão.</summary>
+    internal const int MaximoPaginasAnexo = 6;
+
     /// <summary>
-    /// PDF único para o BPO: página do cartão, cada imagem anexada como página e os PDFs anexados juntados ao final.
-    /// Anexo que não dá para incorporar (outro formato, PDF protegido/corrompido) fica listado no cartão para baixar à parte.
+    /// PDF do BPO numa única página A4: os dados do lançamento em letra pequena no topo e, abaixo, os comprovantes
+    /// encaixados (imagens e páginas dos PDFs, convertidas em imagem). Com mais de um, ficam lado a lado em grade.
+    /// Anexo que não dá para incorporar (outro formato, PDF protegido/corrompido) fica listado para baixar à parte.
     /// </summary>
     public async Task<Arquivo> PdfAsync(UsuarioAtual u, Guid lancamentoId, CancellationToken ct = default)
     {
@@ -122,100 +129,33 @@ public sealed class BpoService(IDbContextFactory<InovabensDb> fabrica, IArmazena
         var chaves = await db.ComprovantesFinanceiros.AsNoTracking().Where(x => x.LancamentoId == lancamentoId)
             .ToDictionaryAsync(x => x.Id, x => x.ArquivoChave, ct);
 
-        var pasta = Directory.CreateTempSubdirectory("bpo-");
-        try
+        var paginas = new List<(string Rotulo, byte[] Imagem)>();
+        var fora = new List<(string Nome, string Motivo)>();
+        var excedentes = 0;
+        foreach (var a in c.Anexos)
         {
-            var imagens = new List<(string Nome, byte[] Dados)>();
-            var pdfs = new List<string>();
-            var fora = new List<(string Nome, string Motivo)>();
-            foreach (var a in c.Anexos)
+            var conteudo = await armazenamento.BaixarAsync(chaves.GetValueOrDefault(a.Id), ct);
+            if (conteudo is null) { fora.Add((a.Nome, "não encontrado no Google Drive")); continue; }
+            if (EhPdf(a.Nome, a.Tipo))
             {
-                var conteudo = await armazenamento.BaixarAsync(chaves.GetValueOrDefault(a.Id), ct);
-                if (conteudo is null) { fora.Add((a.Nome, "não encontrado no Google Drive")); continue; }
-                if (EhPdf(a.Nome, a.Tipo))
+                var imagens = PaginasDoPdf(conteudo.Dados);
+                if (imagens is null) { fora.Add((a.Nome, "PDF protegido ou corrompido")); continue; }
+                for (var i = 0; i < imagens.Count; i++)
                 {
-                    var caminho = Path.Combine(pasta.FullName, $"anexo-{pdfs.Count + 1}.pdf");
-                    await File.WriteAllBytesAsync(caminho, conteudo.Dados, ct);
-                    if (PdfLegivel(caminho)) pdfs.Add(caminho);
-                    else fora.Add((a.Nome, "PDF protegido ou corrompido"));
+                    if (paginas.Count >= MaximoPaginasAnexo) { excedentes++; continue; }
+                    paginas.Add((imagens.Count == 1 ? a.Nome : $"{a.Nome} (pág. {i + 1}/{imagens.Count})", imagens[i]));
                 }
-                else if (ImagemLegivel(conteudo.Dados)) imagens.Add((a.Nome, conteudo.Dados));
-                else fora.Add((a.Nome, "formato que não entra no PDF"));
             }
-
-            var cartao = CartaoPdf(c, imagens, pdfs.Count, fora);
-            var nomeArquivo = $"bpo-{Seguro(c.Numero)}.pdf";
-            if (pdfs.Count == 0) return new Arquivo(cartao, nomeArquivo, RelatoriosService.TipoPdf);
-            return new Arquivo(Juntar(cartao, pdfs), nomeArquivo, RelatoriosService.TipoPdf);
+            else if (!ImagemLegivel(conteudo.Dados)) fora.Add((a.Nome, "formato que não entra no PDF"));
+            else if (paginas.Count >= MaximoPaginasAnexo) excedentes++;
+            else paginas.Add((a.Nome, conteudo.Dados));
         }
-        finally
-        {
-            try { pasta.Delete(recursive: true); } catch (IOException) { /* temporário: o sistema limpa depois */ }
-        }
+
+        return new Arquivo(CartaoPdf(c, paginas, fora, excedentes), $"bpo-{Seguro(c.Numero)}.pdf", RelatoriosService.TipoPdf);
     }
-
-    // A4 em pontos (1/72"): nenhuma página do PDF único passa disso (pode ser menor, ex.: recibo de maquininha)
-    internal const double A4Menor = 595.28, A4Maior = 841.89;
-
-    /// <summary>
-    /// Cartão (+ imagens, já em A4) seguido das páginas dos PDFs anexados. Página maior que A4 (A3, planta, extrato largo)
-    /// é reduzida para caber numa A4 da mesma orientação, mantendo a proporção; as menores ficam como estão.
-    /// </summary>
-    private static byte[] Juntar(byte[] cartao, IReadOnlyList<string> pdfs)
-    {
-        using var saida = new PdfSharp.Pdf.PdfDocument();
-        using (var base0 = PdfSharp.Pdf.IO.PdfReader.Open(new MemoryStream(cartao), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
-            foreach (var pg in base0.Pages) saida.AddPage(pg);
-        foreach (var caminho in pdfs)
-        {
-            using var origem = PdfSharp.Pdf.IO.PdfReader.Open(caminho, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
-            for (var i = 0; i < origem.PageCount; i++)
-            {
-                var pg = origem.Pages[i];
-                var (larg, alt) = TamanhoVisivel(pg);
-                if (CabeEmA4(larg, alt)) { saida.AddPage(pg); continue; }
-
-                var deitada = larg > alt;
-                var nova = saida.AddPage();
-                nova.Width = PdfSharp.Drawing.XUnit.FromPoint(deitada ? A4Maior : A4Menor);
-                nova.Height = PdfSharp.Drawing.XUnit.FromPoint(deitada ? A4Menor : A4Maior);
-                using var form = PdfSharp.Drawing.XPdfForm.FromFile(caminho);
-                form.PageNumber = i + 1;
-                var escala = Math.Min(nova.Width.Point / larg, nova.Height.Point / alt);
-                var (w, h) = (larg * escala, alt * escala);
-                using var gfx = PdfSharp.Drawing.XGraphics.FromPdfPage(nova);
-                gfx.DrawImage(form, (nova.Width.Point - w) / 2, (nova.Height.Point - h) / 2, w, h);
-            }
-        }
-        using var ms = new MemoryStream();
-        saida.Save(ms, closeStream: false);
-        return ms.ToArray();
-    }
-
-    /// <summary>Largura/altura como a página aparece (rotação de 90°/270° troca os lados).</summary>
-    internal static (double Largura, double Altura) TamanhoVisivel(PdfSharp.Pdf.PdfPage pg)
-    {
-        double w = pg.MediaBox.Width, h = pg.MediaBox.Height;
-        return pg.Rotate % 180 != 0 ? (h, w) : (w, h);
-    }
-
-    /// <summary>Cabe numa folha A4 em pé ou deitada (1 pt de folga para arredondamentos).</summary>
-    internal static bool CabeEmA4(double largura, double altura) =>
-        Math.Max(largura, altura) <= A4Maior + 1 && Math.Min(largura, altura) <= A4Menor + 1;
 
     private static bool EhPdf(string nome, string tipo) =>
         tipo.Contains("pdf", StringComparison.OrdinalIgnoreCase) || nome.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>Abre o PDF antes de juntar: se falhar aqui (senha, arquivo quebrado), fica fora e listado no cartão.</summary>
-    private static bool PdfLegivel(string caminho)
-    {
-        try
-        {
-            using var d = PdfSharp.Pdf.IO.PdfReader.Open(caminho, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
-            return d.PageCount > 0;
-        }
-        catch (Exception) { return false; }
-    }
 
     private static bool ImagemLegivel(byte[] dados)
     {
@@ -223,45 +163,132 @@ public sealed class BpoService(IDbContextFactory<InovabensDb> fabrica, IArmazena
         catch (Exception) { return false; }
     }
 
-    private static string Seguro(string s) => string.Concat(s.Select(ch => char.IsLetterOrDigit(ch) || ch == '-' ? ch : '-'));
+    // o PDFium (Docnet) não é seguro para chamadas simultâneas
+    private static readonly Lock TravaPdfium = new();
 
     /// <summary>
-    /// Cartão numa única página A4 (observação longa ou muitos anexos: o bloco é reduzido para caber) e cada imagem
-    /// anexada numa página A4 própria. Sem "Página X de Y": os PDFs anexados entram depois e mudariam a conta.
+    /// Cada página do PDF como JPEG (~144 dpi, fundo branco), para caber na mesma folha do cartão.
+    /// Só as primeiras <see cref="MaximoPaginasAnexo"/> são convertidas. null = PDF protegido ou ilegível.
     /// </summary>
-    private static byte[] CartaoPdf(CartaoBpo c, IReadOnlyList<(string Nome, byte[] Dados)> imagens, int pdfs,
-        IReadOnlyList<(string Nome, string Motivo)> fora) =>
-        RelatoriosService.NovoPdf($"{c.Tipo} {c.Numero}", c.Empreendimento, $"Cartão BPO · gerado em {DatasBR.Agora():dd/MM/yyyy HH:mm}", col =>
+    internal static IReadOnlyList<byte[]>? PaginasDoPdf(byte[] pdf)
+    {
+        try
         {
-            col.Item().ScaleToFit().Column(cartao =>
+            lock (TravaPdfium)
             {
-                cartao.Spacing(4);
-                RelatoriosService.Campos(cartao, 1, ("Responsável financeiro", c.ResponsavelNome));
-                RelatoriosService.Secao(cartao, "Lançamento");
-                RelatoriosService.Campos(cartao, 2, ("Valor", $"{c.ValorTexto} ({c.Tipo.ToLowerInvariant()})"), ("Descrição", c.Descricao));
-                RelatoriosService.Campos(cartao, 1, ("Empreendimento", c.Empreendimento));
-                RelatoriosService.Campos(cartao, 1, ("Observação", c.Observacao));
-                RelatoriosService.Campos(cartao, 4, ("Vencimento", Texto.Data(c.Vencimento)),
-                    (c.Receita ? "Recebido em" : "Pago em", c.Liquidacao is { } d ? Texto.Data(d) : null),
-                    ("Situação", c.Situacao), ("Conta", c.Conta));
-                if (c.Pessoa is not null) RelatoriosService.Campos(cartao, 1, (c.Receita ? "Recebido de" : "Pago a", c.Pessoa));
-
-                RelatoriosService.Secao(cartao, "Anexos");
-                if (c.Anexos.Count == 0) RelatoriosService.Paragrafo(cartao, "Sem anexos.");
-                foreach (var a in c.Anexos)
+                using var doc = Docnet.Core.DocLib.Instance.GetDocReader(pdf, new Docnet.Core.Models.PageDimensions(2.0));
+                var total = doc.GetPageCount();
+                if (total == 0) return null;
+                var saida = new List<byte[]>();
+                for (var i = 0; i < Math.Min(total, MaximoPaginasAnexo); i++)
                 {
-                    var motivo = fora.FirstOrDefault(f => f.Nome == a.Nome).Motivo;
-                    cartao.Item().Text(motivo is null ? $"• {a.Nome}" : $"• {a.Nome} — não incorporado ({motivo}): baixe pelo sistema").FontSize(9);
+                    using var pg = doc.GetPageReader(i);
+                    int w = pg.GetPageWidth(), h = pg.GetPageHeight();
+                    var bgra = pg.GetImage(); // BGRA com transparência onde a página é "vazia"
+                    using var bmp = new SKBitmap(new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Unpremul));
+                    System.Runtime.InteropServices.Marshal.Copy(bgra, 0, bmp.GetPixels(), bgra.Length);
+                    using var branco = new SKBitmap(w, h);
+                    using (var tela = new SKCanvas(branco))
+                    {
+                        tela.Clear(SKColors.White);
+                        using var fonte = SKImage.FromBitmap(bmp);
+                        tela.DrawImage(fonte, 0, 0, SKSamplingOptions.Default);
+                    }
+                    using var img = SKImage.FromBitmap(branco);
+                    saida.Add(img.Encode(SKEncodedImageFormat.Jpeg, 82).ToArray());
                 }
-                if (imagens.Count + pdfs > 0)
-                    cartao.Item().PaddingTop(4).Text("Os anexos seguem nas próximas páginas.").FontSize(8.5f).Italic();
-            });
-
-            foreach (var (nome, dados) in imagens)
-            {
-                col.Item().PageBreak();
-                col.Item().Text($"Anexo: {nome}").FontSize(9).Bold();
-                col.Item().PaddingTop(6).MaxHeight(650).AlignCenter().Image(dados).FitArea();
+                // páginas além do limite contam como excedentes (só o número delas importa)
+                for (var i = MaximoPaginasAnexo; i < total; i++) saida.Add([]);
+                return saida;
             }
-        }, numerarPaginas: false);
+        }
+        catch (Exception) { return null; }
+    }
+
+    private static string Seguro(string s) => string.Concat(s.Select(ch => char.IsLetterOrDigit(ch) || ch == '-' ? ch : '-'));
+
+    private const string Azul = "#1E3A8A", Cinza = "#64748B", Linha = "#E2E8F0";
+
+    /// <summary>Folha única A4: faixa de título, dados em grade compacta (altura fixa) e grade de anexos abaixo.</summary>
+    private static byte[] CartaoPdf(CartaoBpo c, IReadOnlyList<(string Rotulo, byte[] Imagem)> paginas,
+        IReadOnlyList<(string Nome, string Motivo)> fora, int excedentes)
+    {
+        var validas = paginas.Where(p => p.Imagem.Length > 0).ToList();
+        var notas = new List<string>();
+        if (c.Anexos.Count == 0) notas.Add("Sem anexos.");
+        notas.AddRange(fora.Select(f => $"{f.Nome}: não incorporado ({f.Motivo}) — baixe pelo sistema."));
+        if (excedentes > 0) notas.Add($"Mais {excedentes} página(s) de anexo não couberam nesta folha — baixe pelo sistema.");
+
+        // altura dos dados estimada pelo conteúdo (o que passar é reduzido): o resto da folha fica para os anexos
+        var linhasObs = Math.Max(1, (int)Math.Ceiling((c.Observacao?.Length ?? 0) / 120.0));
+        var alturaDados = Math.Clamp(28 + 4 * 21 + (c.Pessoa is null ? 0 : 21) + (linhasObs - 1) * 10 + notas.Count * 10 + 12f, 120f, 300f);
+        var alturaAnexos = AlturaUtil - alturaDados - Espaco;
+        return Document.Create(doc => doc.Page(p =>
+        {
+            p.Size(PageSizes.A4);
+            p.Margin(Margem);
+            p.DefaultTextStyle(t => t.FontSize(8).FontColor("#0F172A").LineHeight(1.1f));
+            p.Content().Column(col =>
+            {
+                col.Spacing(Espaco);
+                // dados: altura fixa (o que passar disso é reduzido) para a área dos anexos ser sempre a mesma
+                col.Item().Height(alturaDados).ScaleToFit().Column(d =>
+                {
+                    d.Spacing(3);
+                    d.Item().Background(Azul).PaddingVertical(5).PaddingHorizontal(8).Row(r =>
+                    {
+                        r.RelativeItem().Text(t =>
+                        {
+                            t.Span($"{c.Tipo} {c.Numero}").FontSize(12).Bold().FontColor(Colors.White);
+                            t.Span($"   {c.Empreendimento}").FontSize(8.5f).FontColor(Colors.White);
+                        });
+                        r.ConstantItem(70).AlignRight().AlignMiddle().Text("INOVABENS").FontSize(9).Bold().FontColor(Colors.White);
+                    });
+                    Par(d, ("Responsável financeiro", c.ResponsavelNome), ("Valor", $"{c.ValorTexto} ({c.Tipo.ToLowerInvariant()})"));
+                    Par(d, ("Descrição", c.Descricao), ("Empreendimento", c.Empreendimento));
+                    Par(d, ("Observação", c.Observacao));
+                    Par(d, ("Vencimento", Texto.Data(c.Vencimento)),
+                        (c.Receita ? "Recebido em" : "Pago em", c.Liquidacao is { } dl ? Texto.Data(dl) : null),
+                        ("Situação", c.Situacao), ("Conta", c.Conta));
+                    if (c.Pessoa is not null) Par(d, (c.Receita ? "Recebido de" : "Pago a", c.Pessoa));
+                    foreach (var n in notas) d.Item().Text(n).FontSize(7).Italic().FontColor(Cinza);
+                    d.Item().Text($"Cartão BPO · gerado em {DatasBR.Agora():dd/MM/yyyy HH:mm}").FontSize(6.5f).FontColor(Cinza);
+                });
+
+                if (validas.Count == 0) return;
+                // grade dos anexos: 1 = área toda; 2 = lado a lado; 3-4 = 2x2; 5-6 = 3x2
+                var colunas = validas.Count == 1 ? 1 : validas.Count <= 4 ? 2 : 3;
+                var linhas = (int)Math.Ceiling(validas.Count / (double)colunas);
+                var alturaCelula = (alturaAnexos - 4 - (linhas - 1) * 4) / linhas;
+                col.Item().BorderTop(0.5f).BorderColor(Linha).PaddingTop(2).Column(g =>
+                {
+                    g.Spacing(4);
+                    foreach (var linha in validas.Chunk(colunas))
+                        g.Item().Height(alturaCelula - 2).Row(r =>
+                        {
+                            r.Spacing(4);
+                            foreach (var (rotulo, imagem) in linha)
+                                r.RelativeItem().Column(cel =>
+                                {
+                                    cel.Item().Text(rotulo).FontSize(6.5f).FontColor(Cinza).ClampLines(1);
+                                    cel.Item().Extend().AlignCenter().AlignMiddle().Image(imagem).FitArea();
+                                });
+                            for (var i = linha.Length; i < colunas; i++) r.RelativeItem();
+                        });
+                });
+            });
+        })).WithMetadata(new DocumentMetadata { Title = $"BPO {c.Numero}", Author = "Inovabens" }).GeneratePdf();
+    }
+
+    /// <summary>Linha de "rótulo / valor" compacta (rótulo miúdo em cima, valor em negrito).</summary>
+    private static void Par(ColumnDescriptor col, params (string Rotulo, string? Valor)[] pares) =>
+        col.Item().PaddingHorizontal(2).Row(r =>
+        {
+            foreach (var (rotulo, valor) in pares)
+                r.RelativeItem().PaddingRight(6).Column(cc =>
+                {
+                    cc.Item().Text(rotulo.ToUpperInvariant()).FontSize(6).FontColor(Cinza);
+                    cc.Item().Text(string.IsNullOrWhiteSpace(valor) ? "—" : valor.Trim()).FontSize(8.5f).Bold();
+                });
+        });
 }
