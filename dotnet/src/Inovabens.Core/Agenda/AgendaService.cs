@@ -42,6 +42,14 @@ public sealed class CompromissoForm : IValidatableObject
     /// <summary>E-mails separados por vírgula, ponto e vírgula ou espaço.</summary>
     public string? Convidados { get; set; }
 
+    /// <summary>Início gravado quando o formulário abriu (edição): se mudar, a justificativa passa a ser obrigatória.</summary>
+    public DateTime? InicioOriginal { get; set; }
+
+    /// <summary>Motivo da mudança de data numa edição (regra: atividade não muda de data sem justificativa).</summary>
+    public string? Justificativa { get; set; }
+
+    public bool DataMudou => InicioOriginal is { } o && Inicio is { } i && o != i;
+
     internal IReadOnlyList<string> Emails =>
         [.. (Convidados ?? "").Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries)
             .Select(e => e.Trim().ToLowerInvariant()).Distinct()];
@@ -50,6 +58,8 @@ public sealed class CompromissoForm : IValidatableObject
     {
         if (Inicio is { } i && Fim is { } f && f < i)
             yield return new ValidationResult("O término deve ser depois do início", [nameof(Fim)]);
+        if (DataMudou && !Justificativas.Valida(Justificativa))
+            yield return new ValidationResult(Justificativas.Mensagem("o motivo da mudança de data"), [nameof(Justificativa)]);
         var email = new EmailAddressAttribute();
         if (Emails.Count > 30) yield return new ValidationResult("No máximo 30 convidados", [nameof(Convidados)]);
         foreach (var e in Emails.Where(e => !email.IsValid(e)))
@@ -68,10 +78,41 @@ public sealed class CompromissoForm : IValidatableObject
     {
         Tipo = c.Dados.Tipo, Titulo = c.Dados.Titulo, Descricao = c.Dados.Descricao, Local = c.Dados.Local,
         Inicio = ParaBR(c.Dados.InicioEm), Fim = ParaBR(c.Dados.FimEm), ResponsavelId = c.Dados.ResponsavelId,
-        LeadId = c.Dados.LeadId, Convidados = string.Join(", ", c.Participantes),
+        LeadId = c.Dados.LeadId, Convidados = string.Join(", ", c.Participantes), InicioOriginal = ParaBR(c.Dados.InicioEm),
     };
 
     public static DateTime ParaBR(DateTime utc) => DatasBR.DeUtc(utc);
+}
+
+/// <summary>
+/// Regra do sistema: concluir, cancelar ou mudar a data de uma atividade exige justificativa, que fica no histórico
+/// (compromisso_historico). Vale para todas as telas (Minhas atividades, Agenda, imóvel, alertas, CRM, painel).
+/// </summary>
+public static class Justificativas
+{
+    public const int Minimo = 5;
+    public static bool Valida(string? texto) => (texto?.Trim().Length ?? 0) >= Minimo;
+    public static string Mensagem(string oQue) => $"Informe {oQue} (mínimo de {Minimo} letras).";
+
+    public static string Exigir(string? texto, string oQue) =>
+        Valida(texto) ? texto!.Trim() : throw new RegraNegocioException("Justificativa", Mensagem(oQue));
+
+    internal static void Registrar(InovabensDb db, UsuarioAtual u, Compromisso c, string acao, string justificativa,
+        DateTime? inicioAnterior = null, DateTime? inicioNovo = null) =>
+        db.CompromissoHistoricos.Add(new CompromissoHistorico
+        {
+            CompromissoId = c.Id, Acao = acao, Justificativa = justificativa, UsuarioId = u.Id,
+            InicioAnterior = inicioAnterior, InicioNovo = inicioNovo,
+        });
+}
+
+/// <summary>Linha do histórico da atividade (tela de edição).</summary>
+public sealed record HistoricoAtividade(DateTime CriadoEm, string Acao, string Justificativa, DateTime? InicioAnterior, DateTime? InicioNovo, string? UsuarioNome)
+{
+    public string AcaoTexto => Acao switch
+    {
+        "CONCLUIDA" => "Concluída", "CANCELADA" => "Cancelada", "ADIADA" => "Data alterada", "REABERTA" => "Reaberta", _ => Acao,
+    };
 }
 
 /// <summary>Compromissos dos imóveis (port de agenda.service.ts). Cada alteração é enviada ao Google em segundo plano.</summary>
@@ -164,6 +205,10 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
         Validacao.Validar(form);
         await Alterar(u, id, "ATUALIZAR", async (db, c) =>
         {
+            // a data vale pelo banco (não pelo que a tela diz): mudou, exige justificativa e vai para o histórico
+            var novoInicio = Utc(form.Inicio!.Value);
+            if (novoInicio != c.InicioEm)
+                Justificativas.Registrar(db, u, c, "ADIADA", Justificativas.Exigir(form.Justificativa, "o motivo da mudança de data"), c.InicioEm, novoInicio);
             c.Tipo = form.Tipo;
             c.Titulo = form.Titulo.Trim();
             c.Descricao = Texto.Limpo(form.Descricao);
@@ -176,26 +221,36 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
         });
     }
 
-    public Task MudarStatusAsync(UsuarioAtual u, Guid id, StatusCompromisso status)
+    /// <summary>Concluir e cancelar exigem justificativa; reabrir registra o motivo se houver.</summary>
+    public Task MudarStatusAsync(UsuarioAtual u, Guid id, StatusCompromisso status, string? justificativa)
     {
         u.Exigir(P.AgendaEditar);
-        return Alterar(u, id, "ATUALIZAR", (_, c) =>
+        var (acao, texto) = status switch
+        {
+            StatusCompromisso.CONCLUIDO => ("CONCLUIDA", Justificativas.Exigir(justificativa, "como a atividade foi concluída")),
+            StatusCompromisso.CANCELADO => ("CANCELADA", Justificativas.Exigir(justificativa, "o motivo do cancelamento")),
+            _ => ("REABERTA", Texto.Limpo(justificativa) ?? "Reaberta"),
+        };
+        return Alterar(u, id, "ATUALIZAR", (db, c) =>
         {
             c.Status = status;
             c.ConcluidoEm = status == StatusCompromisso.CONCLUIDO ? DateTime.UtcNow : null;
+            Justificativas.Registrar(db, u, c, acao, texto);
             return Task.CompletedTask;
         });
     }
 
-    public Task ConcluirAsync(UsuarioAtual u, Guid id) => MudarStatusAsync(u, id, StatusCompromisso.CONCLUIDO);
+    public Task ConcluirAsync(UsuarioAtual u, Guid id, string? justificativa) => MudarStatusAsync(u, id, StatusCompromisso.CONCLUIDO, justificativa);
 
-    /// <summary>Novo horário (reagendar ou adiar uma atividade): volta a PENDENTE.</summary>
-    public async Task ReagendarAsync(UsuarioAtual u, Guid id, DateTime inicioBR, DateTime fimBR)
+    /// <summary>Novo horário (reagendar ou adiar uma atividade), com o motivo obrigatório: volta a PENDENTE.</summary>
+    public async Task ReagendarAsync(UsuarioAtual u, Guid id, DateTime inicioBR, DateTime fimBR, string? justificativa)
     {
         u.Exigir(P.AgendaEditar);
         if (fimBR < inicioBR) throw new RegraNegocioException("Fim", "O término deve ser depois do início");
-        await Alterar(u, id, "ATUALIZAR", (_, c) =>
+        var motivo = Justificativas.Exigir(justificativa, "o motivo do adiamento");
+        await Alterar(u, id, "ATUALIZAR", (db, c) =>
         {
+            Justificativas.Registrar(db, u, c, "ADIADA", motivo, c.InicioEm, Utc(inicioBR));
             c.InicioEm = Utc(inicioBR);
             c.FimEm = Utc(fimBR);
             c.Status = StatusCompromisso.PENDENTE;
@@ -205,23 +260,36 @@ public sealed class AgendaService(IDbContextFactory<InovabensDb> fabrica, AuditS
     }
 
     /// <summary>Novo horário a partir de um alerta de "não cumprido": volta a PENDENTE e o alerta é encerrado.</summary>
-    public async Task ReagendarPorAlertaAsync(UsuarioAtual u, Guid alertaId, DateTime inicioBR, DateTime fimBR)
+    public async Task ReagendarPorAlertaAsync(UsuarioAtual u, Guid alertaId, DateTime inicioBR, DateTime fimBR, string? justificativa)
     {
         u.Exigir(P.AgendaEditar);
         if (fimBR < inicioBR) throw new RegraNegocioException("Fim", "O término deve ser depois do início");
+        var motivo = Justificativas.Exigir(justificativa, "o motivo do adiamento");
         Guid compromissoId;
         await using (var db = await fabrica.CreateDbContextAsync())
             compromissoId = await db.Alertas.Where(a => a.Id == alertaId && a.UsuarioId == u.Id && a.CompromissoId != null)
                 .Select(a => a.CompromissoId!.Value).SingleOrDefaultAsync();
         if (compromissoId == Guid.Empty) throw new NaoEncontradoException("Alerta de compromisso não encontrado.");
-        await Alterar(u, compromissoId, "ATUALIZAR", (_, c) =>
+        await Alterar(u, compromissoId, "ATUALIZAR", (db, c) =>
         {
+            Justificativas.Registrar(db, u, c, "ADIADA", motivo, c.InicioEm, Utc(inicioBR));
             c.InicioEm = Utc(inicioBR);
             c.FimEm = Utc(fimBR);
             c.Status = StatusCompromisso.PENDENTE;
             c.ConcluidoEm = null;
             return Task.CompletedTask;
         });
+    }
+
+    /// <summary>Histórico da atividade (justificativas de conclusão, cancelamento e mudança de data), mais recente primeiro.</summary>
+    public async Task<IReadOnlyList<HistoricoAtividade>> HistoricoAsync(UsuarioAtual u, Guid id)
+    {
+        u.Exigir(P.AgendaVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        if (!await Visiveis(db, u).AnyAsync(c => c.Id == id)) throw new NaoEncontradoException("Compromisso não encontrado.");
+        return await db.CompromissoHistoricos.AsNoTracking().Where(h => h.CompromissoId == id).OrderByDescending(h => h.CriadoEm)
+            .Select(h => new HistoricoAtividade(h.CriadoEm, h.Acao, h.Justificativa, h.InicioAnterior, h.InicioNovo, h.Usuario!.Nome))
+            .ToListAsync();
     }
 
     public async Task ExcluirAsync(UsuarioAtual u, Guid id)

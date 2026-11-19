@@ -45,11 +45,12 @@
             <span class="pequeno mudo">Imóvel</span>
             <select class="input" value="@(imovelFiltro?.ToString() ?? "")" @onchange="FiltrarImovel" aria-label="Filtrar por imóvel">
                 <option value="">Todos os imóveis</option>
-                @foreach (var i in imoveis)
+                @foreach (var i in ImoveisVisiveis(imovelFiltro))
                 {
-                    <option value="@i.Id">@i.Nome</option>
+                    <option value="@i.Id">@i.NomeComSituacao</option>
                 }
             </select>
+            <label class="check pequeno"><input type="checkbox" @bind="mostrarInativos" /> Mostrar vendidos e arquivados</label>
         </label>
     </div>
 </div>
@@ -163,11 +164,12 @@ else
                         <span>Imóvel *</span>
                         <InputSelect class="input" @bind-Value="form.ImovelId">
                             <option value="">Selecione…</option>
-                            @foreach (var i in imoveis.Where(i => !NoFunil.Contains(i.Id)))
+                            @foreach (var i in ImoveisVisiveis(form.ImovelId).Where(i => !NoFunil.Contains(i.Id)))
                             {
-                                <option value="@i.Id">@i.Nome</option>
+                                <option value="@i.Id">@i.NomeComSituacao</option>
                             }
                         </InputSelect>
+                        <label class="check pequeno"><input type="checkbox" @bind="mostrarInativos" /> Mostrar vendidos e arquivados</label>
                         <ValidationMessage For="() => form.ImovelId" />
                     </label>
                     <label class="campo">
@@ -232,7 +234,12 @@ else
 @code {
     private Funil funil = Funil.ADMINISTRATIVO;
     private IReadOnlyList<ColunaProcesso>? colunas;
-    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<OpcaoImovel> imoveis = [];
+
+    /// <summary>Padrão: só imóveis ativos; o já escolhido continua na lista mesmo se vendido/arquivado.</summary>
+    private bool mostrarInativos;
+
+    private IEnumerable<OpcaoImovel> ImoveisVisiveis(Guid? atual) => imoveis.Where(i => mostrarInativos || i.Ativo || i.Id == atual);
     private IReadOnlyList<Opcao> responsaveis = [];
     private string responsavelFiltro = "";
     private Guid? imovelFiltro;
@@ -256,7 +263,7 @@ else
         if (q.TryGetValue("imovel", out var im) && Guid.TryParse(im, out var id)) imovelFiltro = id;
         await Executar(async () =>
         {
-            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            imoveis = await Opcoes.ImoveisComSituacaoAsync(Usuario);
             if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
         });
         await Carregar();

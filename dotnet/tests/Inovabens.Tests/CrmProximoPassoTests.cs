@@ -181,7 +181,7 @@ public class CrmProximoPassoTests : IAsyncLifetime
         }));
 
         // reagendar (adiar) a atividade
-        await S<AgendaService>().ReagendarAsync(admin, lista[1].Id, Amanha(16), Amanha(17));
+        await S<AgendaService>().ReagendarAsync(admin, lista[1].Id, Amanha(16), Amanha(17), "Cliente pediu à tarde");
         Assert.Equal(DatasBR.ParaUtc(Amanha(16)), (await Compromissos(id))[1].InicioEm);
 
         // "+" do cartão: agenda sem poder pular

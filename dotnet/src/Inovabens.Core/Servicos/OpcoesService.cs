@@ -66,4 +66,14 @@ public sealed class OpcoesService(IDbContextFactory<InovabensDb> fabrica)
 }
 
 /// <summary>Imóvel numa lista de escolha, com a situação (permite filtrar sem ir de novo ao banco).</summary>
-public sealed record OpcaoImovel(Guid Id, string Nome, Dominio.SituacaoImovel Situacao);
+public sealed record OpcaoImovel(Guid Id, string Nome, Dominio.SituacaoImovel Situacao)
+{
+    /// <summary>
+    /// Ativo = fora de Vendido e Arquivado (mesma regra dos imóveis de interesse do CRM). As listas de escolha mostram
+    /// só os ativos por padrão; um filtro mostra os demais.
+    /// </summary>
+    public bool Ativo => !Crm.CrmService.SituacoesSemInteresse.Contains(Situacao);
+
+    /// <summary>Nome com a situação quando inativo, para o usuário entender por que estava escondido.</summary>
+    public string NomeComSituacao => Ativo ? Nome : $"{Nome} ({Texto.Rotulo(Situacao)})";
+}

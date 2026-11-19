@@ -143,14 +143,14 @@ public class ImoveisIntegracaoTests
         // --- escopo do Corretor: só enxerga e altera os próprios imóveis ---
         Assert.DoesNotContain((await s.ListarAsync(corretor, new FiltroImoveis())).Itens, i => i.Id == id1);
         await Assert.ThrowsAsync<AcessoNegadoException>(() => s.DetalheAsync(corretor, id1));
-        await Assert.ThrowsAsync<AcessoNegadoException>(() => s.ExcluirAsync(corretor, id1)); // sem imoveis:excluir
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => s.ExcluirAsync(corretor, id1, "Trocar@123456")); // sem imoveis:excluir
         var idCorretor = await s.CriarAsync(corretor, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa da Carla", Tipo = "casa", CorretorResponsavelId = admin.Id });
         var dc = await s.DetalheAsync(corretor, idCorretor);
         Assert.Equal(corretor.Id, dc.Dados.CorretorResponsavelId); // não consegue atribuir a outro
         Assert.Contains((await s.ListarAsync(corretor, new FiltroImoveis())).Itens, i => i.Id == idCorretor);
 
         // --- excluir (lógico) ---
-        await s.ExcluirAsync(admin, id2);
+        await s.ExcluirAsync(admin, id2, "Trocar@123456");
         await Assert.ThrowsAsync<NaoEncontradoException>(() => s.DetalheAsync(admin, id2));
 
         // --- auditoria gravada com IP e JSON ---

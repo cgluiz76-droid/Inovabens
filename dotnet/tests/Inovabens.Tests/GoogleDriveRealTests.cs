@@ -75,7 +75,7 @@ public class GoogleDriveRealTests
         finally
         {
             await drive.RemoverAsync(raiz!);
-            await imoveis.ExcluirAsync(admin, id);
+            await imoveis.ExcluirAsync(admin, id, BancoFixture.Senha);
         }
     }
 }

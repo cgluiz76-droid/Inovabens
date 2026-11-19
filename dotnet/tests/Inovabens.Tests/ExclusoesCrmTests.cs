@@ -80,7 +80,7 @@ public class ExclusoesCrmTests : IAsyncLifetime
         await Assert.ThrowsAsync<AcessoNegadoException>(() => crm.ExcluirAcaoAsync(corretor, lead, acao.Id));
         await Assert.ThrowsAsync<AcessoNegadoException>(() => crm.ExcluirAtividadeAsync(corretor, lead, atividade.Id));
         await Assert.ThrowsAsync<AcessoNegadoException>(() => propostas.ExcluirAsync(corretor, proposta));
-        await Assert.ThrowsAsync<AcessoNegadoException>(() => crm.ExcluirAsync(corretor, lead));
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => crm.ExcluirAsync(corretor, lead, BancoFixture.Senha));
 
         // administrador exclui; cada exclusão registra quem excluiu e o que era
         await propostas.ExcluirAsync(admin, proposta);
@@ -103,7 +103,7 @@ public class ExclusoesCrmTests : IAsyncLifetime
         Assert.Equal(admin.Id, ai.UsuarioId);
         Assert.Contains(acao.Resumo, ai.ValoresAntes);
 
-        await crm.ExcluirAsync(admin, lead);
+        await crm.ExcluirAsync(admin, lead, BancoFixture.Senha);
         await Assert.ThrowsAsync<NaoEncontradoException>(() => crm.ObterAsync(admin, lead));
         var al = await Exclusao("leads", lead);
         Assert.Equal($"Lead de {nome} (Compra)", AuditoriaService.Resumir(al.ValoresAntes));

@@ -1,0 +1,87 @@
+@inherits ComponenteBase
+
+@* Pop-up de Concluir / Cancelar / Adiar uma atividade com justificativa obrigatória (regra do sistema: o serviço
+   também exige). No Adiar, os atalhos (+1 hora, Amanhã 9h, +1 semana) só preenchem a nova data; o usuário escreve o
+   motivo e salva — dois cliques e uma frase. *@
+<Modal Titulo="@TituloModal" AoFechar="AoFechar">
+    <form class="formulario" @onsubmit="Salvar" @onsubmit:preventDefault>
+        <p class="pequeno mudo">@Atividade</p>
+        @if (Modo == ModoJustificativa.Adiar)
+        {
+            <div class="atalhos-data" role="group" aria-label="Atalhos de nova data">
+                <button type="button" class="btn-ghost mini" @onclick="() => Somar(TimeSpan.FromHours(1))">+1 hora</button>
+                <button type="button" class="btn-ghost mini" @onclick="() => Definir(DatasBR.Agora().Date.AddDays(1).AddHours(9))">Amanhã 9h</button>
+                <button type="button" class="btn-ghost mini" @onclick="() => Somar(TimeSpan.FromDays(7))">+1 semana</button>
+            </div>
+            <label class="campo">
+                <span>Nova data e hora *</span>
+                <input type="datetime-local" class="input" @bind="novaData" />
+            </label>
+        }
+        <label class="campo">
+            <span>@RotuloCampo *</span>
+            <textarea class="input" rows="3" @bind="texto" @bind:event="oninput" placeholder="@Dica"></textarea>
+            <span class="pequeno mudo">Fica no histórico da atividade (mínimo de @Justificativas.Minimo letras).</span>
+        </label>
+        <MensagemErro Texto="@Erro" />
+        <div class="acoes">
+            <button type="submit" class="@(Modo == ModoJustificativa.Cancelar ? "btn-perigo" : "btn-primary")"
+                    disabled="@(Ocupado || !Justificativas.Valida(texto))">@Botao</button>
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Voltar</button>
+        </div>
+    </form>
+</Modal>
+
+@code {
+    public enum ModoJustificativa { Concluir, Cancelar, Adiar }
+
+    /// <summary>Resposta: justificativa e, no Adiar, o novo início/término (horário de Brasília, mantendo a duração).</summary>
+    public sealed record Resposta(string Justificativa, DateTime? Inicio, DateTime? Fim);
+
+    [Parameter, EditorRequired] public ModoJustificativa Modo { get; set; }
+    /// <summary>Título da atividade, mostrado no topo para o usuário saber o que está alterando.</summary>
+    [Parameter, EditorRequired] public string Atividade { get; set; } = "";
+    /// <summary>Horário atual (UTC), usado no Adiar para sugerir a nova data e manter a duração.</summary>
+    [Parameter] public DateTime InicioEm { get; set; }
+    [Parameter] public DateTime FimEm { get; set; }
+    /// <summary>Grava (o serviço confere tudo de novo); um erro volta para o pop-up.</summary>
+    [Parameter, EditorRequired] public EventCallback<Resposta> Confirmar { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+
+    private string texto = "";
+    private DateTime novaData;
+
+    private string TituloModal => Modo switch { ModoJustificativa.Concluir => "Concluir atividade", ModoJustificativa.Cancelar => "Cancelar atividade", _ => "Adiar atividade" };
+    private string RotuloCampo => Modo switch { ModoJustificativa.Concluir => "Como foi concluída?", ModoJustificativa.Cancelar => "Motivo do cancelamento", _ => "Motivo do adiamento" };
+    private string Dica => Modo switch
+    {
+        ModoJustificativa.Concluir => "Ex.: visita feita, cliente gostou e pediu proposta",
+        ModoJustificativa.Cancelar => "Ex.: cliente desistiu da visita",
+        _ => "Ex.: cliente pediu para remarcar",
+    };
+    private string Botao => Modo switch { ModoJustificativa.Concluir => "✔ Concluir", ModoJustificativa.Cancelar => "Cancelar atividade", _ => "Salvar nova data" };
+
+    protected override void OnInitialized()
+    {
+        // atrasada: sugere daqui a 1 hora; futura: mantém o horário marcado
+        var base_ = InicioEm < DateTime.UtcNow ? DateTime.UtcNow.AddHours(1) : InicioEm;
+        Definir(DatasBR.DeUtc(base_));
+    }
+
+    private void Definir(DateTime br) => novaData = new DateTime(br.Year, br.Month, br.Day, br.Hour, br.Minute, 0);
+
+    private void Somar(TimeSpan quanto)
+    {
+        var base_ = InicioEm < DateTime.UtcNow ? DateTime.UtcNow : InicioEm;
+        Definir(DatasBR.DeUtc(base_ + quanto));
+    }
+
+    private async Task Salvar()
+    {
+        if (!Justificativas.Valida(texto)) return;
+        var resposta = Modo == ModoJustificativa.Adiar
+            ? new Resposta(texto.Trim(), novaData, novaData + (FimEm - InicioEm))
+            : new Resposta(texto.Trim(), null, null);
+        await Executar(() => Confirmar.InvokeAsync(resposta));
+    }
+}

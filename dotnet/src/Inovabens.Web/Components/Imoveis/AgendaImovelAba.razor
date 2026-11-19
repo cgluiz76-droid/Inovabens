@@ -6,7 +6,7 @@
 {
     <section class="card">
         <h2>@(editandoId is null ? "Novo compromisso" : "Editar compromisso")</h2>
-        <CompromissoFormulario Form="form" Responsaveis="responsaveis" Erro="@erroForm" Ocupado="Ocupado"
+        <CompromissoFormulario Form="form" Responsaveis="responsaveis" Erro="@erroForm" Ocupado="Ocupado" CompromissoId="editandoId"
                                AoSalvar="Salvar" AoCancelar="() => form = null" />
     </section>
 }

@@ -324,12 +324,30 @@ public sealed class ImoveisService(
             throw new RegraNegocioException(nameof(ImovelForm.Tipo), "Selecione um tipo de imóvel cadastrado.");
     }
 
-    /// <summary>Exclusão lógica (excluido_em), como no sistema original.</summary>
-    public async Task ExcluirAsync(UsuarioAtual u, Guid id)
+    private static readonly string[] ComposicaoImovel = ["imovel_caracteristicas", "imovel_midias"];
+
+    /// <summary>Tela de confirmação da exclusão: o que vai junto e os vínculos que impedem.</summary>
+    public async Task<PreviaExclusao> PreviaExclusaoAsync(UsuarioAtual u, Guid id)
     {
         u.Exigir(P.ImoveisExcluir);
+        if (!u.EhAdministrador) throw new AcessoNegadoException();
+        await using var db = await fabrica.CreateDbContextAsync();
+        var im = await Acesso.ImovelComAcesso(db, u, id, rastrear: false);
+        var nome = RegrasImovel.NomeSemCodigo(im.Codigo, im.NomeDrive) ?? im.Titulo;
+        return await Vinculos.PreviaAsync(db, "imoveis", id, $"Imóvel {im.Codigo} – {nome}", ComposicaoImovel);
+    }
+
+    /// <summary>
+    /// Exclusão lógica (excluido_em), confirmada com a senha, só do perfil Administrador e só sem vínculos ativos (proprietários, financeiro,
+    /// agenda, CRM…): assim nada fica apontando para um imóvel apagado. Fotos e características vão junto.
+    /// </summary>
+    public async Task ExcluirAsync(UsuarioAtual u, Guid id, string? senha)
+    {
+        u.Exigir(P.ImoveisExcluir);
+        if (!u.EhAdministrador) throw new AcessoNegadoException();
         await using var db = await fabrica.CreateDbContextAsync();
         var im = await Acesso.ImovelComAcesso(db, u, id);
+        await Vinculos.ConfirmarExclusaoAsync(db, u, senha, "imoveis", id, "imóvel", ComposicaoImovel);
         audit.Registrar(db, u.Id, "imoveis", id, "EXCLUIR", antes: im.Copia());
         im.ExcluidoEm = DateTime.UtcNow;
         await db.SaveChangesAsync();

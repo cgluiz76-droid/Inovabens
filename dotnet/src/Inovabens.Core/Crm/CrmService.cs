@@ -63,7 +63,7 @@ public sealed record InteressadoImovel(
 /// <summary>Atividade pendente da agenda (tela "Minhas atividades").</summary>
 public sealed record AtividadeItem(
     Guid Id, TipoCompromisso Tipo, string Titulo, string? Descricao, DateTime InicioEm, DateTime FimEm, string ResponsavelNome,
-    Guid? LeadId, string? LeadNome, string? Telefone, string? Whatsapp, Guid? ImovelId, string? ImovelCodigo)
+    Guid? LeadId, string? LeadNome, string? Telefone, string? Whatsapp, Guid? ImovelId, string? ImovelCodigo, int Adiamentos = 0)
 {
     public SituacaoProximoPasso Situacao => LeadCartao.SituacaoDe(InicioEm);
 }
@@ -338,10 +338,12 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
                 ImovelCodigo = c.Imovel != null ? c.Imovel.Codigo : null,
                 Lead = db.Leads.Where(l => l.Id == c.LeadId && l.ExcluidoEm == null)
                     .Select(l => new { l.Pessoa!.NomeRazao, l.Pessoa.Telefone, l.Pessoa.Whatsapp }).FirstOrDefault(),
+                Adiamentos = db.CompromissoHistoricos.Count(h => h.CompromissoId == c.Id && h.Acao == "ADIADA"),
             })
             .ToListAsync();
         return [.. linhas.Select(c => new AtividadeItem(c.Id, c.Tipo, c.Titulo, c.Descricao, c.InicioEm, c.FimEm, c.Resp,
-            c.Lead is null ? null : c.LeadId, c.Lead?.NomeRazao, c.Lead?.Telefone, c.Lead?.Whatsapp ?? c.Lead?.Telefone, c.ImovelId, c.ImovelCodigo))];
+            c.Lead is null ? null : c.LeadId, c.Lead?.NomeRazao, c.Lead?.Telefone, c.Lead?.Whatsapp ?? c.Lead?.Telefone, c.ImovelId, c.ImovelCodigo,
+            c.Adiamentos))];
     }
 
     /* ------------------------------ Leads ------------------------------ */
@@ -467,11 +469,26 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
         await tx.CommitAsync();
     }
 
-    public async Task ExcluirAsync(UsuarioAtual u, Guid id)
+    // histórico, ações e imóveis de interesse são do próprio lead; propostas e agenda precisam ser removidas antes
+    private static readonly string[] ComposicaoLead = ["lead_historico_estagio", "lead_interacoes", "lead_imoveis_interesse"];
+
+    /// <summary>Tela de confirmação da exclusão: o que vai junto e os vínculos que impedem.</summary>
+    public async Task<PreviaExclusao> PreviaExclusaoAsync(UsuarioAtual u, Guid id)
+    {
+        u.Exigir(P.CrmExcluir);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var l = await Visiveis(db, u).AsNoTracking().SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Lead não encontrado.");
+        var nome = await NomeDoLead(db, u, id);
+        return await Vinculos.PreviaAsync(db, "leads", id, $"Lead de {nome} ({Texto.Rotulo(l.Finalidade)})", ComposicaoLead);
+    }
+
+    /// <summary>Exclusão lógica, confirmada com a senha do usuário e só sem vínculos ativos (propostas, agenda).</summary>
+    public async Task ExcluirAsync(UsuarioAtual u, Guid id, string? senha)
     {
         u.Exigir(P.CrmExcluir);
         await using var db = await fabrica.CreateDbContextAsync();
         var l = await Visiveis(db, u).SingleOrDefaultAsync(x => x.Id == id) ?? throw new NaoEncontradoException("Lead não encontrado.");
+        await Vinculos.ConfirmarExclusaoAsync(db, u, senha, "leads", id, "lead", ComposicaoLead);
         var antes = l.Copia();
         var nome = await NomeDoLead(db, u, id);
         l.ExcluidoEm = DateTime.UtcNow;
@@ -787,6 +804,9 @@ public sealed class CrmService(IDbContextFactory<InovabensDb> fabrica, AuditServ
             var c = await db.Compromissos.SingleOrDefaultAsync(x => x.Id == cid && x.LeadId == id && x.ExcluidoEm == null)
                 ?? throw new NaoEncontradoException("Atividade não encontrada.");
             if (c.Status != StatusCompromisso.PENDENTE) throw new RegraNegocioException(nameof(form.ConcluirCompromissoId), "Esta atividade já foi encerrada");
+            // o resultado da ação é a justificativa da conclusão (regra das atividades)
+            var justificativa = Justificativas.Exigir(form.Resumo, "o resultado (como a atividade foi concluída)");
+            Justificativas.Registrar(db, u, c, "CONCLUIDA", justificativa);
             var antes = c.Copia();
             c.Status = StatusCompromisso.CONCLUIDO;
             c.ConcluidoEm = c.AtualizadoEm = DateTime.UtcNow;

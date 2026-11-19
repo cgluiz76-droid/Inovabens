@@ -89,7 +89,7 @@ public class PublicacaoR2RealTests
         {
             await publicacao.RemoverCopiaAsync(prefixo);
             if (raiz is not null) await S<IArmazenamento>().RemoverAsync(raiz);
-            await imoveis.ExcluirAsync(admin, id);
+            await imoveis.ExcluirAsync(admin, id, BancoFixture.Senha);
         }
     }
 }

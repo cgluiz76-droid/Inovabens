@@ -177,6 +177,12 @@ else
     </div>
 }
 
+@if (concluindo is { } ca)
+{
+    <JustificarAtividade Modo="JustificarAtividade.ModoJustificativa.Concluir" Atividade="@ca.Titulo" InicioEm="ca.InicioEm" FimEm="ca.FimEm"
+                         Confirmar="ConfirmarConclusao" AoFechar="() => concluindo = null" />
+}
+
 @code {
     private ResumoPainel? resumo;
     private IReadOnlyList<AtividadeItem>? atividades;
@@ -189,9 +195,15 @@ else
         if (Usuario.Pode(Permissoes.AgendaVer)) atividades = await Crm.AtividadesAsync(Usuario);
     });
 
-    private async Task Concluir(AtividadeItem a)
+    /// <summary>Concluir pede a justificativa (regra das atividades) num pop-up.</summary>
+    private AtividadeItem? concluindo;
+
+    private void Concluir(AtividadeItem a) => concluindo = a;
+
+    private async Task ConfirmarConclusao(JustificarAtividade.Resposta r)
     {
-        if (!await Executar(() => Agenda.ConcluirAsync(Usuario, a.Id))) return;
+        await Agenda.ConcluirAsync(Usuario, concluindo!.Id, r.Justificativa);
+        concluindo = null;
         await Carregar();
         Sucesso = "Atividade concluída.";
     }

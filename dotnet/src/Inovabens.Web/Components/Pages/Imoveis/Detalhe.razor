@@ -40,7 +40,7 @@ else
                 <a class="btn-ghost" href="imoveis/@Id/ficha.pdf" download>Ficha PDF</a>
                 <a class="btn-ghost" href="imoveis/@Id/ficha.xlsx" download>Ficha Excel</a>
             }
-            @if (Usuario.Pode(Permissoes.ImoveisExcluir))
+            @if (Usuario.EhAdministrador && Usuario.Pode(Permissoes.ImoveisExcluir))
             {
                 <button class="btn-perigo" disabled="@Ocupado" @onclick="Excluir">Excluir imóvel</button>
             }
@@ -125,6 +125,11 @@ else
     }
 }
 
+@if (previaExclusao is { } previa)
+{
+    <ExcluirComSenha Titulo="Excluir imóvel" Nome="imóvel" Previa="previa" Confirmar="ConfirmarExclusao" AoFechar="() => previaExclusao = null" />
+}
+
 @code {
     private enum Aba { Ficha, Financeiro, Investimento, Regularizacao, Memorandos, Agenda, Interessados, Redes }
 
@@ -161,9 +166,15 @@ else
         await Recarregar();
     }
 
-    private async Task Excluir()
+    /// <summary>Exclusão com confirmação reforçada: lista o que vai junto, "Concordo" e senha (regra do sistema).</summary>
+    private PreviaExclusao? previaExclusao;
+
+    private async Task Excluir() => await Executar(async () => previaExclusao = await Servico.PreviaExclusaoAsync(Usuario, Id));
+
+    private async Task ConfirmarExclusao(string senha)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Excluir este imóvel? Ele deixa de aparecer nas listas (exclusão lógica).")) return;
-        if (await Executar(() => Servico.ExcluirAsync(Usuario, Id))) Nav.NavigateTo("imoveis");
+        await Servico.ExcluirAsync(Usuario, Id, senha);
+        previaExclusao = null;
+        Nav.NavigateTo("imoveis");
     }
 }

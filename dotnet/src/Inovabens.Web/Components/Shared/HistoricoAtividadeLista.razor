@@ -1,0 +1,41 @@
+@inherits ComponenteBase
+@inject AgendaService Agenda
+
+@* Histórico da atividade (conclusões, cancelamentos e mudanças de data com a justificativa), no pop-up de edição. *@
+@if (itens is { Count: > 0 })
+{
+    <details class="historico-atividade" open="@Aberto">
+        <summary class="forte">Histórico (@itens.Count)</summary>
+        <ul>
+            @foreach (var h in itens)
+            {
+                <li>
+                    <span class="pequeno mudo">@Texto.DataHora(h.CriadoEm) · @(h.UsuarioNome ?? "—")</span>
+                    <p>
+                        <strong>@h.AcaoTexto</strong>
+                        @if (h.InicioAnterior is { } de && h.InicioNovo is { } para)
+                        {
+                            <span class="pequeno"> de @Texto.DataHora(de) para @Texto.DataHora(para)</span>
+                        }
+                    </p>
+                    <p class="pequeno">@h.Justificativa</p>
+                </li>
+            }
+        </ul>
+    </details>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid CompromissoId { get; set; }
+    [Parameter] public bool Aberto { get; set; }
+
+    private IReadOnlyList<HistoricoAtividade>? itens;
+    private Guid carregado;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (carregado == CompromissoId) return;
+        carregado = CompromissoId;
+        await Executar(async () => itens = await Agenda.HistoricoAsync(Usuario, CompromissoId));
+    }
+}

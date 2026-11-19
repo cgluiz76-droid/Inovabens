@@ -45,6 +45,15 @@
             </label>
         }
     </div>
+    @if (Form.DataMudou)
+    {
+        <label class="campo">
+            <span>Motivo da mudança de data *</span>
+            <InputText class="input" @bind-Value="Form.Justificativa" placeholder="Ex.: cliente pediu para remarcar" />
+            <span class="pequeno mudo">A data mudou: o motivo fica no histórico da atividade.</span>
+            <ValidationMessage For="() => Form.Justificativa" />
+        </label>
+    }
     <label class="campo">
         <span>Descrição</span>
         <InputTextArea class="input" rows="3" @bind-Value="Form.Descricao" />
@@ -63,6 +72,10 @@
         }
     </div>
 </EditForm>
+@if (CompromissoId is { } cid)
+{
+    <HistoricoAtividadeLista CompromissoId="cid" Aberto="true" />
+}
 
 @code {
     [Parameter, EditorRequired] public CompromissoForm Form { get; set; } = default!;
@@ -72,6 +85,8 @@
     [Parameter] public bool Ocupado { get; set; }
     [Parameter] public EventCallback AoSalvar { get; set; }
     [Parameter] public EventCallback AoCancelar { get; set; }
+    /// <summary>Na edição: mostra o histórico (justificativas) da atividade abaixo do formulário.</summary>
+    [Parameter] public Guid? CompromissoId { get; set; }
 
     /// <summary>Mantém a duração ao mudar o início (como a tela Node).</summary>
     private DateTime? inicioAnterior;

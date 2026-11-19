@@ -41,7 +41,7 @@ else
                     <div class="acoes-topo">
                         @if (a.Dados.ResolvidoEm is null && a.CompromissoId is { } cid && Usuario.Pode(Permissoes.AgendaEditar))
                         {
-                            <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => Cumprido(cid)">Marcar como cumprido</button>
+                            <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => cumprindo = (cid, a.CompromissoTitulo ?? a.Dados.Mensagem)">Marcar como cumprido</button>
                             <button class="btn-ghost mini" @onclick="() => AbrirReagendar(a)">Reagendar</button>
                         }
                         @if (a.Dados.LidoEm is null)
@@ -82,12 +82,23 @@ else
                 <input class="input" type="datetime-local" @bind="fim" />
             </label>
         </div>
+        <label class="campo">
+            <span>Motivo do adiamento *</span>
+            <textarea class="input" rows="2" @bind="motivo" @bind:event="oninput" placeholder="Ex.: cliente pediu para remarcar"></textarea>
+            <span class="pequeno mudo">Fica no histórico da atividade (mínimo de @Justificativas.Minimo letras).</span>
+        </label>
         <MensagemErro Texto="@erroModal" />
         <div class="acoes">
-            <button class="btn-primary" disabled="@Ocupado" @onclick="Reagendar">Reagendar</button>
+            <button class="btn-primary" disabled="@(Ocupado || !Justificativas.Valida(motivo))" @onclick="Reagendar">Reagendar</button>
             <button class="btn-ghost" @onclick="() => reagendando = null">Cancelar</button>
         </div>
     </Modal>
+}
+
+@if (cumprindo is { } cp)
+{
+    <JustificarAtividade Modo="JustificarAtividade.ModoJustificativa.Concluir" Atividade="@cp.Titulo"
+                         Confirmar="ConfirmarCumprido" AoFechar="() => cumprindo = null" />
 }
 
 @code {
@@ -107,9 +118,14 @@ else
         if (await Executar(() => Servico.MarcarLidoAsync(Usuario, id))) await Carregar();
     }
 
-    private async Task Cumprido(Guid compromissoId)
+    /// <summary>Marcar como cumprido pede a justificativa da conclusão (regra das atividades).</summary>
+    private (Guid Id, string Titulo)? cumprindo;
+    private string motivo = "";
+
+    private async Task ConfirmarCumprido(JustificarAtividade.Resposta r)
     {
-        if (!await Executar(() => Agenda.ConcluirAsync(Usuario, compromissoId))) return;
+        await Agenda.ConcluirAsync(Usuario, cumprindo!.Value.Id, r.Justificativa);
+        cumprindo = null;
         await Carregar();
         Sucesso = "Compromisso marcado como concluído.";
     }
@@ -120,6 +136,7 @@ else
         var h = CompromissoForm.Novo();
         inicio = h.Inicio!.Value;
         fim = h.Fim!.Value;
+        motivo = "";
         reagendando = a;
     }
 
@@ -130,7 +147,7 @@ else
 
     private async Task Reagendar()
     {
-        if (!await Executar(() => Agenda.ReagendarPorAlertaAsync(Usuario, reagendando!.Dados.Id, inicio, fim)))
+        if (!await Executar(() => Agenda.ReagendarPorAlertaAsync(Usuario, reagendando!.Dados.Id, inicio, fim, motivo)))
         {
             erroModal = Erro;
             Erro = null;

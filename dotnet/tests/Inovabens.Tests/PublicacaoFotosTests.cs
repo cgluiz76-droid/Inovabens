@@ -211,7 +211,7 @@ public class PublicacaoFotosIntegracaoTests : IAsyncLifetime
         Assert.Empty(_r2.Com(quarto.Midia.PublicaChave));
 
         // imóvel excluído: as fotos saem do site
-        await imoveis.ExcluirAsync(admin, id);
+        await imoveis.ExcluirAsync(admin, id, BancoFixture.Senha);
         await publicacao.ProcessarAsync();
         Assert.Empty(_r2.Com(sala.Midia.PublicaChave));
         await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())

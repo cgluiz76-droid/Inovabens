@@ -25,11 +25,12 @@
         <span>Imóvel</span>
         <select class="input" @bind="filtro.ImovelId">
             <option value="">Todos</option>
-            @foreach (var i in imoveis)
+            @foreach (var i in imoveis.Where(i => mostrarInativos || i.Ativo || i.Id.ToString() == filtro.ImovelId?.ToString()))
             {
-                <option value="@i.Id">@i.Nome</option>
+                <option value="@i.Id">@i.NomeComSituacao</option>
             }
         </select>
+        <label class="check pequeno"><input type="checkbox" @bind="mostrarInativos" /> Mostrar vendidos e arquivados</label>
     </label>
     @if (!Usuario.EscopoProprio)
     {
@@ -267,7 +268,9 @@ else
 @code {
     private FiltroAcompanhamento filtro = new();
     private Acompanhamento? dados;
-    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<OpcaoImovel> imoveis = [];
+    /// <summary>Padrão: só imóveis ativos no filtro; o já escolhido continua na lista.</summary>
+    private bool mostrarInativos;
     private IReadOnlyList<Opcao> responsaveis = [];
     private IReadOnlyList<FunilEstagio> estagios = [];
     private IReadOnlyList<string> origens = [];
@@ -280,7 +283,7 @@ else
         filtro = FiltroAcompanhamento.Ler(k => consulta.TryGetValue(k, out var v) ? v.ToString() : null);
         await Executar(async () =>
         {
-            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            imoveis = await Opcoes.ImoveisComSituacaoAsync(Usuario);
             if (!Usuario.EscopoProprio) responsaveis = await Opcoes.CorretoresAsync();
             estagios = (await Crm.EstagiosAsync()).Where(e => e.Ativo && !Funis.EhProcesso(e.Funil)).ToList();
             origens = await Servico.OrigensAsync(Usuario);

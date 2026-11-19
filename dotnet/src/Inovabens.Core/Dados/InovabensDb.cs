@@ -51,6 +51,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Memorando> Memorandos => Set<Memorando>();
     public DbSet<Compromisso> Compromissos => Set<Compromisso>();
     public DbSet<CompromissoParticipante> CompromissoParticipantes => Set<CompromissoParticipante>();
+    public DbSet<CompromissoHistorico> CompromissoHistoricos => Set<CompromissoHistorico>();
     public DbSet<GoogleConta> GoogleContas => Set<GoogleConta>();
     public DbSet<FunilEstagio> FunilEstagios => Set<FunilEstagio>();
     public DbSet<Lead> Leads => Set<Lead>();

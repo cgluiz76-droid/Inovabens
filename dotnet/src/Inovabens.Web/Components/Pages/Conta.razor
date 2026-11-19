@@ -38,7 +38,9 @@
     </section>
 
     <section class="card">
-        <h2>Verificação em duas etapas (2FA)</h2>
+        <h2>Verificação em duas etapas (2FA) <span class="badge">Opcional</span></h2>
+        <p class="pequeno mudo">Opcional, mas recomendado: além da senha, o login pede um código de 6 dígitos do aplicativo do celular
+            (Google Authenticator, Microsoft Authenticator, Authy…). Assim, mesmo que alguém descubra sua senha, não consegue entrar.</p>
         @if (totpAtivo is null)
         {
             <p class="carregando">Carregando…</p>
@@ -63,7 +65,7 @@
         }
         else if (config is null)
         {
-            <p>Proteja sua conta com um código gerado no celular (Google Authenticator, Microsoft Authenticator, Authy…).</p>
+            <p>Está desativada. Ative quando quiser; dá para desativar depois.</p>
             <div class="acoes">
                 <button class="btn-primary" disabled="@Ocupado" @onclick="Iniciar">Configurar 2FA</button>
             </div>

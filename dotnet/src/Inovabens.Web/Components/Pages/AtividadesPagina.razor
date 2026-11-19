@@ -3,6 +3,7 @@
 @inherits ComponenteBase
 @inject CrmService Crm
 @inject AgendaService Agenda
+@inject OpcoesService Opcoes
 
 <PageTitle>Minhas atividades · Inovabens</PageTitle>
 
@@ -45,7 +46,22 @@ else
                                 <span class="pequeno mudo">@Dia(a)</span>
                             </div>
                             <div class="atividade-corpo">
-                                <p class="forte"><span class="ico-inline"><Icone Nome="@ProximoPassoCampos.NomeIcone(a.Tipo)" /></span>@a.Titulo</p>
+                                <p class="forte">
+                                    <span class="ico-inline"><Icone Nome="@ProximoPassoCampos.NomeIcone(a.Tipo)" /></span>
+                                    @if (PodeEditar)
+                                    {
+                                        <button type="button" class="link-atividade" title="Abrir para editar" @onclick="() => AbrirEdicao(a)">@a.Titulo</button>
+                                    }
+                                    else
+                                    {
+                                        @a.Titulo
+                                    }
+                                    @if (a.Adiamentos > 0)
+                                    {
+                                        <button type="button" class="badge selo-adiada" title="Data alterada @a.Adiamentos vez(es): ver o histórico"
+                                                disabled="@(!PodeEditar)" @onclick="() => AbrirEdicao(a)">adiada @(a.Adiamentos)×</button>
+                                    }
+                                </p>
                                 <p class="pequeno mudo">
                                     @if (a.LeadId is { } lid)
                                     {
@@ -78,17 +94,10 @@ else
                                 {
                                     <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => Concluir(a)">✔ Concluir</button>
                                 }
-                                @if (Usuario.Pode(Permissoes.AgendaEditar))
+                                @if (PodeEditar)
                                 {
-                                    <details class="menu-cartao">
-                                        <summary class="btn-ghost mini">⏰ Adiar</summary>
-                                        <div class="menu-cartao-itens">
-                                            <button class="btn-ghost mini" @onclick="() => Adiar(a, TimeSpan.FromHours(1))">+1 hora</button>
-                                            <button class="btn-ghost mini" @onclick="() => AdiarPara(a, DatasBR.Agora().Date.AddDays(1).AddHours(9))">Amanhã 9h</button>
-                                            <button class="btn-ghost mini" @onclick="() => Adiar(a, TimeSpan.FromDays(7))">+1 semana</button>
-                                            <button class="btn-ghost mini" @onclick="() => AbrirReagendar(a)">Outra data…</button>
-                                        </div>
-                                    </details>
+                                    <button class="btn-ghost mini" @onclick="() => justificar = (a, JustificarAtividade.ModoJustificativa.Adiar)">⏰ Adiar</button>
+                                    <button class="btn-ghost mini" @onclick="() => AbrirEdicao(a)" title="Editar a atividade (data, título, descrição)">✏️ Editar</button>
                                 }
                             </div>
                         </li>
@@ -112,7 +121,7 @@ else
                         <option value="@c">@Texto.Rotulo(c)</option>
                     }
                 </InputSelect>
-                <InputText class="input w-desc" placeholder="Resultado: o que aconteceu?" @bind-Value="conclusao.Value.Form.Resumo" />
+                <InputText class="input w-desc" placeholder="Resultado: o que aconteceu? (obrigatório)" @bind-Value="conclusao.Value.Form.Resumo" />
             </div>
             <ValidationMessage For="() => conclusao.Value.Form.Resumo" />
             <ProximoPassoCampos Form="conclusao.Value.Form" />
@@ -125,19 +134,17 @@ else
     </Modal>
 }
 
-@if (reagendar is not null)
+@if (justificar is { } j)
 {
-    <Modal Titulo="Reagendar" AoFechar="() => reagendar = null">
-        <p class="pequeno mudo">@reagendar.Titulo</p>
-        <label class="campo">
-            <span>Nova data e hora</span>
-            <input type="datetime-local" class="input" @bind="novaData" />
-        </label>
-        <MensagemErro Texto="@erroModal" />
-        <div class="acoes">
-            <button class="btn-primary" disabled="@Ocupado" @onclick="ConfirmarReagendar">Salvar</button>
-            <button class="btn-ghost" @onclick="() => reagendar = null">Cancelar</button>
-        </div>
+    <JustificarAtividade Modo="j.Modo" Atividade="@j.Atividade.Titulo" InicioEm="j.Atividade.InicioEm" FimEm="j.Atividade.FimEm"
+                         Confirmar="Justificado" AoFechar="() => justificar = null" />
+}
+
+@if (edicao is { } ed)
+{
+    <Modal Titulo="Editar atividade" Largo AoFechar="() => edicao = null">
+        <CompromissoFormulario Form="ed.Form" Responsaveis="responsaveis" Erro="@erroModal" Ocupado="Ocupado" CompromissoId="ed.Id"
+                               AoSalvar="SalvarEdicao" AoCancelar="() => edicao = null" />
     </Modal>
 }
 
@@ -146,8 +153,11 @@ else
     private bool todas;
     private string? erroModal;
     private (AtividadeItem Atividade, InteracaoForm Form)? conclusao;
-    private AtividadeItem? reagendar;
-    private DateTime novaData;
+    private (AtividadeItem Atividade, JustificarAtividade.ModoJustificativa Modo)? justificar;
+    private (Guid Id, CompromissoForm Form)? edicao;
+    private IReadOnlyList<Opcao>? responsaveis;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.AgendaEditar);
 
     protected override Task OnInitializedAsync() => Carregar();
 
@@ -196,7 +206,7 @@ else
         erroModal = null;
         if (a.LeadId is null)
         {
-            if (await Executar(() => Agenda.ConcluirAsync(Usuario, a.Id))) await Carregar();
+            justificar = (a, JustificarAtividade.ModoJustificativa.Concluir);
             return;
         }
         conclusao = (a, new InteracaoForm { Canal = CanalDe(a.Tipo), ConcluirCompromissoId = a.Id });
@@ -216,39 +226,42 @@ else
         await Carregar();
     }
 
-    private Task Adiar(AtividadeItem a, TimeSpan quanto)
+    /// <summary>Concluir (atividade sem lead) e Adiar: justificativa obrigatória, gravada no histórico.</summary>
+    private async Task Justificado(JustificarAtividade.Resposta r)
     {
-        // atrasada: conta a partir de agora; futura: a partir do horário marcado
-        var base_ = a.InicioEm < DateTime.UtcNow ? DateTime.UtcNow : a.InicioEm;
-        return AdiarPara(a, DatasBR.DeUtc(base_ + quanto));
+        var (a, modo) = justificar!.Value;
+        if (modo == JustificarAtividade.ModoJustificativa.Adiar)
+            await Agenda.ReagendarAsync(Usuario, a.Id, r.Inicio!.Value, r.Fim!.Value, r.Justificativa);
+        else
+            await Agenda.ConcluirAsync(Usuario, a.Id, r.Justificativa);
+        justificar = null;
+        await Carregar();
     }
 
-    private async Task AdiarPara(AtividadeItem a, DateTime inicioBR)
+    /// <summary>Abre a atividade no mesmo formulário da Agenda (data obrigatória), sem sair da lista.</summary>
+    private async Task AbrirEdicao(AtividadeItem a)
     {
-        var duracao = a.FimEm - a.InicioEm;
-        if (await Executar(() => Agenda.ReagendarAsync(Usuario, a.Id, inicioBR, inicioBR + duracao))) await Carregar();
-    }
-
-    private void AbrirReagendar(AtividadeItem a)
-    {
+        if (!PodeEditar) return;
         erroModal = null;
-        reagendar = a;
-        novaData = DatasBR.DeUtc(a.InicioEm < DateTime.UtcNow ? DateTime.UtcNow.AddHours(1) : a.InicioEm);
-        novaData = novaData.AddSeconds(-novaData.Second).AddMilliseconds(-novaData.Millisecond);
+        await Executar(async () =>
+        {
+            var c = await Agenda.ObterAsync(Usuario, a.Id);
+            if (!Usuario.EscopoProprio) responsaveis ??= await Opcoes.CorretoresAsync();
+            edicao = (a.Id, CompromissoForm.De(c));
+        });
     }
 
-    private async Task ConfirmarReagendar()
+    private async Task SalvarEdicao()
     {
-        var a = reagendar!;
-        var duracao = a.FimEm - a.InicioEm;
+        var (id, form) = edicao!.Value;
         erroModal = null;
-        if (!await Executar(() => Agenda.ReagendarAsync(Usuario, a.Id, novaData, novaData + duracao)))
+        if (!await Executar(() => Agenda.AtualizarAsync(Usuario, id, form)))
         {
             erroModal = Erro;
             Erro = null;
             return;
         }
-        reagendar = null;
+        edicao = null;
         await Carregar();
     }
 }

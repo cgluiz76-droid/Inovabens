@@ -72,6 +72,60 @@ public class ModulosIntegracaoTests
         await a.S<ImoveisService>().CriarAsync(dono, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = titulo, Tipo = "casa", CorretorResponsavelId = dono.Id });
 
     [Fact]
+    public async Task Exclusao_so_sem_vinculos_e_imovel_so_pelo_administrador()
+    {
+        await using var a = await new Ambiente().Entrar();
+        var imoveis = a.S<ImoveisService>();
+        var pessoas = a.S<PessoasService>();
+        var im = await NovoImovel(a, a.Admin, $"Vínculos {sufixo}");
+        var dono = await pessoas.CriarAsync(a.Admin, new PessoaForm { NomeRazao = $"Dono {sufixo}" });
+        await imoveis.SalvarProprietariosAsync(a.Admin, im, [new ProprietarioEntrada { PessoaId = dono, Percentual = 100, Principal = true }]);
+
+        // só o perfil Administrador exclui imóvel, mesmo que outro perfil receba imoveis:excluir
+        var gestor = a.Admin with { PerfilNome = "Gestor" };
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => imoveis.ExcluirAsync(gestor, im, Senha));
+
+        // imóvel com proprietário e pessoa proprietária: bloqueados, com a lista de vínculos na mensagem
+        var e1 = await Assert.ThrowsAsync<RegraNegocioException>(() => imoveis.ExcluirAsync(a.Admin, im, Senha));
+        Assert.Equal("Não é possível excluir imóvel - Remova o vínculo com Proprietários (1).", e1.Erros["_"][0]);
+        var e2 = await Assert.ThrowsAsync<RegraNegocioException>(() => pessoas.ExcluirAsync(a.Admin, dono, Senha));
+        Assert.StartsWith("Não é possível excluir pessoa - Remova o vínculo com Proprietários (1)", e2.Erros["_"][0]);
+        Assert.NotNull(await imoveis.DetalheAsync(a.Admin, im)); // nada foi excluído
+
+        // a prévia (tela de confirmação) mostra os mesmos bloqueios e o que vai junto
+        var previa = await imoveis.PreviaExclusaoAsync(a.Admin, im);
+        Assert.True(previa.Bloqueada);
+        Assert.Equal(["Proprietários (1)"], previa.Bloqueios);
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => imoveis.PreviaExclusaoAsync(gestor, im));
+
+        // removido o vínculo, os dois podem ser excluídos; fotos/características não contam
+        await imoveis.SalvarProprietariosAsync(a.Admin, im, []);
+        await imoveis.SalvarCaracteristicasAsync(a.Admin, im, [new CaracteristicaEntrada { Chave = "Quartos", Valor = "3" }]);
+        previa = await imoveis.PreviaExclusaoAsync(a.Admin, im);
+        Assert.False(previa.Bloqueada);
+        Assert.StartsWith("Imóvel ", previa.VaiJunto[0]);
+        Assert.Contains("Características (1)", previa.VaiJunto);
+
+        // regra do sistema: sem a senha certa do próprio usuário nada é excluído
+        var semSenha = await Assert.ThrowsAsync<RegraNegocioException>(() => imoveis.ExcluirAsync(a.Admin, im, "senha-errada"));
+        Assert.True(semSenha.Erros.ContainsKey("senha"));
+        await Assert.ThrowsAsync<RegraNegocioException>(() => imoveis.ExcluirAsync(a.Admin, im, null));
+        Assert.NotNull(await imoveis.DetalheAsync(a.Admin, im));
+
+        await imoveis.ExcluirAsync(a.Admin, im, Senha);
+        await pessoas.ExcluirAsync(a.Admin, dono, Senha);
+        await Assert.ThrowsAsync<NaoEncontradoException>(() => imoveis.DetalheAsync(a.Admin, im));
+
+        // vínculo com registro já excluído não segura a exclusão: proprietário de imóvel excluído
+        var im2 = await NovoImovel(a, a.Admin, $"Vínculos 2 {sufixo}");
+        var dono2 = await pessoas.CriarAsync(a.Admin, new PessoaForm { NomeRazao = $"Dono 2 {sufixo}" });
+        await imoveis.SalvarProprietariosAsync(a.Admin, im2, [new ProprietarioEntrada { PessoaId = dono2, Percentual = 100, Principal = true }]);
+        await using (var db = await a.S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+            await db.Imoveis.Where(i => i.Id == im2).ExecuteUpdateAsync(x => x.SetProperty(i => i.ExcluidoEm, DateTime.UtcNow));
+        await pessoas.ExcluirAsync(a.Admin, dono2, Senha);
+    }
+
+    [Fact]
     public async Task Cadastro_de_tipos_de_regularizacao()
     {
         await using var a = await new Ambiente().Entrar();
@@ -181,8 +235,8 @@ public class ModulosIntegracaoTests
         Assert.DoesNotContain((await s.ListarAsync(a.Admin, new FiltroPessoas(sufixo, "CLIENTE"))).Itens, x => x.Id == id);
 
         // corretor não exclui; admin exclui (lógico) e libera o CPF
-        await Assert.ThrowsAsync<AcessoNegadoException>(() => s.ExcluirAsync(a.Corretor, id));
-        await s.ExcluirAsync(a.Admin, id);
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => s.ExcluirAsync(a.Corretor, id, Senha));
+        await s.ExcluirAsync(a.Admin, id, Senha);
         await Assert.ThrowsAsync<NaoEncontradoException>(() => s.ObterAsync(a.Admin, id));
         await s.CriarAsync(a.Admin, new PessoaForm { NomeRazao = $"Reuso CPF {sufixo}", CpfCnpj = cpf });
     }
@@ -262,7 +316,7 @@ public class ModulosIntegracaoTests
         await Assert.ThrowsAsync<NaoEncontradoException>(() => alertas.MarcarLidoAsync(a.Admin, alerta.Dados.Id)); // alerta de outro usuário
 
         // reagendar pelo alerta: volta a pendente no futuro e encerra o alerta
-        await agenda.ReagendarPorAlertaAsync(a.Corretor, alerta.Dados.Id, agora.AddDays(2), agora.AddDays(2).AddHours(1));
+        await agenda.ReagendarPorAlertaAsync(a.Corretor, alerta.Dados.Id, agora.AddDays(2), agora.AddDays(2).AddHours(1), "Cliente pediu outro dia");
         Assert.Equal(antes - 1, await alertas.ContagemAsync(a.Corretor));
         var reag = await agenda.ObterAsync(a.Corretor, vencido);
         Assert.False(reag.Vencido);
@@ -270,11 +324,12 @@ public class ModulosIntegracaoTests
         Assert.Contains(await alertas.ListarAsync(a.Corretor, true), x => x.Dados.Id == alerta.Dados.Id && x.Dados.ResolvidoEm != null);
 
         // concluir / reabrir / excluir
-        await agenda.ConcluirAsync(a.Corretor, futuro);
+        await Assert.ThrowsAsync<RegraNegocioException>(() => agenda.ConcluirAsync(a.Corretor, futuro, "ok")); // justificativa curta
+        await agenda.ConcluirAsync(a.Corretor, futuro, "Reunião feita com o cliente");
         var concl = await agenda.ObterAsync(a.Corretor, futuro);
         Assert.Equal(StatusCompromisso.CONCLUIDO, concl.Dados.Status);
         Assert.NotNull(concl.Dados.ConcluidoEm);
-        await agenda.MudarStatusAsync(a.Corretor, futuro, StatusCompromisso.PENDENTE);
+        await agenda.MudarStatusAsync(a.Corretor, futuro, StatusCompromisso.PENDENTE, null);
         Assert.Null((await agenda.ObterAsync(a.Corretor, futuro)).Dados.ConcluidoEm);
         var f = CompromissoForm.De(await agenda.ObterAsync(a.Corretor, futuro));
         f.Titulo = "Reunião remarcada";
@@ -284,6 +339,21 @@ public class ModulosIntegracaoTests
         Assert.Equal("Reunião remarcada", atualizado.Dados.Titulo);
         Assert.Equal(["c@x.com"], atualizado.Participantes);
         Assert.Equal(DatasBR.ParaUtc(f.Inicio!.Value), atualizado.Dados.InicioEm, TimeSpan.FromSeconds(1));
+
+        // mudar a data na edição exige o motivo; tudo vai para o histórico (mais recente primeiro)
+        var f2 = CompromissoForm.De(atualizado);
+        f2.Inicio = f2.Inicio!.Value.AddDays(1);
+        f2.Fim = f2.Fim!.Value.AddDays(1);
+        await Assert.ThrowsAsync<RegraNegocioException>(() => agenda.AtualizarAsync(a.Corretor, futuro, f2));
+        f2.Justificativa = "Cliente viajou";
+        await agenda.AtualizarAsync(a.Corretor, futuro, f2);
+        var hist = await agenda.HistoricoAsync(a.Corretor, futuro);
+        Assert.Equal(["ADIADA", "REABERTA", "CONCLUIDA"], hist.Select(h => h.Acao));
+        Assert.Equal("Cliente viajou", hist[0].Justificativa);
+        Assert.Equal(DatasBR.ParaUtc(f2.Inicio.Value), hist[0].InicioNovo!.Value, TimeSpan.FromSeconds(1));
+        Assert.Equal("Reunião feita com o cliente", hist[2].Justificativa);
+        Assert.Equal("Cliente pediu outro dia", Assert.Single(await agenda.HistoricoAsync(a.Corretor, vencido)).Justificativa);
+        await Assert.ThrowsAsync<RegraNegocioException>(() => agenda.MudarStatusAsync(a.Corretor, futuro, StatusCompromisso.CANCELADO, " "));
         await agenda.ExcluirAsync(a.Corretor, futuro);
         Assert.DoesNotContain(await agenda.DoImovelAsync(a.Corretor, daCarla), c => c.Dados.Id == futuro);
 
@@ -381,11 +451,12 @@ public class ModulosIntegracaoTests
         var im = await NovoImovel(a, a.Corretor, $"Interesse {sufixo}");
         await crm.DefinirInteresseAsync(a.Corretor, id, [im]);
         Assert.Equal(im, Assert.Single((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse).Id);
-        // imóvel excluído some da lista de interesse
-        await a.S<ImoveisService>().ExcluirAsync(a.Admin, im);
-        Assert.Empty((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse);
+        // imóvel de interesse de um lead ativo não pode ser excluído (integridade); sem o vínculo, pode
+        var bloqueio = await Assert.ThrowsAsync<RegraNegocioException>(() => a.S<ImoveisService>().ExcluirAsync(a.Admin, im, Senha));
+        Assert.Contains("Leads do CRM (imóvel de interesse) (1)", bloqueio.Erros["_"][0]);
         await crm.DefinirInteresseAsync(a.Corretor, id, []);
         Assert.Empty((await crm.ObterAsync(a.Corretor, id)).ImoveisInteresse);
+        await a.S<ImoveisService>().ExcluirAsync(a.Admin, im, Senha);
         // a corretora não vincula imóvel alheio (veria código e título), mas mantém o que um gestor vinculou
         var alheio = await NovoImovel(a, a.Admin, $"Alheio {sufixo}");
         await Assert.ThrowsAsync<NaoEncontradoException>(() => crm.DefinirInteresseAsync(a.Corretor, id, [alheio]));
@@ -432,8 +503,8 @@ public class ModulosIntegracaoTests
         var leadNoNovo = await crm.CriarAsync(a.Admin, new LeadForm { NovoNome = $"No estágio {sufixo}", Finalidade = FinalidadeLead.LOCACAO });
         await crm.MoverAsync(a.Admin, leadNoNovo, novo.Id);
         await Assert.ThrowsAsync<RegraNegocioException>(() => crm.ExcluirEstagioAsync(a.Admin, novo.Id));
-        await crm.ExcluirAsync(a.Admin, leadNoNovo);
-        await crm.ExcluirAsync(a.Admin, doAdmin);
+        await crm.ExcluirAsync(a.Admin, leadNoNovo, Senha);
+        await crm.ExcluirAsync(a.Admin, doAdmin, Senha);
         // tem histórico (lead excluído logicamente): exclusão física é recusada com mensagem clara
         await Assert.ThrowsAsync<RegraNegocioException>(() => crm.ExcluirEstagioAsync(a.Admin, novo.Id));
         await crm.AtualizarEstagioAsync(a.Admin, novo.Id, new EstagioForm { Funil = Funil.LOCACAO, Nome = nome + " ok", Ordem = 99, Ativo = false });

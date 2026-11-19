@@ -22,6 +22,9 @@ public sealed record UsuarioAtual(
 
     public bool Pode(string permissao) => Permissoes.Contains(permissao);
 
+    /// <summary>Perfil Administrador (protegido: não pode ser renomeado nem alterado). Ações críticas, como excluir imóvel, são só dele.</summary>
+    public bool EhAdministrador => PerfilNome == "Administrador";
+
     /// <summary>Lança <see cref="AcessoNegadoException"/> se faltar a permissão (defesa em profundidade além da tela).</summary>
     public void Exigir(string permissao)
     {

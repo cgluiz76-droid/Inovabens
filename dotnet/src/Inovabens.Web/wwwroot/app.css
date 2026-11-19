@@ -1197,3 +1197,16 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
 .documento li + li { margin-top: var(--e-2); }
 .documento-rodape { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--e-5); justify-content: center; padding: var(--e-5) var(--e-4); border-top: 1px solid var(--borda); font-size: var(--t-sm); color: var(--mudo); }
 .login-legal { display: flex; gap: var(--e-4); justify-content: center; font-size: var(--t-xs); margin: var(--e-3) 0 0; }
+
+/* Confirmação de exclusão (ExcluirComSenha): lista do que vai junto ou dos vínculos que impedem */
+.lista-exclusao { margin: 0 0 var(--e-3); padding-left: var(--e-5); display: grid; gap: var(--e-1); }
+
+/* Atividades: título abre a edição; selo de adiamentos; atalhos de data e histórico (justificativas) */
+.link-atividade { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.link-atividade:hover, .link-atividade:focus-visible { color: var(--primario); text-decoration-style: solid; }
+.selo-adiada { margin-left: var(--e-2); cursor: pointer; border: 0; font-size: var(--t-xs); }
+.atalhos-data { display: flex; flex-wrap: wrap; gap: var(--e-2); margin-bottom: var(--e-2); }
+.historico-atividade { margin-top: var(--e-4); }
+.historico-atividade ul { list-style: none; margin: var(--e-2) 0 0; padding: 0; display: grid; gap: var(--e-3); }
+.historico-atividade li { border-left: 3px solid var(--borda, #ccc); padding-left: var(--e-3); }
+.historico-atividade p { margin: 0; }

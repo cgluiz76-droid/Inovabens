@@ -119,6 +119,24 @@ public class Compromisso
     public Compromisso Copia() => (Compromisso)MemberwiseClone();
 }
 
+/// <summary>
+/// Histórico da atividade: conclusão, cancelamento ou mudança de data, sempre com justificativa (regra do sistema).
+/// Acao: CONCLUIDA, CANCELADA, ADIADA ou REABERTA.
+/// </summary>
+[Table("compromisso_historico")]
+public class CompromissoHistorico
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompromissoId { get; set; }
+    public string Acao { get; set; } = "";
+    public string Justificativa { get; set; } = "";
+    public DateTime? InicioAnterior { get; set; }
+    public DateTime? InicioNovo { get; set; }
+    public Guid? UsuarioId { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    [JsonIgnore] public Usuario? Usuario { get; set; }
+}
+
 [Table("compromisso_participantes")]
 public class CompromissoParticipante
 {

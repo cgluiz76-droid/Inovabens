@@ -278,12 +278,25 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
         foreach (var n in novos.Where(n => p.Papeis.All(a => a.Papel != n.Papel))) p.Papeis.Add(n);
     }
 
-    /// <summary>Exclusão lógica; o CPF/CNPJ é liberado para um novo cadastro (índice único parcial).</summary>
-    public async Task ExcluirAsync(UsuarioAtual u, Guid id)
+    /// <summary>Tela de confirmação da exclusão: o que vai junto e os vínculos que impedem.</summary>
+    public async Task<PreviaExclusao> PreviaExclusaoAsync(UsuarioAtual u, Guid id)
+    {
+        u.Exigir(P.PessoasExcluir);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var p = await Carregar(db, id, rastrear: false);
+        return await Vinculos.PreviaAsync(db, "pessoas", id, $"Pessoa {p.NomeRazao}", "pessoa_papeis");
+    }
+
+    /// <summary>
+    /// Exclusão lógica, confirmada com a senha do usuário; o CPF/CNPJ é liberado para um novo cadastro (índice único parcial). Só sem vínculos ativos
+    /// (imóveis, leads, financeiro, agenda…), para não deixar registros apontando para uma pessoa apagada.
+    /// </summary>
+    public async Task ExcluirAsync(UsuarioAtual u, Guid id, string? senha)
     {
         u.Exigir(P.PessoasExcluir);
         await using var db = await fabrica.CreateDbContextAsync();
         var p = await Carregar(db, id, rastrear: true);
+        await Vinculos.ConfirmarExclusaoAsync(db, u, senha, "pessoas", id, "pessoa", "pessoa_papeis");
         var antes = p.Copia();
         p.ExcluidoEm = DateTime.UtcNow;
         p.CpfCnpj = null;

@@ -75,12 +75,12 @@ else
                             {
                                 @if (c.Dados.Status == StatusCompromisso.PENDENTE)
                                 {
-                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Status(c, StatusCompromisso.CONCLUIDO)">Concluir</button>
-                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Status(c, StatusCompromisso.CANCELADO)">Cancelar</button>
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => justificar = (c, JustificarAtividade.ModoJustificativa.Concluir)">Concluir</button>
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => justificar = (c, JustificarAtividade.ModoJustificativa.Cancelar)">Cancelar</button>
                                 }
                                 else
                                 {
-                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Status(c, StatusCompromisso.PENDENTE)">Reabrir</button>
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Reabrir(c)">Reabrir</button>
                                 }
                                 <button class="btn-ghost mini" @onclick="() => AoEditar.InvokeAsync(c)">Editar</button>
                             }
@@ -96,6 +96,12 @@ else
     </div>
 }
 
+@if (justificar is { } j)
+{
+    <JustificarAtividade Modo="j.Modo" Atividade="@j.Item.Dados.Titulo" InicioEm="j.Item.Dados.InicioEm" FimEm="j.Item.Dados.FimEm"
+                         Confirmar="Justificado" AoFechar="() => justificar = null" />
+}
+
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<CompromissoDetalhe> Itens { get; set; } = [];
     [Parameter] public bool MostrarImovel { get; set; }
@@ -109,9 +115,21 @@ else
         return i.Date == f.Date ? f.ToString("HH:mm") : Texto.DataHora(c.Dados.FimEm);
     }
 
-    private async Task Status(CompromissoDetalhe c, StatusCompromisso s)
+    /// <summary>Concluir/cancelar abrem o pop-up de justificativa (obrigatória); reabrir é direto.</summary>
+    private (CompromissoDetalhe Item, JustificarAtividade.ModoJustificativa Modo)? justificar;
+
+    private async Task Justificado(JustificarAtividade.Resposta r)
     {
-        if (await Executar(() => Servico.MudarStatusAsync(Usuario, c.Dados.Id, s))) await AoAlterar.InvokeAsync();
+        var (c, modo) = justificar!.Value;
+        var status = modo == JustificarAtividade.ModoJustificativa.Concluir ? StatusCompromisso.CONCLUIDO : StatusCompromisso.CANCELADO;
+        await Servico.MudarStatusAsync(Usuario, c.Dados.Id, status, r.Justificativa);
+        justificar = null;
+        await AoAlterar.InvokeAsync();
+    }
+
+    private async Task Reabrir(CompromissoDetalhe c)
+    {
+        if (await Executar(() => Servico.MudarStatusAsync(Usuario, c.Dados.Id, StatusCompromisso.PENDENTE, null))) await AoAlterar.InvokeAsync();
     }
 
     private async Task Excluir(CompromissoDetalhe c)

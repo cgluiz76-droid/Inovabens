@@ -108,7 +108,7 @@ else
 @if (form is not null)
 {
     <Modal Titulo="@(editandoId is null ? "Novo compromisso" : "Editar compromisso")" Largo AoFechar="() => form = null">
-        <CompromissoFormulario Form="form" Responsaveis="responsaveis" Erro="@erroForm" Ocupado="Ocupado"
+        <CompromissoFormulario Form="form" Responsaveis="responsaveis" Erro="@erroForm" Ocupado="Ocupado" CompromissoId="editandoId"
                                AoSalvar="Salvar" AoCancelar="() => form = null">
             <Extra>
                 @if (editandoId is null)
@@ -117,7 +117,7 @@ else
                         <span>Imóvel *</span>
                         <input class="input" type="search" list="agenda-imoveis-novo" placeholder="Digite código ou nome" @bind="imovelNovoTexto" />
                         <datalist id="agenda-imoveis-novo">
-                            @foreach (var i in imoveis)
+                            @foreach (var i in imoveis.Where(i => i.Ativo))
                             {
                                 <option value="@i.Nome"></option>
                             }

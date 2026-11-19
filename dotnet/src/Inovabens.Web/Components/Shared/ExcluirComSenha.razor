@@ -1,0 +1,68 @@
+@inherits ComponenteBase
+
+@* Confirmação de exclusão (regra do sistema): lista tudo o que vai junto, exige "Concordo" e a senha do usuário.
+   Com vínculos ativos não há botão de excluir: a tela explica o que remover antes, para não deixar dados órfãos.
+   O serviço confere a senha e os vínculos de novo, então a regra vale mesmo fora desta tela. *@
+<Modal Titulo="@Titulo" AoFechar="AoFechar">
+    @if (Previa.Bloqueada)
+    {
+        <p class="texto-erro"><strong>Não é possível excluir @Nome - Remova o vínculo com:</strong></p>
+        <ul class="lista-exclusao">
+            @foreach (var b in Previa.Bloqueios)
+            {
+                <li>@b</li>
+            }
+        </ul>
+        <p class="pequeno mudo">Isso garante a integridade do sistema: nada pode ficar apontando para um registro excluído.</p>
+        <div class="acoes">
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Fechar</button>
+        </div>
+    }
+    else
+    {
+        <form class="formulario" @onsubmit="Excluir" @onsubmit:preventDefault>
+            <MensagemErro Texto="@Erro" />
+            <p>Será excluído:</p>
+            <ul class="lista-exclusao">
+                @foreach (var i in Previa.VaiJunto)
+                {
+                    <li>@i</li>
+                }
+            </ul>
+            <label class="check">
+                <input type="checkbox" @bind="concordo" />
+                <span>Concordo</span>
+            </label>
+            @if (concordo)
+            {
+                <label class="campo">
+                    <span>Digite a sua senha para confirmar *</span>
+                    <input class="input" type="password" autocomplete="current-password" @bind="senha" @bind:event="oninput" />
+                </label>
+            }
+            <div class="acoes">
+                <button type="submit" class="btn-perigo" disabled="@(Ocupado || !concordo || string.IsNullOrEmpty(senha))">Excluir</button>
+                <button type="button" class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+            </div>
+        </form>
+    }
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    /// <summary>Nome curto do que se exclui ("imóvel", "pessoa", "lead"), usado na mensagem de bloqueio.</summary>
+    [Parameter, EditorRequired] public string Nome { get; set; } = "";
+    [Parameter, EditorRequired] public PreviaExclusao Previa { get; set; } = default!;
+    /// <summary>Recebe a senha digitada e chama o serviço; um erro (senha incorreta, vínculo novo) volta para o pop-up.</summary>
+    [Parameter, EditorRequired] public EventCallback<string> Confirmar { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+
+    private bool concordo;
+    private string senha = "";
+
+    private async Task Excluir()
+    {
+        if (!concordo || string.IsNullOrEmpty(senha)) return;
+        if (!await Executar(() => Confirmar.InvokeAsync(senha))) senha = "";
+    }
+}

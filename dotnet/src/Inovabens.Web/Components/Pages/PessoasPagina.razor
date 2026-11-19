@@ -222,13 +222,17 @@ else
                 else
                 {
                     <input class="input" placeholder="Filtrar por código ou título…" @bind="filtroImovel" @bind:event="oninput" />
+                    <label class="check">
+                        <input type="checkbox" @bind="mostrarInativos" />
+                        Mostrar também vendidos e arquivados (@imoveis.Count(i => !i.Ativo))
+                    </label>
                     <div class="lista-selecao">
                         @foreach (var im in imoveis.Where(i => VisivelNoFiltro(i)))
                         {
                             <label class="check">
                                 <input type="checkbox" checked="@(form.Imoveis?.Contains(im.Id) == true)"
                                        @onchange="e => AlternarImovel(im.Id, (bool)e.Value!)" />
-                                @im.Nome
+                                @im.NomeComSituacao
                             </label>
                         }
                     </div>
@@ -266,10 +270,15 @@ else
     <CadastroRapido Titulo="Novo perfil de pessoa" Placeholder="Ex.: Síndico" Maximo="60" Criar="CriarPerfil" AoFechar="() => novoPerfil = false" />
 }
 
+@if (exclusao is { } ex)
+{
+    <ExcluirComSenha Titulo="Excluir pessoa" Nome="pessoa" Previa="ex.Previa" Confirmar="ConfirmarExclusao" AoFechar="() => exclusao = null" />
+}
+
 @code {
     private Paginado<Pessoa>? resultado;
     private IReadOnlyList<PerfilPessoa> perfis = [];
-    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<OpcaoImovel> imoveis = [];
     private Dictionary<Guid, List<string>> codigosImoveis = [];
     private string filtroImovel = "";
     private string termo = "";
@@ -301,7 +310,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         perfis = await Cadastros.PerfisPessoaAsync(incluirInativos: true);
-        imoveis = await Opcoes.ImoveisAsync(Usuario);
+        imoveis = await Opcoes.ImoveisComSituacaoAsync(Usuario);
         await Carregar();
     }
 
@@ -353,9 +362,13 @@ else
         form.Imoveis = vinculados;
     }
 
-    private bool VisivelNoFiltro(Opcao im) =>
-        form!.Imoveis?.Contains(im.Id) == true || Texto.Limpo(filtroImovel) is not { } f
-        || im.Nome.Contains(f, StringComparison.CurrentCultureIgnoreCase);
+    /// <summary>Padrão: só imóveis ativos; os já vinculados aparecem sempre (mesmo vendidos/arquivados).</summary>
+    private bool mostrarInativos;
+
+    private bool VisivelNoFiltro(OpcaoImovel im) =>
+        form!.Imoveis?.Contains(im.Id) == true
+        || ((mostrarInativos || im.Ativo)
+            && (Texto.Limpo(filtroImovel) is not { } f || im.Nome.Contains(f, StringComparison.CurrentCultureIgnoreCase)));
 
     private void AlternarImovel(Guid id, bool marcado)
     {
@@ -410,10 +423,17 @@ else
         await Carregar();
     }
 
-    private async Task Excluir(Pessoa p)
+    /// <summary>Exclusão com confirmação reforçada: lista o que vai junto, "Concordo" e senha (regra do sistema).</summary>
+    private (Guid Id, PreviaExclusao Previa)? exclusao;
+
+    private async Task Excluir(Pessoa p) =>
+        await Executar(async () => exclusao = (p.Id, await Servico.PreviaExclusaoAsync(Usuario, p.Id)));
+
+    private async Task ConfirmarExclusao(string senha)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"Excluir {p.NomeRazao}? (exclusão lógica)")) return;
-        if (await Executar(() => Servico.ExcluirAsync(Usuario, p.Id))) await Carregar();
+        await Servico.ExcluirAsync(Usuario, exclusao!.Value.Id, senha);
+        exclusao = null;
+        await Carregar();
     }
 
     public void Dispose() => espera?.Cancel();

@@ -273,6 +273,10 @@ else
 
 
 <ConfirmarExclusao @ref="confirmar" />
+@if (exclusao is { } ex)
+{
+    <ExcluirComSenha Titulo="Excluir lead" Nome="lead" Previa="ex.Previa" Confirmar="ConfirmarExclusaoLead" AoFechar="() => exclusao = null" />
+}
 
 @code {
     /// <summary>Quadro do funil (colunas e cartões); nas raias, um por responsável.</summary>
@@ -682,12 +686,21 @@ else
     private bool PodeExcluir => Usuario.Pode(Permissoes.CrmExcluir);
     private ConfirmarExclusao confirmar = default!;
 
+    /// <summary>Exclusão do lead com confirmação reforçada: lista o que vai junto, "Concordo" e senha (regra do sistema).</summary>
+    private (Guid Id, PreviaExclusao Previa)? exclusao;
+
     private async Task ExcluirLead(LeadCartao l)
     {
         menuCartao = null;
-        if (!await confirmar.PerguntarAsync($"o lead de {l.PessoaNome}", "Saem do CRM o lead, as ações e o funil dele.")) return;
-        if (!await Executar(() => Servico.ExcluirAsync(Usuario, l.Id))) return;
-        if (leadAberto == l.Id) FecharPainel();
+        await Executar(async () => exclusao = (l.Id, await Servico.PreviaExclusaoAsync(Usuario, l.Id)));
+    }
+
+    private async Task ConfirmarExclusaoLead(string senha)
+    {
+        var id = exclusao!.Value.Id;
+        await Servico.ExcluirAsync(Usuario, id, senha);
+        exclusao = null;
+        if (leadAberto == id) FecharPainel();
         await Carregar();
     }
     private LeadCartao? arrastando;

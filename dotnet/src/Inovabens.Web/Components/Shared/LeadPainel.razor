@@ -113,14 +113,7 @@
                             <button type="button" class="btn-primary mini" @onclick="() => AbrirCompositor(pa)">✔ Concluir</button>
                             @if (Usuario.Pode(Permissoes.AgendaEditar))
                             {
-                                <details class="menu-cartao">
-                                    <summary class="btn-ghost mini">⏰ Adiar</summary>
-                                    <div class="menu-cartao-itens">
-                                        <button type="button" class="btn-ghost mini" @onclick="() => Adiar(pa, TimeSpan.FromHours(1))">+1 hora</button>
-                                        <button type="button" class="btn-ghost mini" @onclick="() => AdiarPara(pa, DatasBR.Agora().Date.AddDays(1).AddHours(9))">Amanhã 9h</button>
-                                        <button type="button" class="btn-ghost mini" @onclick="() => Adiar(pa, TimeSpan.FromDays(7))">+1 semana</button>
-                                    </div>
-                                </details>
+                                <button type="button" class="btn-ghost mini" @onclick="() => adiando = pa">⏰ Adiar</button>
                             }
                         </div>
                     }
@@ -353,6 +346,15 @@
 
 
 <ConfirmarExclusao @ref="confirmar" />
+@if (adiando is { } ad)
+{
+    <JustificarAtividade Modo="JustificarAtividade.ModoJustificativa.Adiar" Atividade="@ad.Titulo" InicioEm="ad.InicioEm" FimEm="ad.FimEm"
+                         Confirmar="ConfirmarAdiamento" AoFechar="() => adiando = null" />
+}
+@if (previaExclusao is { } previa)
+{
+    <ExcluirComSenha Titulo="Excluir lead" Nome="lead" Previa="previa" Confirmar="ConfirmarExclusaoLead" AoFechar="() => previaExclusao = null" />
+}
 
 @code {
     private enum Aba { Linha, Atividades, Imoveis, Propostas, Dados }
@@ -496,16 +498,14 @@
         await Alterado();
     }
 
-    private Task Adiar(Compromisso c, TimeSpan quanto)
-    {
-        var base_ = c.InicioEm < DateTime.UtcNow ? DateTime.UtcNow : c.InicioEm;
-        return AdiarPara(c, DatasBR.DeUtc(base_ + quanto));
-    }
+    /// <summary>Adiar abre o pop-up com atalhos de data e o motivo obrigatório (regra das atividades).</summary>
+    private Compromisso? adiando;
 
-    private async Task AdiarPara(Compromisso c, DateTime inicioBR)
+    private async Task ConfirmarAdiamento(JustificarAtividade.Resposta r)
     {
-        var duracao = c.FimEm - c.InicioEm;
-        if (await Executar(() => Agenda.ReagendarAsync(Usuario, c.Id, inicioBR, inicioBR + duracao))) await Alterado();
+        await Agenda.ReagendarAsync(Usuario, adiando!.Id, r.Inicio!.Value, r.Fim!.Value, r.Justificativa);
+        adiando = null;
+        await Alterado();
     }
 
     private async Task SalvarInteresse(List<Guid> ids)
@@ -531,10 +531,15 @@
         if (await Executar(() => Servico.ExcluirAtividadeAsync(Usuario, LeadId, c.Id))) await Alterado();
     }
 
-    private async Task ExcluirLead()
+    /// <summary>Exclusão do lead com confirmação reforçada: lista o que vai junto, "Concordo" e senha (regra do sistema).</summary>
+    private PreviaExclusao? previaExclusao;
+
+    private async Task ExcluirLead() => await Executar(async () => previaExclusao = await Servico.PreviaExclusaoAsync(Usuario, LeadId));
+
+    private async Task ConfirmarExclusaoLead(string senha)
     {
-        if (!await confirmar.PerguntarAsync($"o lead de {detalhe?.Pessoa.NomeRazao ?? "este cliente"}", "Saem do CRM o lead, as ações e o funil dele.")) return;
-        if (!await Executar(() => Servico.ExcluirAsync(Usuario, LeadId))) return;
+        await Servico.ExcluirAsync(Usuario, LeadId, senha);
+        previaExclusao = null;
         await AoAlterar.InvokeAsync();
         await AoFechar.InvokeAsync();
     }
