@@ -71,23 +71,17 @@
             <div class="acoes-bpo">
                 <a class="btn-primary" href="financeiro/lancamentos/@c.LancamentoId/bpo.pdf" download>⬇ Baixar PDF</a>
                 <button type="button" class="btn-ghost" @onclick="Copiar">📋 Copiar texto</button>
-                @if (c.LinkWhatsapp is { } link)
+                @* igual ao clique no número: abre o contato (sem mensagem pronta) e o texto já fica copiado para colar *@
+                @if (Texto.LinkWhatsapp(c.ResponsavelWhatsapp) is { } conversa)
                 {
-                    <a class="btn-ghost" href="@link" target="_blank" rel="noopener" @onclick="() => perguntar = c.EnviadoEm is null">💬 Abrir conversa</a>
+                    <a class="btn-ghost" href="@conversa" target="_blank" rel="noopener" data-copiar="@c.TextoWhatsapp"
+                       @onclick="AoAbrirContato">💬 Abrir conversa</a>
                 }
             </div>
             <p class="pequeno mudo">PDF único: o cartão e os comprovantes (imagens e PDFs) num arquivo só, para anexar na conversa.</p>
             @if (c.LinkWhatsapp is null)
             {
                 <p class="pequeno texto-erro">Sem WhatsApp válido do responsável: cadastre no imóvel (Dados → Financeiro/BPO).</p>
-            }
-
-            @if (perguntar)
-            {
-                <div class="aviso-whatsapp">
-                    Mandou a mensagem e o PDF? <button type="button" class="btn-primary mini" disabled="@Ocupado" @onclick="() => Marcar(true)">Marcar como enviado</button>
-                    <button type="button" class="btn-ghost mini" @onclick="() => perguntar = false">Ainda não</button>
-                </div>
             }
 
             <label class="check espaco-topo">
@@ -108,23 +102,26 @@
     /// <summary>Depois de marcar/desmarcar o envio: a lista recarrega (selo e filtro "Não enviados").</summary>
     [Parameter] public EventCallback AoAlterar { get; set; }
 
-    private bool aberto, perguntar;
+    private bool aberto;
     private CartaoBpo? cartao;
 
     private async Task Abrir()
     {
         aberto = true;
-        perguntar = false;
         cartao = null;
         await Executar(async () => cartao = await Servico.CartaoAsync(Usuario, LancamentoId));
     }
 
     private void Fechar() => aberto = false;
 
-    private void AoAbrirContato()
+    /// <summary>
+    /// Abrir a conversa (número ou botão) já marca "Enviado ao BPO", a pedido do usuário; se não chegou a mandar,
+    /// é só desmarcar a caixa.
+    /// </summary>
+    private async Task AoAbrirContato()
     {
-        Sucesso = "Texto copiado: cole na conversa do WhatsApp e anexe o PDF.";
-        if (cartao?.EnviadoEm is null) perguntar = true;
+        if (cartao?.EnviadoEm is null) await Marcar(true);
+        if (Erro is null) Sucesso = "Texto copiado: cole na conversa do WhatsApp e anexe o PDF. Marcado como enviado ao BPO.";
     }
 
     private async Task Copiar()
@@ -149,7 +146,6 @@
             cartao = await Servico.CartaoAsync(Usuario, LancamentoId);
         });
         if (!ok) return;
-        perguntar = false;
         Sucesso = enviado ? "Marcado como enviado ao BPO." : "Marcação de envio removida.";
         await AoAlterar.InvokeAsync();
     }
