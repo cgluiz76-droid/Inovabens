@@ -27,7 +27,14 @@
                     <span class="pequeno mudo">Responsável financeiro</span>
                     <b>@(c.ResponsavelNome ?? "— não cadastrado —")</b>
                     <span class="pequeno">
-                        @if (c.ResponsavelWhatsapp is not null) { <span>📱 @c.ResponsavelWhatsapp</span> }
+                        @* clique no número: copia o texto e abre a conversa (sem mensagem pronta), é só colar *@
+                        @if (Texto.LinkWhatsapp(c.ResponsavelWhatsapp) is { } contato)
+                        {
+                            @* data-copiar: o interface.js copia no próprio clique (pelo servidor chegaria tarde, sem foco) *@
+                            <a href="@contato" target="_blank" rel="noopener" title="Abrir no WhatsApp (o texto do cartão já fica copiado)"
+                               data-copiar="@c.TextoWhatsapp" @onclick="AoAbrirContato">📱 @c.ResponsavelWhatsapp</a>
+                        }
+                        else if (c.ResponsavelWhatsapp is not null) { <span>📱 @c.ResponsavelWhatsapp</span> }
                         @if (c.ResponsavelEmail is not null) { <span> · ✉️ <a href="mailto:@c.ResponsavelEmail">@c.ResponsavelEmail</a></span> }
                     </span>
                 </div>
@@ -113,6 +120,12 @@
     }
 
     private void Fechar() => aberto = false;
+
+    private void AoAbrirContato()
+    {
+        Sucesso = "Texto copiado: cole na conversa do WhatsApp e anexe o PDF.";
+        if (cartao?.EnviadoEm is null) perguntar = true;
+    }
 
     private async Task Copiar()
     {

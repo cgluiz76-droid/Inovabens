@@ -12,6 +12,25 @@
         return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "escuro" : "claro";
     }
 
+    // Copiar ao clicar: [data-copiar="texto"] (ex.: número do responsável BPO, que abre o WhatsApp). A cópia é feita
+    // aqui, na hora do clique: pelo Blazor chegaria depois de a nova aba/o app tirar o foco da página e seria negada.
+    document.addEventListener("click", function (e) {
+        var alvo = e.target.closest && e.target.closest("[data-copiar]");
+        if (!alvo) return;
+        var texto = alvo.getAttribute("data-copiar");
+        var area = document.createElement("textarea");
+        area.value = texto;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        var ok = false;
+        try { ok = document.execCommand("copy"); } catch (_) { ok = false; }
+        document.body.removeChild(area);
+        if (!ok && navigator.clipboard) navigator.clipboard.writeText(texto).catch(function () { });
+    });
+
     // Arrastar cartões da galeria (área "melhorar" do imóvel): o Firefox só inicia o arraste com dados no
     // dataTransfer, e o Blazor não preenche; o que importa (qual foto) fica no próprio componente.
     document.addEventListener("dragstart", function (e) {
