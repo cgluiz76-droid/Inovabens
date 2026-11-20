@@ -417,8 +417,10 @@ td.vazio::before { display: none; }
 .paginacao div { display: flex; align-items: center; gap: var(--e-2); }
 
 /* ================= Abas ================= */
-.abas { display: flex; gap: var(--e-1); border-bottom: 1px solid var(--borda); margin-bottom: var(--e-6); overflow-x: auto; scrollbar-width: thin; }
-.aba { background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: var(--e-3) var(--e-4); font-size: var(--t-sm); font-weight: 500; color: var(--mudo); cursor: pointer; font-family: inherit; white-space: nowrap; transition: color var(--dur) var(--curva), border-color var(--dur) var(--curva); }
+/* menus horizontais: rolam só na horizontal (overflow-y: hidden evita a barra vertical); a linha de baixo é um
+   box-shadow interno, assim a aba ativa a cobre sem margem negativa (que transbordava 1px e criava a barra vertical) */
+.abas { display: flex; gap: var(--e-1); box-shadow: inset 0 -1px 0 var(--borda); margin-bottom: var(--e-6); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.aba { background: none; border: 0; border-bottom: 2px solid transparent; padding: var(--e-3) var(--e-4); font-size: var(--t-sm); font-weight: 500; color: var(--mudo); cursor: pointer; font-family: inherit; white-space: nowrap; transition: color var(--dur) var(--curva), border-color var(--dur) var(--curva); }
 .aba:hover { color: var(--titulo); }
 .aba.ativa { border-image: var(--degrade-ouro) 1; border-bottom-width: 2px; border-bottom-style: solid; color: var(--titulo); font-weight: var(--p-medio); }
 
@@ -665,7 +667,7 @@ select.input.mini { padding-right: 1.6rem; background-position: right .45rem cen
 
 /* ================= CRM: próximo passo, cartão e atividades ================= */
 .barra-crm { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--e-4); flex-wrap: wrap; border-bottom: 1px solid var(--borda); margin-bottom: var(--e-4); }
-.barra-crm .abas { border-bottom: 0; margin-bottom: 0; }
+.barra-crm .abas { box-shadow: none; margin-bottom: 0; }
 .filtro-imovel { display: flex; align-items: center; gap: var(--e-2); padding-bottom: var(--e-2); min-width: 16rem; }
 .filtro-imovel .input { max-width: 22rem; }
 .filtro-ativo { background: var(--acento-suave); border-radius: var(--raio-p); padding: var(--e-2) var(--e-3); font-size: var(--t-sm); display: flex; align-items: center; gap: var(--e-3); flex-wrap: wrap; }
@@ -696,7 +698,7 @@ select.input.mini { padding-right: 1.6rem; background-position: right .45rem cen
 .busca-rodape kbd { font: inherit; font-size: var(--t-xs); padding: 1px 5px; border: 1px solid var(--borda-forte); border-bottom-width: 2px; border-radius: 4px; background: var(--superficie-2); margin-right: 2px; }
 
 /* seletor de etapas: só no celular (uma coluna por vez) */
-.seletor-etapas { display: none; gap: var(--e-2); overflow-x: auto; scrollbar-width: none; padding: 2px 0 var(--e-3); }
+.seletor-etapas { display: none; gap: var(--e-2); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; padding: 2px 0 var(--e-3); }
 .seletor-etapas::-webkit-scrollbar { display: none; }
 .chip-etapa { flex: none; display: inline-flex; align-items: center; gap: var(--e-2); min-height: 2.5rem; padding: 0 var(--e-3); font: inherit; font-size: var(--t-sm);
     color: var(--texto-2); background: var(--superficie); border: 1px solid var(--borda); border-left: 4px solid var(--cor-etapa); border-radius: var(--raio-p); cursor: pointer; }
@@ -761,7 +763,7 @@ select.input.mini { padding-right: 1.6rem; background-position: right .45rem cen
 .painel-nav { display: flex; gap: var(--e-1); flex-shrink: 0; }
 .painel-contato { display: flex; flex-wrap: wrap; gap: var(--e-2); margin: var(--e-3) 0; }
 .painel-resumo { display: flex; flex-wrap: wrap; gap: var(--e-4); margin: var(--e-2) 0 0; }
-.etapas { list-style: none; margin: var(--e-2) 0 0; padding: 0; display: flex; gap: 2px; overflow-x: auto; }
+.etapas { list-style: none; margin: var(--e-2) 0 0; padding: 0; display: flex; gap: 2px; overflow-x: auto; overflow-y: hidden; }
 .etapas li { flex: 1 1 0; min-width: 5.5rem; }
 .etapa { width: 100%; border: 0; background: var(--superficie-3); color: var(--mudo); font: inherit; font-size: var(--t-xs); font-weight: 600; padding: var(--e-2);
     cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background-color var(--dur) var(--curva), color var(--dur) var(--curva);
@@ -972,7 +974,7 @@ button.kpi { font: inherit; text-align: left; cursor: pointer; color: inherit; }
 
 /* ================= Imóveis → Mapa em tela cheia (MapaImoveis.razor + mapa-imoveis.js) =================
    O mapa base é claro; os painéis por cima dele ficam no tema claro também (tokens redefinidos em .mapa-tela-cheia). */
-.abas-visao { border-bottom: 0; margin: 0 auto 0 var(--e-4); overflow: visible; }
+.abas-visao { box-shadow: none; margin: 0 auto 0 var(--e-4); overflow: visible; }
 body:has(.mapa-tela-cheia) { overflow: hidden; }
 .mapa-tela-cheia { position: fixed; inset: 0; z-index: 1000; background: #0d1424; display: flex; flex-direction: column; color: var(--texto); }
 .mapa-topo { position: absolute; z-index: 5; top: 12px; left: 12px; right: 12px; display: flex; align-items: center; gap: var(--e-3);
@@ -982,7 +984,7 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
 .mapa-marca b { font-size: var(--t-base); color: var(--titulo); }
 .mapa-marca span { font-size: var(--t-xs); color: var(--mudo); }
 .mapa-filtros { flex: 1; min-width: 0; }
-.mapa-filtros .filtros { margin: 0; gap: var(--e-2); flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.mapa-filtros .filtros { margin: 0; gap: var(--e-2); flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .mapa-filtros .input { min-height: 2.25rem; height: 2.25rem; padding: var(--e-1) var(--e-3); font-size: var(--t-sm); border-radius: .625rem; }
 .mapa-filtros .busca { min-width: 13rem; padding-left: 2.25rem; }
 .mapa-bases { display: flex; padding: 3px; gap: 2px; border-radius: .625rem; background: var(--superficie-3); }
