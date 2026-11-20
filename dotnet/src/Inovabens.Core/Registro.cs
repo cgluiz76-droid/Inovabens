@@ -61,6 +61,7 @@ public static class Registro
         services.AddScoped<MemorandosService>();
         services.AddScoped<ChavesService>();
         services.AddScoped<FinanceiroEmpresaService>();
+        services.AddScoped<ConciliacaoService>();
         services.AddScoped<AlertasService>();
         services.AddScoped<AgendaService>();
         services.AddSingleton<GoogleService>(); // guarda tokens de acesso em cache e faz chamadas em segundo plano

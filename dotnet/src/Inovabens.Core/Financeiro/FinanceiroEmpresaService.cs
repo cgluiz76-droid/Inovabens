@@ -19,7 +19,7 @@ public sealed record LancamentoEmpresaLinha(
     Guid Id, string Descricao, decimal Valor, DateOnly Vencimento, DateOnly? DataPagamento, DateOnly Competencia,
     Guid? CategoriaId, string? Categoria, GrupoCategoriaEmpresa? Grupo, Guid? ContaId, string? Conta,
     Guid? TransferenciaId, string? PessoaNome, Guid? ImovelId, string? ImovelCodigo, string? Documento, string? Parcela,
-    string? Observacao)
+    string? Observacao, bool Conciliado = false, bool DoImovel = false)
 {
     public bool Pago => DataPagamento is not null;
     public bool Atrasado(DateOnly hoje) => DataPagamento is null && Vencimento < hoje;
@@ -264,20 +264,40 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
             where l.ExcluidoEm == null && l.DataPagamento != null && l.DataPagamento >= c.DataSaldoInicial
             group l by l.ContaId into g
             select new { ContaId = g.Key!.Value, Soma = g.Sum(x => x.Valor) }).ToDictionaryAsync(x => x.ContaId, x => x.Soma);
+        // lançamentos de imóvel pagos/recebidos pela conta da imobiliária também passam pelo banco
+        var dosImoveis = await (
+            from l in db.LancamentosFinanceiros
+            join c in db.ContasBancarias on l.ContaBancariaId equals c.Id
+            where l.ExcluidoEm == null && l.Situacao == SituacaoLancamento.LIQUIDADO && l.DataLiquidacao >= c.DataSaldoInicial
+            group l by l.ContaBancariaId into g
+            select new { ContaId = g.Key!.Value, Soma = g.Sum(x => x.Valor) }).ToDictionaryAsync(x => x.ContaId, x => x.Soma);
 
         var resultado = new List<ContaComSaldo>();
         foreach (var c in contas)
         {
-            var saldo = c.SaldoInicial + movimentos.GetValueOrDefault(c.Id);
+            var saldo = c.SaldoInicial + movimentos.GetValueOrDefault(c.Id) + dosImoveis.GetValueOrDefault(c.Id);
             if (!c.Cartao) { resultado.Add(new(c, saldo, null, null, null)); continue; }
             var (ultimo, proximo) = Fechamentos(c.DiaFechamento ?? 1, hoje);
             // compras (saídas que não são pagamento de fatura) desde o último fechamento
             var fatura = -await db.LancamentosEmpresa.Where(l => l.ContaId == c.Id && l.ExcluidoEm == null
                     && l.TransferenciaId == null && l.DataPagamento > ultimo && l.DataPagamento <= proximo)
+                .SumAsync(l => l.Valor)
+                - await db.LancamentosFinanceiros.Where(l => l.ContaBancariaId == c.Id && l.ExcluidoEm == null
+                    && l.Situacao == SituacaoLancamento.LIQUIDADO && l.DataLiquidacao > ultimo && l.DataLiquidacao <= proximo)
                 .SumAsync(l => l.Valor);
             resultado.Add(new(c, saldo, fatura, proximo, Vencimento(proximo, c.DiaVencimento ?? 1)));
         }
         return resultado;
+    }
+
+    /// <summary>Saldo da conta no início do dia <paramref name="dia"/> (o que foi pago antes dele).</summary>
+    internal async Task<decimal> SaldoEmAsync(InovabensDb db, ContaBancaria c, DateOnly dia)
+    {
+        var daEmpresa = await db.LancamentosEmpresa.Where(l => l.ContaId == c.Id && l.ExcluidoEm == null
+            && l.DataPagamento >= c.DataSaldoInicial && l.DataPagamento < dia).SumAsync(l => l.Valor);
+        var dosImoveis = await db.LancamentosFinanceiros.Where(l => l.ContaBancariaId == c.Id && l.ExcluidoEm == null
+            && l.Situacao == SituacaoLancamento.LIQUIDADO && l.DataLiquidacao >= c.DataSaldoInicial && l.DataLiquidacao < dia).SumAsync(l => l.Valor);
+        return c.SaldoInicial + daEmpresa + dosImoveis;
     }
 
     /// <summary>Último fechamento (antes de hoje) e próximo fechamento (hoje ou depois) para o dia informado.</summary>
@@ -419,7 +439,35 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
             q = q.Where(l => EF.Functions.ILike(l.Descricao, like, @"\") || EF.Functions.ILike(l.PessoaNome ?? "", like, @"\")
                 || EF.Functions.ILike(l.Documento ?? "", like, @"\") || (l.Imovel != null && EF.Functions.ILike(l.Imovel.Codigo, like, @"\")));
         }
-        return await Linhas(q.OrderBy(l => l.DataPagamento ?? l.Vencimento).ThenBy(l => l.CriadoEm).Take(LimiteLista));
+        var linhas = await Linhas(q.OrderBy(l => l.DataPagamento ?? l.Vencimento).ThenBy(l => l.CriadoEm).Take(LimiteLista));
+        // lançamentos de imóvel que passaram (ou vão passar) por uma conta da imobiliária: aparecem para o extrato fechar
+        if (f.CategoriaId is null) linhas.AddRange(await DosImoveis(db, f, hoje));
+        return [.. linhas.OrderBy(l => l.DataPagamento ?? l.Vencimento)];
+    }
+
+    private static async Task<List<LancamentoEmpresaLinha>> DosImoveis(InovabensDb db, FiltroLancamentosEmpresa f, DateOnly hoje)
+    {
+        var q = db.LancamentosFinanceiros.AsNoTracking().Where(l => l.ExcluidoEm == null && l.ContaBancariaId != null
+            && (l.Situacao == SituacaoLancamento.LIQUIDADO || l.Situacao == SituacaoLancamento.ABERTO));
+        q = f.Situacao switch
+        {
+            SituacaoFiltroEmpresa.EM_ABERTO => q.Where(l => l.Situacao == SituacaoLancamento.ABERTO && l.Data >= f.De && l.Data <= f.Ate),
+            SituacaoFiltroEmpresa.PAGOS => q.Where(l => l.Situacao == SituacaoLancamento.LIQUIDADO && l.DataLiquidacao >= f.De && l.DataLiquidacao <= f.Ate),
+            SituacaoFiltroEmpresa.ATRASADOS => q.Where(l => l.Situacao == SituacaoLancamento.ABERTO && l.Data < hoje),
+            _ => q.Where(l => (l.DataLiquidacao ?? l.Data) >= f.De && (l.DataLiquidacao ?? l.Data) <= f.Ate),
+        };
+        if (f.ContaId is { } conta) q = q.Where(l => l.ContaBancariaId == conta);
+        if (Texto.Limpo(f.Busca) is { } busca)
+        {
+            var like = $"%{Texto.LikeLiteral(busca)}%";
+            q = q.Where(l => EF.Functions.ILike(l.Descricao, like, @"") || EF.Functions.ILike(l.PessoaNome ?? "", like, @"")
+                || EF.Functions.ILike(l.Imovel!.Codigo, like, @""));
+        }
+        return await q.OrderBy(l => l.DataLiquidacao ?? l.Data).Take(LimiteLista).Select(l => new LancamentoEmpresaLinha(
+            l.Id, l.Descricao, l.Valor, l.Data, l.Situacao == SituacaoLancamento.LIQUIDADO ? l.DataLiquidacao : null,
+            new DateOnly(l.Data.Year, l.Data.Month, 1), null, "Imóvel · " + l.Conta!.Nome, null, l.ContaBancariaId,
+            db.ContasBancarias.Where(c => c.Id == l.ContaBancariaId).Select(c => c.Nome).FirstOrDefault(), null, l.PessoaNome,
+            l.ImovelId, l.Imovel!.Codigo, null, null, l.Observacao, l.ExtratoItemId != null, true)).ToListAsync();
     }
 
     private static Task<List<LancamentoEmpresaLinha>> Linhas(IQueryable<LancamentoEmpresa> q) =>
@@ -427,7 +475,8 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
             l.Id, l.Descricao, l.Valor, l.Vencimento, l.DataPagamento, l.Competencia,
             l.CategoriaId, l.Categoria != null ? l.Categoria.Nome : null, l.Categoria != null ? l.Categoria.Grupo : null,
             l.ContaId, l.Conta != null ? l.Conta.Nome : null, l.TransferenciaId, l.PessoaNome,
-            l.ImovelId, l.Imovel != null ? l.Imovel.Codigo : null, l.Documento, l.Parcela, l.Observacao)).ToListAsync();
+            l.ImovelId, l.Imovel != null ? l.Imovel.Codigo : null, l.Documento, l.Parcela, l.Observacao,
+            l.ExtratoItemId != null)).ToListAsync();
 
     public async Task<LancamentoEmpresaForm> FormularioAsync(UsuarioAtual u, Guid id)
     {
@@ -476,6 +525,7 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
                     n > 1 ? $"{i + 1}/{n}" : null, form.Descricao.Trim(), n > 1 ? venc : null));
             }
         }
+        foreach (var l in criados) await MesesFechados.Garantir(db, l.DataPagamento, l.Competencia);
         db.LancamentosEmpresa.AddRange(criados);
         foreach (var l in criados) audit.Registrar(db, u.Id, "lancamentos_empresa", l.Id, "CRIAR", depois: l);
         await db.SaveChangesAsync();
@@ -504,6 +554,13 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
         if (l.TransferenciaId is not null) throw new RegraNegocioException("", "Transferência não se edita: exclua e lance de novo.");
         var categoria = await CategoriaValida(db, form.CategoriaId!.Value, form.Tipo, aceitarInativa: form.CategoriaId == l.CategoriaId);
         await ContaValida(db, form.ContaId, aceitarInativa: form.ContaId == l.ContaId);
+        var novoValor = (form.Tipo == TipoCategoriaEmpresa.ENTRADA ? 1 : -1) * form.Valor!.Value;
+        var novoPagamento = form.Pago ? form.DataPagamento : null;
+        // conciliado: valor, conta e data do pagamento são os do banco
+        if (l.ExtratoItemId is not null && (novoValor != l.Valor || form.ContaId != l.ContaId || novoPagamento != l.DataPagamento))
+            throw new RegraNegocioException("", "Lançamento conciliado com o extrato: valor, conta e data de pagamento não mudam. Desfaça a conciliação antes.");
+        var novaCompetencia = MesDe(form.Competencia ?? form.Vencimento!.Value);
+        await MesesFechados.Garantir(db, l.DataPagamento, l.Competencia, novoPagamento, novaCompetencia);
         var antes = l.Copia();
         l.Descricao = form.Descricao.Trim();
         l.Valor = (form.Tipo == TipoCategoriaEmpresa.ENTRADA ? 1 : -1) * form.Valor!.Value;
@@ -530,6 +587,7 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
         var l = await Lancamento(db, id);
         if (l.DataPagamento is not null) throw new RegraNegocioException("", "Este lançamento já está pago.");
         await ContaValida(db, contaId);
+        await MesesFechados.Garantir(db, data, l.Competencia);
         var antes = l.Copia();
         l.DataPagamento = data;
         l.ContaId = contaId;
@@ -546,6 +604,8 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
         await using var db = await fabrica.CreateDbContextAsync();
         var l = await Lancamento(db, id);
         if (l.TransferenciaId is not null) throw new RegraNegocioException("", "Transferência não fica em aberto: exclua se estiver errada.");
+        if (l.ExtratoItemId is not null) throw new RegraNegocioException("", "Lançamento conciliado com o extrato: desfaça a conciliação antes.");
+        await MesesFechados.Garantir(db, l.DataPagamento, l.Competencia);
         var antes = l.Copia();
         l.DataPagamento = null;
         l.AtualizadoPor = u.Id;
@@ -563,6 +623,9 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
         var todos = l.TransferenciaId is { } t
             ? await db.LancamentosEmpresa.Where(x => x.TransferenciaId == t && x.ExcluidoEm == null).ToListAsync()
             : [l];
+        if (todos.Any(x => x.ExtratoItemId is not null))
+            throw new RegraNegocioException("", "Lançamento conciliado com o extrato: desfaça a conciliação (aba Conciliação) antes de excluir.");
+        foreach (var x in todos) await MesesFechados.Garantir(db, x.DataPagamento, x.Competencia);
         foreach (var x in todos)
         {
             var antes = x.Copia();
@@ -586,6 +649,7 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
         var destino = await ContaValida(db, form.DestinoId) ?? throw new NaoEncontradoException("Conta não encontrada.");
         var id = Guid.NewGuid();
         var data = form.Data!.Value;
+        await MesesFechados.Garantir(db, data);
         var descricao = Texto.Limpo(form.Descricao) ?? (destino.Cartao ? $"Pagamento da fatura {destino.Nome}" : $"Transferência {origem.Nome} → {destino.Nome}");
         LancamentoEmpresa Lado(ContaBancaria c, decimal v) => new()
         {
@@ -698,12 +762,88 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
             .. Grupo(GrupoCategoriaEmpresa.FINANCEIRO, "(+/−) Resultado financeiro"),
             new("= Resultado líquido", NivelDre.TOTAL, final),
         ];
+        // livro caixa dos imóveis pago/recebido pelas contas da imobiliária: mexe no caixa, não no resultado dela
+        var fimAno = new DateOnly(ano, 12, 31);
+        var imoveis = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.ExcluidoEm == null && l.ContaBancariaId != null && l.Situacao == SituacaoLancamento.LIQUIDADO
+                && l.DataLiquidacao >= de && l.DataLiquidacao <= fimAno)
+            .GroupBy(l => l.DataLiquidacao!.Value.Month).Select(g => new { Mes = g.Key, Soma = g.Sum(x => x.Valor) }).ToListAsync();
         List<LinhaDre> fora =
         [
             .. Grupo(GrupoCategoriaEmpresa.TERCEIROS, "Dinheiro de terceiros (aluguéis e repasses)"),
             .. Grupo(GrupoCategoriaEmpresa.PATRIMONIAL, "Sócios, empréstimos e investimentos"),
+            new("Imóveis (livro caixa) pagos pelas contas da imobiliária", NivelDre.GRUPO, Meses(imoveis.Select(i => (i.Mes, i.Soma)))),
         ];
         return new(ano, dre, fora);
+    }
+
+    private static readonly string[] NomesMeses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+    /// <summary>DRE do ano em Excel: aba DRE (com o "fora do resultado" abaixo) e aba com os lançamentos que a compõem.</summary>
+    public async Task<Relatorios.Arquivo> DreExcelAsync(UsuarioAtual u, int ano)
+    {
+        u.Exigir(P.FinanceiroEmpresaExportar);
+        var dre = await DreAsync(u, ano);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var lancs = await Linhas(db.LancamentosEmpresa.AsNoTracking()
+            .Where(l => l.ExcluidoEm == null && l.CategoriaId != null && l.Competencia >= new DateOnly(ano, 1, 1) && l.Competencia <= new DateOnly(ano, 12, 1))
+            .OrderBy(l => l.Competencia).ThenBy(l => l.Vencimento));
+
+        using var wb = new ClosedXML.Excel.XLWorkbook();
+        static ClosedXML.Excel.XLCellValue T(string? s) => string.IsNullOrEmpty(s) ? ClosedXML.Excel.Blank.Value : s;
+        ClosedXML.Excel.XLCellValue[] Linha(LinhaDre l) =>
+            [l.Nivel == NivelDre.CATEGORIA ? "    " + l.Rotulo : l.Rotulo, .. l.Meses.Select(v => (ClosedXML.Excel.XLCellValue)v), l.Total];
+        var linhasDre = dre.Linhas.Select(Linha)
+            .Append([""]).Append(["Fora do resultado (só caixa)"]).Concat(dre.ForaDoResultado.Select(Linha)).ToList();
+        var ws = Relatorios.RelatoriosService.Aba(wb, $"DRE {ano}",
+            [("Linha", 46), .. NomesMeses.Select(m => (m, 12.0)), ("Total", 14)], linhasDre);
+        ws.Range(2, 2, linhasDre.Count + 1, 14).Style.NumberFormat.Format = "#,##0.00;[Red]-#,##0.00";
+        var todas = dre.Linhas.Concat([null, null]).Concat(dre.ForaDoResultado).ToList();
+        for (var i = 0; i < todas.Count; i++)
+            if (todas[i] is { Nivel: not NivelDre.CATEGORIA } || (todas[i] is null && i == dre.Linhas.Count + 1))
+                ws.Row(i + 2).Style.Font.SetBold();
+
+        var wl = Relatorios.RelatoriosService.Aba(wb, "Lançamentos",
+        [
+            ("Competência", 12), ("Vencimento", 12), ("Pagamento", 12), ("Descrição", 40), ("Categoria", 32), ("Grupo", 30),
+            ("Conta", 20), ("Pessoa", 24), ("Imóvel", 10), ("Documento", 14), ("Valor", 14),
+        ],
+        lancs.Select(l => new ClosedXML.Excel.XLCellValue[]
+        {
+            l.Competencia.ToDateTime(TimeOnly.MinValue), l.Vencimento.ToDateTime(TimeOnly.MinValue),
+            l.DataPagamento is { } d ? d.ToDateTime(TimeOnly.MinValue) : ClosedXML.Excel.Blank.Value,
+            l.Descricao, T(l.Categoria), l.Grupo is { } g ? RotuloGrupo(g) : ClosedXML.Excel.Blank.Value, T(l.Conta), T(l.PessoaNome),
+            T(l.ImovelCodigo), T(l.Documento), l.Valor,
+        }));
+        wl.Column(1).Style.NumberFormat.Format = "mm/yyyy";
+        wl.Columns(2, 3).Style.NumberFormat.Format = "dd/mm/yyyy";
+        wl.Column(11).Style.NumberFormat.Format = "#,##0.00;[Red]-#,##0.00";
+        if (lancs.Count > 0) wl.Range(1, 1, lancs.Count + 1, 11).SetAutoFilter();
+
+        audit.Registrar(db, u.Id, "lancamentos_empresa", null, "EXPORTAR", depois: new { relatorio = "dre", formato = "xlsx", ano, lancamentos = lancs.Count });
+        await db.SaveChangesAsync();
+        return new(Relatorios.RelatoriosService.Salvar(wb), $"dre-{ano}.xlsx", Relatorios.RelatoriosService.TipoXlsx);
+    }
+
+    /// <summary>DRE do ano em PDF (A4 deitado, 12 meses + total).</summary>
+    public async Task<Relatorios.Arquivo> DrePdfAsync(UsuarioAtual u, int ano)
+    {
+        u.Exigir(P.FinanceiroEmpresaExportar);
+        var dre = await DreAsync(u, ano);
+        static string N(decimal v) => v == 0 ? "–" : v.ToString("N2", Texto.PtBr);
+        string[] Linha(LinhaDre l) => [l.Nivel == NivelDre.CATEGORIA ? "   " + l.Rotulo : l.Rotulo, .. l.Meses.Select(N), N(l.Total)];
+        (string, float)[] colunas = [("", 4.2f), .. NomesMeses.Select(m => (m, 1f)), ("Total", 1.3f)];
+        var pdf = Relatorios.RelatoriosService.NovoPdf($"DRE {ano}", "Inova Bens · regime de competência",
+            $"Gerado em {DatasBR.Agora():dd/MM/yyyy HH:mm}", c =>
+            {
+                Relatorios.RelatoriosService.Tabela(c, colunas, [.. dre.Linhas.Select(Linha)], colunasDireita: 13);
+                Relatorios.RelatoriosService.Secao(c, "Fora do resultado (só caixa)");
+                Relatorios.RelatoriosService.Tabela(c, colunas, [.. dre.ForaDoResultado.Select(Linha)], colunasDireita: 13);
+            }, paisagem: true);
+        await using var db = await fabrica.CreateDbContextAsync();
+        audit.Registrar(db, u.Id, "lancamentos_empresa", null, "EXPORTAR", depois: new { relatorio = "dre", formato = "pdf", ano });
+        await db.SaveChangesAsync();
+        return new(pdf, $"dre-{ano}.pdf", Relatorios.RelatoriosService.TipoPdf);
     }
 
     /* ---------- Apoio ---------- */
@@ -737,7 +877,7 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
     private static Task<bool> EhCartao(InovabensDb db, Guid contaId) =>
         db.ContasBancarias.AnyAsync(c => c.Id == contaId && c.Tipo == TipoContaBancaria.CARTAO_CREDITO);
 
-    private static async Task<Guid?> ImovelPeloCodigo(InovabensDb db, string? codigo)
+    internal static async Task<Guid?> ImovelPeloCodigo(InovabensDb db, string? codigo)
     {
         if (Texto.Limpo(codigo) is not { } c) return null;
         var cod = c.ToUpper();

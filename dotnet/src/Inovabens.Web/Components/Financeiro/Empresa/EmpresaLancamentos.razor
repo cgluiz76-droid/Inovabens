@@ -91,6 +91,7 @@
                             </td>
                             <td>
                                 @if (l.Transferencia) { <span class="mudo">⇄ Transferência</span><p class="pequeno mudo">@(l.Valor < 0 ? "para" : "de") @contrapartes.GetValueOrDefault(l.Id)</p> }
+                                else if (l.DoImovel) { <span class="mudo">🏠 @l.Categoria</span><p class="pequeno mudo">livro caixa do imóvel</p> }
                                 else { @l.Categoria }
                             </td>
                             <td>@(l.Conta ?? "—")</td>
@@ -98,13 +99,18 @@
                                 @if (l.Pago) { <span class="badge badge-ok">@(l.Valor < 0 ? "Pago" : "Recebido")</span> }
                                 else if (l.Atrasado(hoje)) { <span class="badge badge-alerta">Atrasado</span> }
                                 else { <span class="badge">Em aberto</span> }
+                                @if (l.Conciliado) { <span class="badge badge-ok" title="Confirmado pelo extrato do banco">✓ banco</span> }
                             </td>
                             <td class="num @(l.Valor < 0 ? "texto-erro" : "texto-ok")">@Texto.Moeda(l.Valor)</td>
                             <td class="nowrap">
-                                @if (PodeEditar)
+                                @if (l.DoImovel)
+                                {
+                                    <a class="btn-ghost mini" href="@($"imoveis/{l.ImovelId}?aba=lancamentos")" title="Este lançamento é do livro caixa do imóvel: edite lá">Abrir imóvel</a>
+                                }
+                                else if (PodeEditar)
                                 {
                                     @if (!l.Pago) { <button class="btn-primary mini" @onclick="() => pagando = l">@(l.Valor < 0 ? "Pagar" : "Receber")</button> }
-                                    else if (!l.Transferencia) { <button class="btn-ghost mini" title="Volta a ficar em aberto" disabled="@Ocupado" @onclick="() => Desfazer(l)">Desfazer baixa</button> }
+                                    else if (!l.Transferencia && !l.Conciliado) { <button class="btn-ghost mini" title="Volta a ficar em aberto" disabled="@Ocupado" @onclick="() => Desfazer(l)">Desfazer baixa</button> }
                                     @if (!l.Transferencia) { <button class="btn-icone" title="Editar" @onclick="() => AoEditar.InvokeAsync(l.Id)"><Icone Nome="lapis" /></button> }
                                     <button class="btn-icone" title="Excluir" @onclick="() => excluindo = l"><Icone Nome="lixeira" /></button>
                                 }

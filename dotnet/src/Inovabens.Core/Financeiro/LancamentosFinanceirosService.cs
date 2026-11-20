@@ -320,6 +320,10 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
         await ConferirConta(db, form);
         var antes = l.Copia();
         form.AplicarEm(l);
+        // conciliado com o extrato da imobiliária: valor, data de pagamento e conta bancária são os do banco
+        if (antes.ExtratoItemId is not null && (l.Valor != antes.Valor || l.Situacao != antes.Situacao
+                || l.DataLiquidacao != antes.DataLiquidacao || l.ContaBancariaId != antes.ContaBancariaId))
+            throw new RegraNegocioException("", "Lançamento conciliado com o extrato bancário: desfaça a conciliação (Financeiro → Conciliação) antes de mudar valor, pagamento ou conta.");
         l.PessoaId = antes.PessoaNome == l.PessoaNome && antes.PessoaId is not null ? antes.PessoaId : await PessoaCadastrada(db, l.PessoaNome);
         l.AtualizadoPor = u.Id;
         l.AtualizadoEm = DateTime.UtcNow;
@@ -339,6 +343,8 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
         u.Exigir(P.FinanceiroEditar);
         await using var db = await fabrica.CreateDbContextAsync();
         var l = await ComAcesso(db, u, id);
+        if (l.ExtratoItemId is not null)
+            throw new RegraNegocioException("", "Lançamento conciliado com o extrato bancário: desfaça a conciliação (Financeiro → Conciliação) antes de excluir.");
         var codigo = await db.Imoveis.Where(i => i.Id == l.ImovelId).Select(i => i.Codigo).SingleAsync();
         audit.RegistrarExclusao(db, u.Id, "lancamentos_financeiros", id,
             $"Lançamento {FormatarNumero(codigo, l.Numero)} – {l.Descricao} ({Texto.Moeda(l.Valor)}, venc. {l.Data:dd/MM/yyyy}, {NomeSituacao(l.Situacao).ToLowerInvariant()})",
@@ -365,6 +371,7 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
         l.Data = form.Data!.Value;
         l.Valor = Math.Sign(l.Valor) * form.Valor!.Value;
         l.Numero = await ProximoNumero(db, l.ImovelId);
+        l.ContaBancariaId = form.ContaBancariaId ?? l.ContaBancariaId;
         l.AtualizadoPor = u.Id;
         l.AtualizadoEm = DateTime.UtcNow;
         audit.Registrar(db, u.Id, "lancamentos_financeiros", id, "CONFIRMAR", antes, l);
@@ -375,7 +382,8 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
     }
 
     /// <summary>Baixa de um título aberto: pago/recebido na data informada, pelo valor efetivo. Entra no saldo.</summary>
-    public async Task LiquidarAsync(UsuarioAtual u, Guid id, DateOnly data, decimal valor)
+    /// <param name="contaBancariaId">Conta da imobiliária por onde o dinheiro passou (opcional; nulo mantém a atual).</param>
+    public async Task LiquidarAsync(UsuarioAtual u, Guid id, DateOnly data, decimal valor, Guid? contaBancariaId = null)
     {
         u.Exigir(P.FinanceiroEditar);
         if (valor <= 0 || decimal.Round(valor, 2) != valor)
@@ -387,6 +395,7 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
         l.Situacao = SituacaoLancamento.LIQUIDADO;
         l.DataLiquidacao = data;
         l.Valor = Math.Sign(l.Valor) * valor;
+        l.ContaBancariaId = contaBancariaId ?? l.ContaBancariaId;
         l.AtualizadoPor = u.Id;
         l.AtualizadoEm = DateTime.UtcNow;
         audit.Registrar(db, u.Id, "lancamentos_financeiros", id, "LIQUIDAR", antes, l);
@@ -420,11 +429,11 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
     {
         await using var db = await fabrica.CreateDbContextAsync();
         return await db.Database.ExecuteSqlRawAsync("""
-            insert into lancamentos_financeiros (imovel_id, situacao, data, valor, descricao, conta_id, pessoa_id, pessoa_nome, origem_id, competencia, criado_por)
+            insert into lancamentos_financeiros (imovel_id, situacao, data, valor, descricao, conta_id, pessoa_id, pessoa_nome, origem_id, competencia, criado_por, conta_bancaria_id)
             select t.imovel_id, 'PREVISTO'::situacao_lancamento,
                    make_date(extract(year from m.mes)::int, extract(month from m.mes)::int,
                      least(t.dia_recorrencia, extract(day from (m.mes + interval '1 month' - interval '1 day'))::int)),
-                   t.valor_estimado, t.descricao, t.conta_id, t.pessoa_id, t.pessoa_nome, t.id, m.mes::date, t.criado_por
+                   t.valor_estimado, t.descricao, t.conta_id, t.pessoa_id, t.pessoa_nome, t.id, m.mes::date, t.criado_por, t.conta_bancaria_id
               from lancamentos_financeiros t
               join imoveis i on i.id = t.imovel_id
               cross join lateral generate_series(date_trunc('month', t.data) + interval '1 month', @ate::timestamp, interval '1 month') as m(mes)

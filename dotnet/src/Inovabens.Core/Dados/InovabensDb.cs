@@ -54,6 +54,10 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<ContaBancaria> ContasBancarias => Set<ContaBancaria>();
     public DbSet<CategoriaEmpresa> CategoriasEmpresa => Set<CategoriaEmpresa>();
     public DbSet<LancamentoEmpresa> LancamentosEmpresa => Set<LancamentoEmpresa>();
+    public DbSet<ExtratoImportacao> ExtratoImportacoes => Set<ExtratoImportacao>();
+    public DbSet<ExtratoItem> ExtratoItens => Set<ExtratoItem>();
+    public DbSet<RegraConciliacao> RegrasConciliacao => Set<RegraConciliacao>();
+    public DbSet<FechamentoFinanceiro> FechamentosFinanceiros => Set<FechamentoFinanceiro>();
     public DbSet<Compromisso> Compromissos => Set<Compromisso>();
     public DbSet<CompromissoParticipante> CompromissoParticipantes => Set<CompromissoParticipante>();
     public DbSet<CompromissoHistorico> CompromissoHistoricos => Set<CompromissoHistorico>();
@@ -197,6 +201,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         });
         // financeiro da imobiliária: tipos/grupos gravados como texto (varchar com CHECK na migração 0037)
         mb.Entity<ContaBancaria>().Property(x => x.Tipo).HasConversion<string>();
+        mb.Entity<RegraConciliacao>().Property(x => x.Tipo).HasConversion<string>();
         mb.Entity<CategoriaEmpresa>(e =>
         {
             e.Property(x => x.Tipo).HasConversion<string>();

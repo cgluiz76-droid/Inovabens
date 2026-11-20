@@ -3,6 +3,7 @@
 @inject ComprovantesService Comprovantes
 @inject BpoService Bpo
 @inject OpcoesService Opcoes
+@inject FinanceiroEmpresaService FinanceiroEmpresa
 
 @* Aba "Lançamentos Financeiros" do imóvel: títulos a receber (+) e a pagar (−) correntes. Situação: previsto (recorrência)
    → aberto → liquidado. O extrato mostra o saldo REAL (só liquidados, padrão) ou PROJETADO (também abertos e previstos).
@@ -328,6 +329,21 @@
                     </label>
                     <p class="pequeno mudo">Entra no saldo nesta data.</p>
                 }
+                @if (contasBancarias.Count > 0)
+                {
+                    @* opcional: quando a imobiliária paga/recebe pelo banco dela, o lançamento entra no saldo e na conciliação da conta *@
+                    <label class="campo col-2">
+                        <span>Conta bancária da imobiliária (opcional)</span>
+                        <select class="input" @bind="ContaBancariaForm">
+                            <option value="">Não passou pela conta da imobiliária</option>
+                            @foreach (var c in contasBancarias.Where(c => c.Conta.Ativa || c.Conta.Id == form.ContaBancariaId))
+                            {
+                                <option value="@c.Conta.Id">@c.Conta.Nome</option>
+                            }
+                        </select>
+                        <span class="pequeno mudo">Escolha quando o dinheiro saiu/entrou por uma conta do Financeiro da Imobiliária. Não lance de novo lá.</span>
+                    </label>
+                }
                 else
                 {
                     <p class="pequeno mudo col-2">Fica <b>em aberto</b> (fora do saldo real) até ser @(form.Tipo == TipoConta.RECEITA ? "recebido" : "pago"); depois do vencimento aparece como em atraso.</p>
@@ -448,6 +464,16 @@
                         <InputDate class="input" @bind-Value="confirmacao.DataLiquidacao" />
                         <ValidationMessage For="() => confirmacao.DataLiquidacao" />
                     </label>
+                    @if (contasBancarias.Count > 0)
+                    {
+                        <label class="campo">
+                            <span>Conta bancária da imobiliária</span>
+                            <select class="input" @bind="ContaBancariaConfirmacao">
+                                <option value="">Sem alteração</option>
+                                @foreach (var c in contasBancarias.Where(c => c.Conta.Ativa)) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
+                            </select>
+                        </label>
+                    }
                 }
             </div>
             <p class="pequeno mudo">@(liquidando || confirmacao.Liquidado ? "O título passa a liquidado e entra no saldo." : "O previsto vira título em aberto, com o próximo nº do imóvel.")</p>
@@ -486,6 +512,10 @@
         }
     }
     private IReadOnlyList<ContaOrcamentaria> contas = [];
+    // contas do Financeiro da Imobiliária: só para quem o enxerga
+    private IReadOnlyList<ContaComSaldo> contasBancarias = [];
+    private string ContaBancariaForm { get => form?.ContaBancariaId?.ToString() ?? ""; set => form!.ContaBancariaId = Guid.TryParse(value, out var g) ? g : null; }
+    private string ContaBancariaConfirmacao { get => confirmacao?.ContaBancariaId?.ToString() ?? ""; set => confirmacao!.ContaBancariaId = Guid.TryParse(value, out var g) ? g : null; }
     private IReadOnlyDictionary<Guid, int> contagem = new Dictionary<Guid, int>();
 
     private LancamentoForm? form;
@@ -581,6 +611,7 @@
         await Executar(async () =>
         {
             contas = await Servico.ContasAsync(incluirInativas: true);
+            if (Usuario.Pode(Permissoes.FinanceiroEmpresaVer)) contasBancarias = await FinanceiroEmpresa.ContasAsync(Usuario, incluirInativas: true);
             pessoas = (await Opcoes.PessoasAsync(Usuario)).Select(p => p.Nome).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         });
         await Carregar();
@@ -698,7 +729,7 @@
             ? await Executar(() =>
             {
                 if (confirmacao.DataLiquidacao is null) throw new RegraNegocioException("DataLiquidacao", "Informe a data.");
-                return Servico.LiquidarAsync(Usuario, c.Id, confirmacao.DataLiquidacao.Value, confirmacao.Valor!.Value);
+                return Servico.LiquidarAsync(Usuario, c.Id, confirmacao.DataLiquidacao.Value, confirmacao.Valor!.Value, confirmacao.ContaBancariaId);
             })
             : await Executar(() => Servico.ConfirmarAsync(Usuario, c.Id, confirmacao));
         if (!ok) return;

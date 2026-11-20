@@ -131,6 +131,9 @@ public sealed class LancamentoForm : IValidatableObject
     public int? DiaRecorrencia { get; set; }
     public decimal? ValorEstimado { get; set; }
 
+    /// <summary>Conta bancária da imobiliária por onde o dinheiro passa (opcional): entra no saldo e na conciliação dela.</summary>
+    public Guid? ContaBancariaId { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {
         foreach (var r in Dinheiro.Validar((nameof(Valor), Valor), (nameof(ValorEstimado), ValorEstimado))) yield return r;
@@ -152,7 +155,7 @@ public sealed class LancamentoForm : IValidatableObject
         Tipo = l.Valor < 0 ? TipoConta.DESPESA : TipoConta.RECEITA, Data = l.Data, Valor = Math.Abs(l.Valor), Descricao = l.Descricao,
         Liquidado = l.Situacao == SituacaoLancamento.LIQUIDADO, DataLiquidacao = l.DataLiquidacao ?? DatasBR.Hoje(),
         ContaId = l.ContaId, Observacao = l.Observacao, Pessoa = l.PessoaNome, Recorrente = l.Recorrente, DiaRecorrencia = l.DiaRecorrencia ?? l.Data.Day,
-        ValorEstimado = l.ValorEstimado is { } e ? Math.Abs(e) : null,
+        ValorEstimado = l.ValorEstimado is { } e ? Math.Abs(e) : null, ContaBancariaId = l.ContaBancariaId,
     };
 
     private decimal Sinal => Tipo == TipoConta.DESPESA ? -1 : 1;
@@ -170,6 +173,7 @@ public sealed class LancamentoForm : IValidatableObject
         l.Recorrente = Recorrente;
         l.DiaRecorrencia = Recorrente ? DiaRecorrencia : null;
         l.ValorEstimado = Recorrente ? Sinal * ValorEstimado!.Value : null;
+        l.ContaBancariaId = ContaBancariaId;
     }
 }
 
@@ -187,6 +191,9 @@ public sealed class ConfirmacaoPrevistoForm : IValidatableObject
 
     public bool Liquidado { get; set; }
     public DateOnly? DataLiquidacao { get; set; }
+
+    /// <summary>Conta bancária da imobiliária por onde o dinheiro passou (opcional).</summary>
+    public Guid? ContaBancariaId { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {

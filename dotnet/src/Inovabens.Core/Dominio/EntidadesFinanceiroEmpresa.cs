@@ -71,6 +71,8 @@ public class LancamentoEmpresa
     public string? Documento { get; set; }
     public string? Observacao { get; set; }
     public string? Parcela { get; set; }
+    /// <summary>Linha do extrato que confirma este lançamento (conciliado).</summary>
+    public Guid? ExtratoItemId { get; set; }
     public Guid? CriadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public Guid? AtualizadoPor { get; set; }
@@ -82,4 +84,62 @@ public class LancamentoEmpresa
     [JsonIgnore] public Imovel? Imovel { get; set; }
 
     public LancamentoEmpresa Copia() => (LancamentoEmpresa)MemberwiseClone();
+}
+
+/// <summary>Um arquivo OFX importado numa conta (com o saldo que o banco informou, para conferência).</summary>
+[Table("extrato_importacoes")]
+public class ExtratoImportacao
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ContaId { get; set; }
+    public string Arquivo { get; set; } = "";
+    public DateOnly? De { get; set; }
+    public DateOnly? Ate { get; set; }
+    public decimal? SaldoBanco { get; set; }
+    public DateOnly? DataSaldo { get; set; }
+    public int Itens { get; set; }
+    public int Novos { get; set; }
+    public Guid? ImportadoPor { get; set; }
+    public DateTime ImportadoEm { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Linha do extrato do banco. Pendente até ser conciliada (confirmada por lançamentos) ou ignorada.</summary>
+[Table("extrato_itens")]
+public class ExtratoItem
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ContaId { get; set; }
+    public Guid ImportacaoId { get; set; }
+    public string FitId { get; set; } = "";
+    public DateOnly Data { get; set; }
+    public decimal Valor { get; set; }
+    public string Descricao { get; set; } = "";
+    public string? Documento { get; set; }
+    public DateTime? ConciliadoEm { get; set; }
+    public DateTime? IgnoradoEm { get; set; }
+    public Guid? ConciliadoPor { get; set; }
+
+    public ExtratoItem Copia() => (ExtratoItem)MemberwiseClone();
+}
+
+/// <summary>Aprendizado da conciliação: descrição do banco (normalizada) → categoria.</summary>
+[Table("regras_conciliacao")]
+public class RegraConciliacao
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Chave { get; set; } = "";
+    public TipoCategoriaEmpresa Tipo { get; set; }
+    public Guid CategoriaId { get; set; }
+    public string? PessoaNome { get; set; }
+    public int Usos { get; set; } = 1;
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Mês fechado: lançamentos com pagamento ou competência nele não mudam até reabrir.</summary>
+[Table("fechamentos_financeiros")]
+public class FechamentoFinanceiro
+{
+    [System.ComponentModel.DataAnnotations.Key] public DateOnly Mes { get; set; }
+    public Guid? FechadoPor { get; set; }
+    public DateTime FechadoEm { get; set; } = DateTime.UtcNow;
 }

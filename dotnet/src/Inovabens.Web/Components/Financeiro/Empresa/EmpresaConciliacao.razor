@@ -1,0 +1,417 @@
+@inherits ComponenteBase
+@inject ConciliacaoService Servico
+@inject FinanceiroEmpresaService Financeiro
+
+@* Conciliação bancária: escolhe a conta, importa o OFX baixado do banco e trata cada linha. O sistema sugere o par
+   (lançamento já existente com o mesmo valor e data próxima, ou a categoria aprendida); "Aceitar todas" resolve o
+   comum de uma vez e sobra só o que precisa de decisão. No fim, o saldo do sistema deve bater com o do banco. *@
+
+<section class="card">
+    <div class="linha-form">
+        <label class="campo-inline">
+            <span>Conta</span>
+            <select class="input" @bind="ContaEscolhida" @bind:after="Carregar">
+                <option value="">Selecione…</option>
+                @foreach (var c in contas) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
+            </select>
+        </label>
+        @if (contaId is not null && PodeEditar)
+        {
+            <label class="campo-inline">
+                <span>Extrato OFX do banco</span>
+                <InputFile class="input" accept=".ofx,.OFX" OnChange="Importar" disabled="@Ocupado" />
+            </label>
+        }
+    </div>
+    @if (contaId is not null)
+    {
+        <p class="pequeno mudo">No banco (Itaú, Sicoob, Sicredi), exporte o extrato no formato <b>OFX</b> (às vezes chamado "Money"). Pode importar o mesmo período de novo: o que já veio não duplica.</p>
+    }
+</section>
+
+<MensagemErro Texto="@(Modal ? null : Erro)" />
+@if (Sucesso is not null && !Modal) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+@if (aviso is not null) { <p class="aviso-vinculo aviso-atencao" role="alert">⚠ @aviso</p> }
+
+@if (dados is { } d)
+{
+    <div class="kpis">
+        <div class="kpi">
+            <p class="rotulo-kpi">Saldo no sistema</p>
+            <p class="valor-kpi">@Texto.Moeda(d.Conta.Saldo)</p>
+            <p class="contexto-kpi">hoje</p>
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">Saldo no banco</p>
+            <p class="valor-kpi">@Texto.Moeda(d.SaldoBanco)</p>
+            <p class="contexto-kpi">@(d.DataSaldoBanco is { } ds ? $"fim de {Texto.Data(ds)}, pelo último OFX" : "importe um OFX")</p>
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">Diferença na data do banco</p>
+            @if (d.SaldoBanco is { } sb && d.SaldoSistemaNaData is { } ss)
+            {
+                var dif = ss - sb;
+                <p class="valor-kpi @(dif != 0 ? "texto-erro" : "texto-ok")">@(dif == 0 ? "✓ bate" : Texto.Moeda(dif))</p>
+                <p class="contexto-kpi">@(dif == 0 ? "sistema = banco" : "sistema − banco: concilie as pendências")</p>
+            }
+            else { <p class="valor-kpi">—</p> }
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">Pendentes</p>
+            <p class="valor-kpi @(d.Pendentes.Count > 0 ? "texto-erro" : "")">@d.Pendentes.Count</p>
+            <p class="contexto-kpi">@(d.UltimaImportacao is { } ui ? $"última importação {Texto.DataHora(ui)}" : "nenhum extrato importado")</p>
+        </div>
+    </div>
+
+    <section class="card">
+        <div class="titulo-secao">
+            <h2>A conciliar</h2>
+            @if (PodeEditar && d.Pendentes.Any(p => p.Sugestao.Tipo != TipoSugestao.NENHUMA))
+            {
+                <button class="btn-primary" disabled="@Ocupado" @onclick="AceitarTodas">✓ Aceitar todas as sugestões (@d.Pendentes.Count(p => p.Sugestao.Tipo != TipoSugestao.NENHUMA))</button>
+            }
+        </div>
+        @if (d.Pendentes.Count == 0)
+        {
+            <p class="vazio">Nada pendente nesta conta.</p>
+        }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Data</th><th>No banco</th><th class="num">Valor</th><th>Sugestão</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var p in d.Pendentes)
+                        {
+                            <tr>
+                                <td class="nowrap">@Texto.Data(p.Data)</td>
+                                <td>@p.Descricao @if (p.Documento is not null) { <p class="pequeno mudo">doc. @p.Documento</p> }</td>
+                                <td class="num @(p.Valor < 0 ? "texto-erro" : "texto-ok")">@Texto.Moeda(p.Valor)</td>
+                                <td>
+                                    @if (p.Sugestao.Tipo == TipoSugestao.NENHUMA) { <span class="pequeno mudo">—</span> }
+                                    else { <span class="badge @(p.Sugestao.Tipo == TipoSugestao.REGRA ? "" : "badge-ok")">@(p.Sugestao.Tipo == TipoSugestao.REGRA ? "aprendido" : "encontrado")</span> <span class="pequeno">@p.Sugestao.Texto</span> }
+                                </td>
+                                <td class="nowrap">
+                                    @if (PodeEditar)
+                                    {
+                                        @if (p.Sugestao.Tipo != TipoSugestao.NENHUMA)
+                                        {
+                                            <button class="btn-primary mini" disabled="@Ocupado" title="Aceitar a sugestão" @onclick="() => Aceitar(p)">✓ Aceitar</button>
+                                        }
+                                        <button class="btn-ghost mini" @onclick="() => AbrirCriar(p)" title="Lançar a partir desta linha (pode dividir em várias categorias)">Criar</button>
+                                        <button class="btn-ghost mini" @onclick="() => AbrirVincular(p)" title="Escolher um lançamento já existente">Vincular</button>
+                                        <button class="btn-ghost mini" @onclick="() => AbrirTransferencia(p)" title="Dinheiro de/para outra conta da imobiliária (ou pagamento da fatura)">⇄</button>
+                                        <button class="btn-icone" title="Ignorar (não vira lançamento: ex. já está no saldo inicial)" disabled="@Ocupado" @onclick="() => Ignorar(p)"><Icone Nome="x" /></button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    @if (d.Conciliados.Count > 0)
+    {
+        <section class="card">
+            <details>
+                <summary>Conciliados nos últimos 60 dias (@d.Conciliados.Count)</summary>
+                <div class="tabela-container">
+                    <table class="tabela">
+                        <thead><tr><th>Data</th><th>No banco</th><th class="num">Valor</th><th>Lançamento(s)</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var c in d.Conciliados)
+                            {
+                                <tr>
+                                    <td class="nowrap">@Texto.Data(c.Data)</td>
+                                    <td>@c.Descricao</td>
+                                    <td class="num @(c.Valor < 0 ? "texto-erro" : "texto-ok")">@Texto.Moeda(c.Valor)</td>
+                                    <td class="pequeno">@(c.Ignorado ? "Ignorado" : string.Join(" + ", c.Lancamentos))</td>
+                                    <td>@if (PodeEditar) { <button class="btn-ghost mini" disabled="@Ocupado" title="Volta a linha para pendente; os lançamentos continuam" @onclick="() => Desfazer(c.Id)">Desfazer</button> }</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        </section>
+    }
+}
+else if (contaId is null && contas.Count > 0)
+{
+    <section class="card"><p class="vazio">Escolha a conta para importar o extrato e conciliar.</p></section>
+}
+else if (contas.Count == 0 && carregou)
+{
+    <section class="card"><p class="vazio">Cadastre as contas em <a href="financeiro?aba=contas">Contas e cartões</a> antes de conciliar.</p></section>
+}
+
+@if (criando is not null)
+{
+    <Modal Titulo="Criar a partir do extrato" AoFechar="Fechar" Largo="true">
+        <MensagemErro Texto="@Erro" />
+        <p class="pequeno mudo">@Texto.Data(criando.Data) · @criando.Descricao · <b>@Texto.Moeda(criando.Valor)</b></p>
+        @foreach (var (parte, i) in criar.Partes.Select((p, i) => (p, i)))
+        {
+            <div class="fin-parte">
+                <label class="campo">
+                    <span>Categoria @(criar.Partes.Count > 1 ? i + 1 : "")</span>
+                    <select class="input" value="@parte.CategoriaId" @onchange="e => parte.CategoriaId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">Selecione…</option>
+                        @foreach (var g in categorias.Where(c => c.Ativa && c.Tipo == (criando.Valor > 0 ? TipoCategoriaEmpresa.ENTRADA : TipoCategoriaEmpresa.SAIDA)).GroupBy(c => c.Grupo))
+                        {
+                            <optgroup label="@FinanceiroEmpresaService.RotuloGrupo(g.Key)">
+                                @foreach (var c in g) { <option value="@c.Id" selected="@(c.Id == parte.CategoriaId)">@c.Nome</option> }
+                            </optgroup>
+                        }
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>Valor (R$)</span>
+                    <input type="number" class="input" step="0.01" min="0.01" @bind="parte.Valor" />
+                </label>
+                <label class="campo">
+                    <span>Descrição</span>
+                    <input class="input" maxlength="200" placeholder="@criando.Descricao" @bind="parte.Descricao" />
+                </label>
+                @if (criar.Partes.Count > 1)
+                {
+                    <button type="button" class="btn-icone" title="Remover parte" @onclick="() => criar.Partes.Remove(parte)"><Icone Nome="lixeira" /></button>
+                }
+            </div>
+        }
+        <p class="pequeno">
+            <button type="button" class="btn-ghost mini" @onclick="Dividir">+ Dividir em outra categoria</button>
+            @if (criar.Partes.Count > 1)
+            {
+                var falta = Math.Abs(criando.Valor) - criar.Partes.Sum(p => p.Valor ?? 0);
+                <span class="@(falta == 0 ? "texto-ok" : "texto-erro")"> @(falta == 0 ? "✓ partes somam o valor do banco" : $"faltam {Texto.Moeda(falta)}")</span>
+            }
+        </p>
+        <div class="grade-2">
+            <label class="campo">
+                <span>Pessoa (opcional)</span>
+                <input class="input" maxlength="200" @bind="criar.PessoaNome" />
+            </label>
+            <label class="campo">
+                <span>Imóvel (código, opcional)</span>
+                <input class="input" maxlength="30" placeholder="Ex.: AP0012" @bind="criar.ImovelCodigo" />
+            </label>
+        </div>
+        @if (criar.Partes.Count == 1)
+        {
+            <label class="check"><input type="checkbox" @bind="criar.Aprender" /> Lembrar: próximas linhas com esta descrição já vêm com esta categoria</label>
+        }
+        <div class="acoes">
+            <button class="btn-primary" disabled="@Ocupado" @onclick="Criar">Lançar e conciliar</button>
+            <button class="btn-ghost" @onclick="Fechar">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@if (vinculando is not null)
+{
+    <Modal Titulo="Vincular a um lançamento existente" AoFechar="Fechar" Largo="true">
+        <MensagemErro Texto="@Erro" />
+        <p class="pequeno mudo">@Texto.Data(vinculando.Data) · @vinculando.Descricao · <b>@Texto.Moeda(vinculando.Valor)</b></p>
+        @if (candidatos is null) { <p class="carregando">Procurando…</p> }
+        else if (candidatos.Count == 0) { <p class="vazio">Nenhum lançamento com este valor ainda sem conciliação. Use "Criar".</p> }
+        else
+        {
+            <ul class="fin-contas">
+                @foreach (var c in candidatos)
+                {
+                    <li>
+                        <span>@Texto.Data(c.Data) · @c.Texto @if (c.EmAberto) { <span class="badge">em aberto</span> }</span>
+                        <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => Vincular(c)">Vincular</button>
+                    </li>
+                }
+            </ul>
+        }
+    </Modal>
+}
+
+@if (transferindo is not null)
+{
+    <Modal Titulo="Transferência entre contas" AoFechar="Fechar">
+        <MensagemErro Texto="@Erro" />
+        <p class="pequeno mudo">@Texto.Data(transferindo.Data) · @transferindo.Descricao · <b>@Texto.Moeda(transferindo.Valor)</b></p>
+        <label class="campo">
+            <span>@(transferindo.Valor < 0 ? "O dinheiro foi para" : "O dinheiro veio de")</span>
+            <select class="input" @bind="outraConta">
+                <option value="">Selecione…</option>
+                @foreach (var c in contas.Where(c => c.Conta.Id != contaId)) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
+            </select>
+        </label>
+        <p class="pequeno mudo">Cria os dois lados (saída e entrada). Quando importar o extrato da outra conta, a linha dela já aparece como "encontrado".</p>
+        <div class="acoes">
+            <button class="btn-primary" disabled="@(Ocupado || !Guid.TryParse(outraConta, out _))" @onclick="Transferir">Registrar</button>
+            <button class="btn-ghost" @onclick="Fechar">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@code {
+    private const long TamanhoMaximo = 5 * 1024 * 1024;
+    private IReadOnlyList<ContaComSaldo> contas = [];
+    private IReadOnlyList<CategoriaEmpresa> categorias = [];
+    private Guid? contaId;
+    private ConciliacaoConta? dados;
+    private string? aviso;
+    private bool carregou;
+    private ItemConciliacao? criando, vinculando, transferindo;
+    private CriarDoExtratoForm criar = new();
+    private IReadOnlyList<ConciliacaoService.Candidato>? candidatos;
+    private string outraConta = "";
+    private bool PodeEditar => Usuario.Pode(Permissoes.FinanceiroEmpresaEditar);
+    private bool Modal => criando is not null || vinculando is not null || transferindo is not null;
+
+    private string ContaEscolhida { get => contaId?.ToString() ?? ""; set => contaId = Guid.TryParse(value, out var g) ? g : null; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () =>
+        {
+            contas = await Financeiro.ContasAsync(Usuario);
+            categorias = await Financeiro.CategoriasAsync(Usuario);
+        });
+        // uma conta só: já abre nela
+        if (contas.Count == 1) contaId = contas[0].Conta.Id;
+        carregou = true;
+        await Carregar();
+    }
+
+    private async Task Carregar()
+    {
+        aviso = null;
+        if (contaId is not { } id) { dados = null; return; }
+        await Executar(async () => dados = await Servico.ConciliacaoAsync(Usuario, id));
+    }
+
+    private async Task Importar(InputFileChangeEventArgs e)
+    {
+        if (contaId is not { } id) return;
+        var arq = e.File;
+        ResultadoImportacao? r = null;
+        if (await Executar(async () =>
+            {
+                if (arq.Size > TamanhoMaximo) throw new RegraNegocioException("arquivo", "Arquivo grande demais (máximo 5 MB).");
+                using var ms = new MemoryStream();
+                await arq.OpenReadStream(TamanhoMaximo).CopyToAsync(ms);
+                r = await Servico.ImportarAsync(Usuario, id, arq.Name, ms.ToArray());
+            }))
+        {
+            await Atualizar(r!.Novos == 0
+                ? $"Nenhuma linha nova ({r.Lidos} no arquivo, todas já importadas)."
+                : $"{r.Novos} linha(s) nova(s) importada(s){(r.Repetidos > 0 ? $", {r.Repetidos} já existiam" : "")}. {r.Sugeridos} com sugestão.");
+            aviso = r.AvisoConta;
+        }
+    }
+
+    private async Task Aceitar(ItemConciliacao p)
+    {
+        var ok = await Executar(() => p.Sugestao.Tipo switch
+        {
+            TipoSugestao.LANCAMENTO => Servico.ConciliarAsync(Usuario, p.Id, p.Sugestao.Grupo ?? [p.Sugestao.Id!.Value]),
+            TipoSugestao.LANCAMENTO_IMOVEL => Servico.ConciliarImovelAsync(Usuario, p.Id, p.Sugestao.Id!.Value),
+            _ => Servico.CriarAsync(Usuario, p.Id, new CriarDoExtratoForm
+            {
+                Partes = [new() { CategoriaId = p.Sugestao.Id, Valor = Math.Abs(p.Valor) }], PessoaNome = p.Sugestao.PessoaNome,
+            }),
+        });
+        if (ok) await Atualizar("Conciliado.");
+    }
+
+    private async Task AceitarTodas()
+    {
+        var n = 0;
+        if (await Executar(async () => n = await Servico.AceitarSugestoesAsync(Usuario, contaId!.Value)))
+            await Atualizar($"{n} linha(s) conciliada(s).");
+    }
+
+    private void AbrirCriar(ItemConciliacao p)
+    {
+        Erro = null;
+        criando = p;
+        criar = new CriarDoExtratoForm
+        {
+            Partes = [new() { Valor = Math.Abs(p.Valor), CategoriaId = p.Sugestao.Tipo == TipoSugestao.REGRA ? p.Sugestao.Id : null }],
+            PessoaNome = p.Sugestao.PessoaNome,
+        };
+    }
+
+    // nova parte já com o que falta para fechar o valor do banco
+    private void Dividir()
+    {
+        var falta = Math.Abs(criando!.Valor) - criar.Partes.Sum(x => x.Valor ?? 0);
+        criar.Partes.Add(new ParteExtrato { Valor = falta > 0 ? falta : null });
+    }
+
+    private async Task Criar()
+    {
+        if (await Executar(() => Servico.CriarAsync(Usuario, criando!.Id, criar)))
+        {
+            Fechar();
+            await Atualizar("Lançado e conciliado.");
+        }
+    }
+
+    private async Task AbrirVincular(ItemConciliacao p)
+    {
+        Erro = null;
+        vinculando = p;
+        candidatos = null;
+        await Executar(async () => candidatos = await Servico.CandidatosAsync(Usuario, p.Id));
+    }
+
+    private async Task Vincular(ConciliacaoService.Candidato c)
+    {
+        var id = vinculando!.Id;
+        if (await Executar(() => c.DoImovel ? Servico.ConciliarImovelAsync(Usuario, id, c.Id) : Servico.ConciliarAsync(Usuario, id, c.Id)))
+        {
+            Fechar();
+            await Atualizar("Conciliado.");
+        }
+    }
+
+    private void AbrirTransferencia(ItemConciliacao p)
+    {
+        Erro = null;
+        outraConta = "";
+        transferindo = p;
+    }
+
+    private async Task Transferir()
+    {
+        if (await Executar(() => Servico.TransferirAsync(Usuario, transferindo!.Id, Guid.Parse(outraConta))))
+        {
+            Fechar();
+            await Atualizar("Transferência registrada e conciliada.");
+        }
+    }
+
+    private async Task Ignorar(ItemConciliacao p)
+    {
+        if (await Executar(() => Servico.IgnorarAsync(Usuario, p.Id))) await Atualizar("Linha ignorada.");
+    }
+
+    private async Task Desfazer(Guid id)
+    {
+        if (await Executar(() => Servico.DesfazerAsync(Usuario, id)))
+            await Atualizar("Conciliação desfeita: a linha voltou para pendente. Os lançamentos continuam (exclua se estavam errados).");
+    }
+
+    private async Task Atualizar(string mensagem)
+    {
+        await Carregar();
+        Sucesso = mensagem;
+    }
+
+    private void Fechar()
+    {
+        criando = vinculando = transferindo = null;
+        candidatos = null;
+        Erro = null;
+    }
+}

@@ -70,6 +70,10 @@ public static class Permissoes
     /// </summary>
     public const string FinanceiroEmpresaVer = "financeiro_empresa:ver";
     public const string FinanceiroEmpresaEditar = "financeiro_empresa:editar";
+    /// <summary>DRE em Excel/PDF.</summary>
+    public const string FinanceiroEmpresaExportar = "financeiro_empresa:exportar";
+    /// <summary>Fechar e reabrir o mês (trava lançamentos). Só o Administrador recebe por padrão.</summary>
+    public const string FinanceiroEmpresaFechar = "financeiro_empresa:fechar";
 
     public static readonly IReadOnlyList<string> Todas =
     [
@@ -83,6 +87,6 @@ public static class Permissoes
         CrmVer, CrmCriar, CrmEditar, CrmExcluir, CrmPropostasDecidir,
         ProcessosVer, ProcessosEditar,
         ChavesVer, ChavesEditar, ChavesMovimentar,
-        FinanceiroEmpresaVer, FinanceiroEmpresaEditar,
+        FinanceiroEmpresaVer, FinanceiroEmpresaEditar, FinanceiroEmpresaExportar, FinanceiroEmpresaFechar,
     ];
 }

@@ -10,6 +10,12 @@
         <div class="acoes-topo">
             <button class="btn-ghost mini" title="Ano anterior" @onclick="() => Ano(-1)">‹ @(ano - 1)</button>
             <button class="btn-ghost mini" title="Próximo ano" @onclick="() => Ano(1)">@(ano + 1) ›</button>
+            @if (Usuario.Pode(Permissoes.FinanceiroEmpresaExportar))
+            {
+                @* para o contador: Excel traz também os lançamentos que formam cada linha *@
+                <a class="btn-ghost mini" href="@($"financeiro/dre.xlsx?ano={ano}")" download>⬇ Excel</a>
+                <a class="btn-ghost mini" href="@($"financeiro/dre.pdf?ano={ano}")" download>⬇ PDF</a>
+            }
         </div>
     </div>
     <p class="pequeno mudo">Regime de competência: entra no mês de competência, mesmo que ainda não tenha sido pago.</p>

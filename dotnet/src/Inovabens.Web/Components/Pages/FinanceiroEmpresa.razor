@@ -36,6 +36,12 @@
     case "lancamentos":
         <EmpresaLancamentos Versao="versao" AoEditar="Editar" AoAlterar="Alterado" />
         break;
+    case "conciliacao":
+        <EmpresaConciliacao />
+        break;
+    case "fechamento":
+        <EmpresaFechamento />
+        break;
     case "dre":
         <EmpresaDre Versao="versao" />
         break;
@@ -105,7 +111,8 @@
 
 @code {
     private static readonly (string Chave, string Rotulo)[] Abas =
-        [("painel", "Painel"), ("lancamentos", "Lançamentos"), ("dre", "DRE"), ("contas", "Contas e cartões"), ("categorias", "Plano de contas")];
+        [("painel", "Painel"), ("lancamentos", "Lançamentos"), ("conciliacao", "Conciliação"), ("dre", "DRE"), ("fechamento", "Fechamento"),
+         ("contas", "Contas e cartões"), ("categorias", "Plano de contas")];
 
     [SupplyParameterFromQuery(Name = "aba")] public string? Aba { get; set; }
     private string AbaAtual => Abas.Any(a => a.Chave == Aba) ? Aba! : "painel";

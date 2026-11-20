@@ -1,0 +1,113 @@
+@inherits ComponenteBase
+@inject ConciliacaoService Servico
+
+@* Fechamento do mês: depois de conciliar tudo, fecha o mês. Fechado, nada com pagamento ou competência nele pode
+   ser criado, alterado ou excluído (a DRE e os saldos daquele mês ficam congelados). Reabrir fica registrado. *@
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Fechamento do mês</h2>
+        <span class="fin-mes">
+            <button class="btn-ghost mini" title="Mês anterior" @onclick="() => Mudar(-1)">‹</button>
+            <b>@mes.ToString("MMMM 'de' yyyy", Texto.PtBr)</b>
+            <button class="btn-ghost mini" title="Próximo mês" @onclick="() => Mudar(1)">›</button>
+        </span>
+    </div>
+    <MensagemErro Texto="@Erro" />
+    @if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+    @if (r is not null)
+    {
+        @if (r.Fechado)
+        {
+            <p><span class="badge badge-ok">🔒 Fechado</span> em @Texto.DataHora(r.FechadoEm) @(r.FechadoPor is null ? "" : $"por {r.FechadoPor}")</p>
+        }
+        else
+        {
+            <p><span class="badge">Aberto</span></p>
+        }
+
+        <ul class="fin-contas">
+            <li>
+                <span>Linhas do extrato a conciliar no mês</span>
+                <span class="num @(r.ExtratoPendente > 0 ? "texto-erro" : "texto-ok")">@(r.ExtratoPendente == 0 ? "✓ nenhuma" : r.ExtratoPendente.ToString())</span>
+            </li>
+            <li>
+                <span>Lançamentos vencidos no mês ainda em aberto</span>
+                <span class="num @(r.EmAbertoVencidos > 0 ? "texto-erro" : "texto-ok")">@(r.EmAbertoVencidos == 0 ? "✓ nenhum" : r.EmAbertoVencidos.ToString())</span>
+            </li>
+        </ul>
+
+        <h3 class="fin-grupo">Saldos no último dia do mês</h3>
+        <ul class="fin-contas">
+            @foreach (var (conta, saldo) in r.SaldosNoFim)
+            {
+                <li><span>@conta</span><span class="num @(saldo < 0 ? "texto-erro" : "")">@Texto.Moeda(saldo)</span></li>
+            }
+        </ul>
+        <p class="pequeno mudo">Confira com o extrato de cada banco no último dia do mês antes de fechar.</p>
+
+        @if (Usuario.Pode(Permissoes.FinanceiroEmpresaFechar))
+        {
+            <div class="acoes">
+                @if (r.Fechado)
+                {
+                    <button class="btn-perigo" disabled="@Ocupado" @onclick="Reabrir">Reabrir o mês</button>
+                }
+                else
+                {
+                    <button class="btn-primary" disabled="@Ocupado" @onclick="Fechar">🔒 Fechar @mes.ToString("MM/yyyy")</button>
+                    @if (r.ExtratoPendente > 0 || r.EmAbertoVencidos > 0) { <span class="pequeno texto-erro">Há pendências; dá para fechar assim mesmo.</span> }
+                }
+            </div>
+        }
+        else
+        {
+            <p class="pequeno mudo">Fechar e reabrir o mês é do Administrador (permissão "fechar" do Financeiro da Imobiliária).</p>
+        }
+    }
+
+    @if (fechados.Count > 0)
+    {
+        <h3 class="fin-grupo">Meses fechados</h3>
+        <p class="pequeno">@string.Join(" · ", fechados.Select(m => m.ToString("MM/yyyy")))</p>
+    }
+</section>
+
+@code {
+    private DateOnly mes = new DateOnly(DatasBR.Hoje().Year, DatasBR.Hoje().Month, 1).AddMonths(-1);
+    private ResumoFechamento? r;
+    private IReadOnlyList<DateOnly> fechados = [];
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () =>
+    {
+        r = await Servico.ResumoFechamentoAsync(Usuario, mes);
+        fechados = await Servico.MesesFechadosAsync(Usuario);
+    });
+
+    private async Task Mudar(int delta)
+    {
+        mes = mes.AddMonths(delta);
+        await Carregar();
+    }
+
+    private async Task Fechar()
+    {
+        if (await Executar(() => Servico.FecharMesAsync(Usuario, mes)))
+        {
+            await Carregar();
+            Sucesso = $"{mes:MM/yyyy} fechado.";
+        }
+    }
+
+    private async Task Reabrir()
+    {
+        if (await Executar(() => Servico.ReabrirMesAsync(Usuario, mes)))
+        {
+            await Carregar();
+            Sucesso = $"{mes:MM/yyyy} reaberto.";
+        }
+    }
+}

@@ -1279,3 +1279,6 @@ fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(-
     /* dois campos de data + setas cabem na largura do celular */
     .fin-mes .w-data { width: 7.25rem; min-width: 0; }
 }
+/* conciliação: cada parte da divisão numa linha (categoria, valor, descrição, remover) */
+.fin-parte { display: grid; gap: var(--e-3); grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 2fr) auto; align-items: end; margin-bottom: var(--e-3); }
+@media (max-width: 640px) { .fin-parte { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }

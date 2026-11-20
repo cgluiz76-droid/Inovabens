@@ -436,10 +436,10 @@ public sealed class RelatoriosService(
 
     /* ------------------------------- PDF: apoio ------------------------------- */
 
-    internal static byte[] NovoPdf(string titulo, string subtitulo, string rodape, Action<ColumnDescriptor> conteudo) =>
+    internal static byte[] NovoPdf(string titulo, string subtitulo, string rodape, Action<ColumnDescriptor> conteudo, bool paisagem = false) =>
         Document.Create(doc => doc.Page(p =>
         {
-            p.Size(PageSizes.A4);
+            p.Size(paisagem ? PageSizes.A4.Landscape() : PageSizes.A4);
             p.MarginHorizontal(40);
             p.MarginVertical(30);
             p.DefaultTextStyle(t => t.FontSize(10).FontColor("#0F172A"));

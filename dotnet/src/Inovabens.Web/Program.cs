@@ -326,6 +326,11 @@ app.MapGet("/imoveis/chaves.xlsx", (Guid? imovel, HttpContext c, ChavesService s
     .RequireAuthorization(Permissoes.ChavesVer);
 app.MapGet("/imoveis/chaves/etiquetas.pdf", (Guid? imovel, Guid? chave, HttpContext c, ChavesService s) =>
     Baixar(c, u => s.EtiquetasPdfAsync(u, imovel, chave))).RequireAuthorization(Permissoes.ChavesVer);
+// DRE do Financeiro da Imobiliária (ano inteiro, por competência)
+app.MapGet("/financeiro/dre.xlsx", (int ano, HttpContext c, FinanceiroEmpresaService s) => Baixar(c, u => s.DreExcelAsync(u, ano)))
+    .RequireAuthorization(Permissoes.FinanceiroEmpresaExportar);
+app.MapGet("/financeiro/dre.pdf", (int ano, HttpContext c, FinanceiroEmpresaService s) => Baixar(c, u => s.DrePdfAsync(u, ano)))
+    .RequireAuthorization(Permissoes.FinanceiroEmpresaExportar);
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 

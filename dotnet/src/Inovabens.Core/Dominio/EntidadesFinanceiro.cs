@@ -91,6 +91,10 @@ public class LancamentoFinanceiro
     /// <summary>Quando e por quem o lançamento foi enviado ao responsável financeiro (BPO) do imóvel.</summary>
     public DateTime? BpoEnviadoEm { get; set; }
     public Guid? BpoEnviadoPor { get; set; }
+    /// <summary>Conta bancária da imobiliária por onde o dinheiro passou (entra no saldo e na conciliação dela).</summary>
+    public Guid? ContaBancariaId { get; set; }
+    /// <summary>Linha do extrato bancário que confirma este lançamento.</summary>
+    public Guid? ExtratoItemId { get; set; }
     [JsonIgnore] public ContaOrcamentaria? Conta { get; set; }
     [JsonIgnore] public Imovel? Imovel { get; set; }
 
