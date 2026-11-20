@@ -1,0 +1,70 @@
+@page "/imoveis/chaves"
+@attribute [Authorize(Policy = Permissoes.ChavesVer)]
+@inherits ComponenteBase
+@inject ChavesService Servico
+
+@* Visão geral das chaves que estão fora (de todos os imóveis visíveis), atrasadas primeiro: é a lista para cobrar.
+   Entregar, receber e cadastrar continuam na aba Chaves de cada imóvel. *@
+
+<PageTitle>Chaves fora · Inovabens</PageTitle>
+
+<nav class="trilha" aria-label="Trilha"><a href="imoveis">Imóveis</a><span class="sep" aria-hidden="true">›</span><span aria-current="page">Chaves fora</span></nav>
+
+<div class="titulo">
+    <h1>Chaves fora</h1>
+    @* arquivos com TODAS as chaves (não só as fora): conferência do chaveiro e reimpressão de etiquetas *@
+    <a class="btn-ghost" href="imoveis/chaves/etiquetas.pdf" download title="Etiquetas de todas as chaves cadastradas">🏷 Etiquetas de todas</a>
+    <a class="btn-ghost" href="imoveis/chaves.xlsx" download title="Todas as chaves (situação atual) e o histórico em Excel">⬇ Planilha das chaves</a>
+</div>
+<p class="pequeno mudo">Chaves que saíram e ainda não voltaram. Para entregar, receber ou cadastrar chaves, abra o imóvel → aba Chaves.</p>
+
+<MensagemErro Texto="@Erro" />
+
+@if (itens is null)
+{
+    @if (Erro is null) { <p class="carregando">Carregando…</p> }
+}
+else if (itens.Count == 0)
+{
+    <section class="card"><p class="vazio">Nenhuma chave fora. Todas estão no chaveiro.</p></section>
+}
+else
+{
+    <div class="kpis">
+        <div class="kpi"><p class="rotulo-kpi">Fora no prazo</p><p class="valor-kpi">@itens.Count(i => i.Situacao == SituacaoChave.FORA)</p></div>
+        <div class="kpi"><p class="rotulo-kpi">Atrasadas</p><p class="valor-kpi texto-erro">@itens.Count(i => i.Situacao == SituacaoChave.ATRASADA)</p></div>
+    </div>
+    <section class="card">
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Imóvel</th><th>Chave</th><th>Com quem</th><th>Motivo</th><th>Saiu</th><th>Situação</th></tr></thead>
+                <tbody>
+                    @foreach (var c in itens)
+                    {
+                        var f = c.Fora!;
+                        <tr>
+                            <td><a href="imoveis/@c.ImovelId?aba=chaves">@c.ImovelCodigo</a><p class="pequeno mudo">@c.ImovelTitulo</p></td>
+                            <td class="nowrap"><b>@c.Codigo</b><p class="pequeno mudo">@c.Descricao</p></td>
+                            <td>
+                                @f.ComQuem
+                                @if (f.Telefone is not null && Texto.LinkWhatsapp(f.Telefone) is { } zap)
+                                {
+                                    <p class="pequeno"><a href="@zap" target="_blank" rel="noopener" title="Cobrar a devolução pelo WhatsApp">📱 @f.Telefone</a></p>
+                                }
+                            </td>
+                            <td>@f.Motivo</td>
+                            <td class="nowrap">@Texto.DataHora(f.RetiradaEm)</td>
+                            <td><SituacaoChaveSelo Chave="c" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@code {
+    private IReadOnlyList<ChaveResumo>? itens;
+
+    protected override Task OnInitializedAsync() => Executar(async () => itens = await Servico.ForaAsync(Usuario));
+}

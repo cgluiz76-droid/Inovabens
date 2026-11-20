@@ -71,6 +71,10 @@ else
         {
             <button class="aba @(aba == Aba.Interessados ? "ativa" : "")" @onclick="() => aba = Aba.Interessados">Interessados</button>
         }
+        @if (Usuario.Pode(Permissoes.ChavesVer))
+        {
+            <button class="aba @(aba == Aba.Chaves ? "ativa" : "")" @onclick="() => aba = Aba.Chaves">Chaves</button>
+        }
         <button class="aba @(aba == Aba.Redes ? "ativa" : "")" @onclick="() => aba = Aba.Redes">Redes sociais</button>
     </div>
 
@@ -114,6 +118,10 @@ else
     {
         <InteressadosAba ImovelId="Id" />
     }
+    else if (aba == Aba.Chaves && Usuario.Pode(Permissoes.ChavesVer))
+    {
+        <ChavesAba ImovelId="Id" />
+    }
     else if (aba == Aba.Redes)
     {
         <RedesSociaisAba Detalhe="detalhe" />
@@ -131,7 +139,7 @@ else
 }
 
 @code {
-    private enum Aba { Ficha, Financeiro, Investimento, Regularizacao, Memorandos, Agenda, Interessados, Redes }
+    private enum Aba { Ficha, Financeiro, Investimento, Regularizacao, Memorandos, Agenda, Interessados, Chaves, Redes }
 
     [Parameter] public Guid Id { get; set; }
     /// <summary>?aba=lancamentos abre direto nos Lançamentos Financeiros (link da tela de títulos em atraso).</summary>
@@ -150,6 +158,7 @@ else
     protected override void OnInitialized()
     {
         if (AbaInicial == "lancamentos" && Usuario.Pode(Permissoes.FinanceiroVer)) aba = Aba.Financeiro;
+        if (AbaInicial == "chaves" && Usuario.Pode(Permissoes.ChavesVer)) aba = Aba.Chaves;
     }
 
     protected override Task OnParametersSetAsync() => Recarregar();

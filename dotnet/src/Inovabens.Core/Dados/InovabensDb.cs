@@ -49,6 +49,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<TipoRegularizacao> TiposRegularizacao => Set<TipoRegularizacao>();
     public DbSet<Configuracao> Configuracoes => Set<Configuracao>();
     public DbSet<Memorando> Memorandos => Set<Memorando>();
+    public DbSet<Chave> Chaves => Set<Chave>();
+    public DbSet<ChaveMovimento> ChaveMovimentos => Set<ChaveMovimento>();
     public DbSet<Compromisso> Compromissos => Set<Compromisso>();
     public DbSet<CompromissoParticipante> CompromissoParticipantes => Set<CompromissoParticipante>();
     public DbSet<CompromissoHistorico> CompromissoHistoricos => Set<CompromissoHistorico>();
@@ -184,6 +186,12 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         mb.Entity<TaxaFinanciamento>().HasKey(x => new { x.Cnpj8, x.Competencia });
         mb.Entity<NotionImportacao>().HasKey(x => new { x.NotionId, x.Tipo });
         mb.Entity<Memorando>().HasOne(x => x.Autor).WithMany().HasForeignKey(x => x.AutorId);
+        mb.Entity<Chave>().HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);
+        mb.Entity<ChaveMovimento>(e =>
+        {
+            e.HasOne(x => x.Chave).WithMany().HasForeignKey(x => x.ChaveId);
+            e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId);
+        });
         mb.Entity<Compromisso>(e =>
         {
             e.HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);

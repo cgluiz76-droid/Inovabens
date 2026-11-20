@@ -1,0 +1,17 @@
+@* Selo da situação da chave: verde disponível, âmbar fora (com o prazo), vermelho atrasada (desde quando). *@
+@switch (Chave.Situacao)
+{
+    case SituacaoChave.DISPONIVEL:
+        <span class="badge badge-ok">Disponível</span>
+        break;
+    case SituacaoChave.FORA:
+        <span class="badge badge-alerta" title="Prazo de devolução">Fora · volta até @Texto.DataHora(Chave.Fora?.PrevisaoDevolucao)</span>
+        break;
+    default:
+        <span class="badge badge-exclusao" title="Prazo de devolução vencido">Atrasada desde @Texto.DataHora(Chave.Fora?.PrevisaoDevolucao)</span>
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired] public ChaveResumo Chave { get; set; } = default!;
+}

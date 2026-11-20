@@ -1223,3 +1223,28 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
 .historico-atividade ul { list-style: none; margin: var(--e-2) 0 0; padding: 0; display: grid; gap: var(--e-3); }
 .historico-atividade li { border-left: 3px solid var(--borda, #ccc); padding-left: var(--e-3); }
 .historico-atividade p { margin: 0; }
+
+/* Controle de chaves (aba Chaves do imóvel e tela "Chaves fora") */
+.badge-alerta { background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda); }
+.chaves-grade { display: grid; gap: var(--e-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin-bottom: var(--e-4); }
+.chave-cartao { display: flex; flex-direction: column; gap: var(--e-2); margin: 0; border-left: 4px solid var(--ok-borda); }
+.chave-cartao.chave-fora { border-left-color: var(--alerta); }
+.chave-cartao.chave-atrasada { border-left-color: var(--erro); }
+.chave-cartao p { margin: 0; }
+.chave-cartao .acoes-topo { margin-top: auto; padding-top: var(--e-1); }
+.chave-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2); }
+.chave-codigo { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--titulo); }
+.chave-descricao { font-weight: 600; }
+.chips-linha { display: flex; flex-wrap: wrap; gap: var(--e-2); }
+fieldset.campo { border: 0; padding: 0; margin: 0 0 var(--e-3); min-width: 0; }
+fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(--titulo); padding: 0; margin-bottom: var(--e-2); }
+.chave-escolhido { display: flex; align-items: center; justify-content: space-between; gap: var(--e-2); min-height: 2.5rem;
+    padding: var(--e-1) var(--e-1) var(--e-1) var(--e-3); border: 1px solid var(--acento-borda); border-radius: var(--raio-p); background: var(--acento-suave); }
+.chave-sugestoes { list-style: none; margin: var(--e-1) 0 0; padding: var(--e-1); border: 1px solid var(--borda); border-radius: var(--raio-p);
+    background: var(--superficie); box-shadow: 0 6px 18px rgb(15 23 42 / .08); max-height: 14rem; overflow-y: auto; }
+.chave-sugestoes button { display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit; color: var(--texto);
+    padding: var(--e-2); border-radius: var(--raio-p); cursor: pointer; }
+.chave-sugestoes button:hover, .chave-sugestoes button:focus-visible { background: var(--acento-suave); }
+.chave-nova-pessoa { margin-top: var(--e-2); padding: var(--e-3); border: 1px dashed var(--borda-forte); border-radius: var(--raio-p); }
+.chave-nova-pessoa p { margin: 0 0 var(--e-2); }
+.chave-com-quem { margin-bottom: var(--e-3); }

@@ -59,6 +59,11 @@ public static class Permissoes
     public const string ProcessosVer = "processos:ver";
     public const string ProcessosEditar = "processos:editar";
 
+    /// <summary>Controle de chaves do imóvel: ver a situação, cadastrar/editar/excluir chaves e registrar saída/devolução.</summary>
+    public const string ChavesVer = "chaves:ver";
+    public const string ChavesEditar = "chaves:editar";
+    public const string ChavesMovimentar = "chaves:movimentar";
+
     public static readonly IReadOnlyList<string> Todas =
     [
         UsuariosGerir, RbacGerir, AdminConfig, AuditoriaVer,
@@ -70,5 +75,6 @@ public static class Permissoes
         AgendaVer, AgendaCriar, AgendaEditar, AgendaExcluir,
         CrmVer, CrmCriar, CrmEditar, CrmExcluir, CrmPropostasDecidir,
         ProcessosVer, ProcessosEditar,
+        ChavesVer, ChavesEditar, ChavesMovimentar,
     ];
 }

@@ -40,6 +40,8 @@ public static class PadroesIniciais
             P.MemorandosVer, P.MemorandosCriar, P.MemorandosEditar,
             P.AgendaVer, P.AgendaCriar, P.AgendaEditar, P.AgendaExcluir,
             P.CrmVer, P.CrmCriar, P.CrmEditar,
+            // o corretor leva e devolve chaves dos seus imóveis; cadastrar/excluir chave fica com o escritório
+            P.ChavesVer, P.ChavesMovimentar,
         ]),
         new("Financeiro", "Gerencia os lançamentos financeiros (receitas e despesas) dos imóveis", false,
         [

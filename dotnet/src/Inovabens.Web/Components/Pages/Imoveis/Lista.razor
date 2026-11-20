@@ -1,4 +1,4 @@
-@page "/imoveis"
+﻿@page "/imoveis"
 @attribute [Authorize(Policy = Permissoes.ImoveisVer)]
 @inherits ComponenteBase
 @using Microsoft.AspNetCore.WebUtilities
@@ -7,6 +7,7 @@
 @inject OpcoesService Opcoes
 @inject CadastrosService Cadastros
 @inject NavigationManager Nav
+@inject ChavesService Chaves
 
 <PageTitle>Imóveis · Inovabens</PageTitle>
 
@@ -16,6 +17,12 @@
         <button class="aba @(Mapa ? "" : "ativa")" @onclick="() => TrocarVisao(false)">☰ Lista</button>
         <button class="aba @(Mapa ? "ativa" : "")" @onclick="() => TrocarVisao(true)">🗺️ Mapa</button>
     </div>
+    @if (Usuario.Pode(Permissoes.ChavesVer))
+    {
+        @* atalho para a lista de chaves fora; fica vermelho quando alguma passou do prazo *@
+        <a class="btn-ghost @(chaves.Atrasadas > 0 ? "texto-erro" : "")" href="imoveis/chaves"
+           title="Chaves que saíram e ainda não voltaram">🔑 Chaves fora@(chaves.Fora > 0 ? $" ({chaves.Fora})" : "")@(chaves.Atrasadas > 0 ? $" · {chaves.Atrasadas} atrasada(s)" : "")</a>
+    }
     @if (Usuario.Pode(Permissoes.ImoveisExportarLista))
     {
         @* planilha com as informações da lista (sem fotos), nos filtros atuais e com todas as páginas *@
@@ -176,7 +183,10 @@ else
         tipos = [.. (await Cadastros.TiposImovelAsync(incluirInativos: true)).Select(t => t.Nome)];
         cidades = await Servico.CidadesAsync(Usuario);
         if (!Usuario.EscopoProprio) corretores = await Opcoes.CorretoresAsync();
+        chaves = await Chaves.ContagemAsync(Usuario);
     });
+
+    private (int Fora, int Atrasadas) chaves;
 
     /// <summary>Carrega a visão atual quando ela muda (inclusive pelo link com ?visao=mapa).</summary>
     protected override Task OnParametersSetAsync() => mapaCarregado == Mapa ? Task.CompletedTask : Carregar();

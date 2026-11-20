@@ -321,6 +321,11 @@ app.MapGet("/crm/acompanhamento.xlsx", (HttpContext c, AcompanhamentoService s) 
 app.MapGet("/imoveis/lista.xlsx", (string? termo, SituacaoImovel? situacao, string? tipo, string? cidade, Guid? corretor, HttpContext c, ImoveisService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroImoveis { Termo = termo, Situacao = situacao, Tipo = tipo, Cidade = cidade, CorretorId = corretor })))
     .RequireAuthorization(Permissoes.ImoveisExportarLista);
+// Chaves: planilha para conferir o chaveiro e etiquetas para recortar (?imovel= um imóvel; ?chave= uma etiqueta)
+app.MapGet("/imoveis/chaves.xlsx", (Guid? imovel, HttpContext c, ChavesService s) => Baixar(c, u => s.ExcelAsync(u, imovel)))
+    .RequireAuthorization(Permissoes.ChavesVer);
+app.MapGet("/imoveis/chaves/etiquetas.pdf", (Guid? imovel, Guid? chave, HttpContext c, ChavesService s) =>
+    Baixar(c, u => s.EtiquetasPdfAsync(u, imovel, chave))).RequireAuthorization(Permissoes.ChavesVer);
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 

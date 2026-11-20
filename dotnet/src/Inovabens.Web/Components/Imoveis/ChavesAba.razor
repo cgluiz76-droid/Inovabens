@@ -1,0 +1,436 @@
+@inherits ComponenteBase
+@inject ChavesService Servico
+
+@* Aba Chaves do imóvel: cada chave física num cartão com a situação (disponível, com quem e até quando, atrasada)
+   e os dois gestos do dia a dia: "Entregar" e "Receber de volta". Embaixo, o histórico de quem levou. *@
+
+<div class="titulo-secao">
+    <div>
+        <h2>Chaves</h2>
+        <p class="pequeno mudo">Registre toda saída na hora em que a chave sai da mão: é isso que mantém o controle confiável.</p>
+    </div>
+    <div class="acoes-topo">
+        @if (dados is { Chaves.Count: > 0 })
+        {
+            <a class="btn-ghost" href="imoveis/chaves/etiquetas.pdf?imovel=@ImovelId" download
+               title="PDF com as etiquetas de todas as chaves deste imóvel, para recortar e prender no chaveiro">🏷 Etiquetas</a>
+            <a class="btn-ghost" href="imoveis/chaves.xlsx?imovel=@ImovelId" download title="Chaves e histórico deste imóvel em Excel">⬇ Excel</a>
+        }
+        @if (Usuario.Pode(Permissoes.ChavesEditar) && form is null)
+        {
+            <button class="btn-primary" disabled="@Ocupado" @onclick="Nova">+ Nova chave</button>
+        }
+    </div>
+</div>
+
+<MensagemErro Texto="@Erro" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@if (form is not null)
+{
+    <section class="card">
+        <h3>@(editandoId is null ? "Nova chave" : "Editar chave")</h3>
+        <EditForm Model="form" OnValidSubmit="SalvarChave" class="formulario">
+            <DataAnnotationsValidator />
+            <div class="grade-3">
+                <label class="campo">
+                    <span>Código da etiqueta *</span>
+                    <InputText class="input" @bind-Value="form.Codigo" placeholder="CH0001" />
+                    <ValidationMessage For="() => form.Codigo" />
+                </label>
+                <label class="campo">
+                    <span>Descrição *</span>
+                    <InputText class="input" @bind-Value="form.Descricao" placeholder="Ex.: portão, apartamento, garagem" />
+                    <ValidationMessage For="() => form.Descricao" />
+                </label>
+                <label class="campo">
+                    <span>Observação</span>
+                    <InputText class="input" @bind-Value="form.Observacao" placeholder="Ex.: chave tetra, 2 cópias" />
+                </label>
+            </div>
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                <button type="button" class="btn-ghost" @onclick="() => form = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </section>
+}
+
+@if (dados is null)
+{
+    @if (Erro is null) { <p class="carregando">Carregando…</p> }
+}
+else
+{
+    @if (dados.Chaves.Count == 0)
+    {
+        <section class="card"><p class="vazio">Nenhuma chave cadastrada para este imóvel.@(Usuario.Pode(Permissoes.ChavesEditar) ? " Use \"+ Nova chave\" e cole a etiqueta com o código no chaveiro." : "")</p></section>
+    }
+    else
+    {
+        <div class="chaves-grade">
+            @foreach (var c in dados.Chaves)
+            {
+                <article class="card chave-cartao chave-@c.Situacao.ToString().ToLowerInvariant()">
+                    <div class="chave-topo">
+                        <span class="chave-codigo">🔑 @c.Codigo</span>
+                        <SituacaoChaveSelo Chave="c" />
+                    </div>
+                    <p class="chave-descricao">@c.Descricao</p>
+                    @if (c.Observacao is not null) { <p class="pequeno mudo">@c.Observacao</p> }
+                    @if (c.Fora is { } f)
+                    {
+                        <p class="pequeno">
+                            Com <b>@f.ComQuem</b>
+                            @if (f.Telefone is not null && Texto.LinkWhatsapp(f.Telefone) is { } zap)
+                            {
+                                <span class="nowrap"> · <a href="@zap" target="_blank" rel="noopener" title="Conversar no WhatsApp">📱 @f.Telefone</a></span>
+                            }
+                            <br />@f.Motivo · saiu em @Texto.DataHora(f.RetiradaEm)
+                        </p>
+                    }
+                    <div class="acoes-topo">
+                        @if (Usuario.Pode(Permissoes.ChavesMovimentar))
+                        {
+                            @if (c.Fora is null)
+                            {
+                                <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => AbrirEntrega(c)">Entregar</button>
+                            }
+                            else
+                            {
+                                <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => AbrirRecebimento(c)">Receber de volta</button>
+                            }
+                        }
+                        <a class="btn-ghost mini" href="imoveis/chaves/etiquetas.pdf?chave=@c.Id" download title="Etiqueta só desta chave">🏷</a>
+                        @if (Usuario.Pode(Permissoes.ChavesEditar))
+                        {
+                            <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Editar(c)">Editar</button>
+                            @if (c.Fora is null)
+                            {
+                                <button class="btn-ghost mini texto-erro" disabled="@Ocupado" @onclick="() => excluindo = c">Excluir</button>
+                            }
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+
+    <section class="card">
+        <h3>Histórico</h3>
+        @if (dados.Historico.Count == 0)
+        {
+            <p class="vazio">Nenhuma saída registrada ainda.</p>
+        }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Chave</th><th>Com quem</th><th>Motivo</th><th>Saiu</th><th>Prazo</th><th>Voltou</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in dados.Historico)
+                        {
+                            <tr>
+                                <td class="nowrap"><b>@m.ChaveCodigo</b></td>
+                                <td>@m.ComQuem@if (m.Telefone is not null) { <span class="pequeno mudo"> · @m.Telefone</span> }</td>
+                                <td>@m.Motivo</td>
+                                <td class="nowrap">@Texto.DataHora(m.RetiradaEm)<p class="pequeno mudo">@m.RegistradoPor</p></td>
+                                <td class="nowrap">@Texto.DataHora(m.PrevisaoDevolucao)</td>
+                                <td class="nowrap">
+                                    @if (m.DevolvidaEm is { } d)
+                                    {
+                                        @Texto.DataHora(d)
+                                        @if (d > m.PrevisaoDevolucao) { <span class="badge badge-exclusao">com atraso</span> }
+                                        <p class="pequeno mudo">@m.RecebidoPor@(m.ObservacaoDevolucao is { } o ? $" · {o}" : "")</p>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge @(m.Atrasada(DateTime.UtcNow) ? "badge-exclusao" : "badge-alerta")">fora</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@if (entregando is not null && entrega is not null)
+{
+    <Modal Titulo="@($"Entregar chave {entregando.Codigo}")" AoFechar="() => entregando = null">
+        <EditForm Model="entrega" OnValidSubmit="Entregar" class="formulario">
+            <DataAnnotationsValidator />
+            <p class="pequeno mudo">@entregando.Descricao</p>
+
+            @* Um campo só: digita o nome (ou telefone), escolhe alguém da equipe ou de Pessoas; se não existir,
+               decide ali mesmo se cadastra em Pessoas (gravado junto com a saída) ou só anota o nome. *@
+            <div class="campo chave-com-quem">
+                <label for="chave-com-quem"><span>Com quem vai ficar? *</span></label>
+                @if (escolhido is { } e)
+                {
+                    <div class="chave-escolhido">
+                        <span>@(e.Equipe ? "👤" : "📇") <b>@e.Nome</b> <span class="pequeno mudo">@(e.Equipe ? (e.Id == Usuario.Id ? "você" : "equipe") : e.Telefone ?? "Pessoas")</span></span>
+                        <button type="button" class="btn-ghost mini" @onclick="Trocar">Trocar</button>
+                    </div>
+                }
+                else
+                {
+                    <input id="chave-com-quem" class="input" type="text" autocomplete="off" data-sem-enviar
+                           placeholder="Digite o nome ou o telefone" @bind="busca" @bind:event="oninput" @bind:after="Buscar" />
+                    @if (sugestoes.Count > 0)
+                    {
+                        <ul class="chave-sugestoes" role="listbox">
+                            @foreach (var s in sugestoes)
+                            {
+                                <li><button type="button" role="option" @onclick="() => Escolher(s)">
+                                    @(s.Equipe ? "👤" : "📇") @s.Nome <span class="pequeno mudo">@(s.Equipe ? "equipe" : s.Telefone ?? "Pessoas")</span>
+                                </button></li>
+                            }
+                        </ul>
+                    }
+                    @if (NomeNovo is { } novo)
+                    {
+                        <div class="chave-nova-pessoa">
+                            <p class="pequeno">@(sugestoes.Count == 0 ? $"“{novo}” não está em Pessoas." : $"Não é ninguém da lista? Use “{novo}”:")</p>
+                            @if (Usuario.Pode(Permissoes.PessoasCriar))
+                            {
+                                <div class="chips-linha">
+                                    <button type="button" class="chip @(entrega.CadastrarPessoa ? "ativo" : "")" @onclick="() => entrega.CadastrarPessoa = true">Cadastrar em Pessoas</button>
+                                    <button type="button" class="chip @(!entrega.CadastrarPessoa ? "ativo" : "")" @onclick="() => entrega.CadastrarPessoa = false">Só anotar o nome</button>
+                                </div>
+                            }
+                            <label class="campo espaco-topo">
+                                <span>Telefone / WhatsApp</span>
+                                <InputText class="input" @bind-Value="entrega.PessoaTelefone" placeholder="(17) 99999-9999" />
+                            </label>
+                            @if (entrega.CadastrarPessoa && Usuario.Pode(Permissoes.PessoasCriar))
+                            {
+                                <p class="pequeno mudo">A pessoa é cadastrada junto com a saída; o resto dos dados pode ser completado depois em Pessoas.</p>
+                            }
+                        </div>
+                    }
+                }
+                <ValidationMessage For="() => entrega.PessoaNome" />
+            </div>
+
+            <fieldset class="campo">
+                <legend>Para quê?</legend>
+                <div class="chips-linha">
+                    @foreach (var mot in ChavesService.Motivos)
+                    {
+                        <button type="button" class="chip @(entrega.Motivo == mot ? "ativo" : "")" @onclick="() => entrega.Motivo = mot">@mot</button>
+                    }
+                </div>
+            </fieldset>
+            <label class="campo">
+                <span>@(entrega.Motivo == ChavesService.MotivoOutro ? "Qual o motivo? *" : "Detalhe (opcional)")</span>
+                <InputText class="input" @bind-Value="entrega.MotivoDetalhe" />
+                <ValidationMessage For="() => entrega.MotivoDetalhe" />
+            </label>
+
+            <fieldset class="campo">
+                <legend>Devolver até</legend>
+                <div class="chips-linha">
+                    @foreach (var (rotulo, quando) in Prazos())
+                    {
+                        <button type="button" class="chip @(entrega.DevolverAte == quando ? "ativo" : "")" @onclick="() => entrega.DevolverAte = quando">@rotulo</button>
+                    }
+                </div>
+                <InputDate Type="InputDateType.DateTimeLocal" class="input espaco-topo" @bind-Value="entrega.DevolverAte" />
+                <ValidationMessage For="() => entrega.DevolverAte" />
+            </fieldset>
+
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar saída</button>
+                <button type="button" class="btn-ghost" @onclick="() => entregando = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (recebendo is not null)
+{
+    <Modal Titulo="@($"Receber chave {recebendo.Codigo}")" AoFechar="() => recebendo = null">
+        <p>A chave estava com <b>@recebendo.Fora?.ComQuem</b> desde @Texto.DataHora(recebendo.Fora?.RetiradaEm).
+            Ela volta a ficar disponível agora.</p>
+        <label class="campo">
+            <span>Observação (opcional)</span>
+            <input class="input" @bind="observacaoDevolucao" placeholder="Ex.: devolvida na recepção, faltou a cópia da garagem" />
+        </label>
+        <div class="acoes">
+            <button class="btn-primary" disabled="@Ocupado" @onclick="Receber">Confirmar devolução</button>
+            <button class="btn-ghost" @onclick="() => recebendo = null">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@if (excluindo is not null)
+{
+    <Modal Titulo="@($"Excluir chave {excluindo.Codigo}?")" AoFechar="() => excluindo = null">
+        <p>A chave sai da lista do imóvel, mas o histórico de quem a usou continua guardado. O código não será reutilizado.</p>
+        <div class="acoes">
+            <button class="btn-perigo" disabled="@Ocupado" @onclick="Excluir">Excluir chave</button>
+            <button class="btn-ghost" @onclick="() => excluindo = null">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private ChavesDoImovel? dados;
+    private ChaveForm? form;
+    private Guid? editandoId;
+    private ChaveResumo? entregando, recebendo, excluindo;
+    private EntregaChaveForm? entrega;
+    private ResponsavelChave? escolhido;
+    private string busca = "";
+    private IReadOnlyList<ResponsavelChave> sugestoes = [];
+    private int buscaSeq;
+    private string? observacaoDevolucao;
+
+    protected override Task OnParametersSetAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () => dados = await Servico.DoImovelAsync(Usuario, ImovelId));
+
+    private async Task Nova()
+    {
+        editandoId = null;
+        form = new ChaveForm { Codigo = await Servico.ProximoCodigoAsync() };
+    }
+
+    private void Editar(ChaveResumo c)
+    {
+        editandoId = c.Id;
+        form = new ChaveForm { Codigo = c.Codigo, Descricao = c.Descricao, Observacao = c.Observacao };
+    }
+
+    private async Task SalvarChave()
+    {
+        if (form is null) return;
+        var ok = await Executar(async () =>
+        {
+            if (editandoId is { } id) await Servico.AtualizarAsync(Usuario, id, form);
+            else await Servico.CriarAsync(Usuario, ImovelId, form);
+        });
+        if (!ok) return;
+        Sucesso = editandoId is null ? $"Chave {form.Codigo.ToUpperInvariant()} cadastrada." : "Chave atualizada.";
+        form = null;
+        await Recarregar();
+    }
+
+    private void AbrirEntrega(ChaveResumo c)
+    {
+        // começa com você (o caso mais comum); "Trocar" abre a busca
+        escolhido = new ResponsavelChave(Usuario.Id, Usuario.Nome, null, true);
+        busca = "";
+        sugestoes = [];
+        entrega = new EntregaChaveForm { DevolverAte = Prazos()[2].Quando, CadastrarPessoa = Usuario.Pode(Permissoes.PessoasCriar) };
+        Sincronizar();
+        entregando = c;
+    }
+
+    /// <summary>Nome digitado que pode virar pessoa nova (2+ letras e não é igual a ninguém da lista).</summary>
+    private string? NomeNovo => busca.Trim() is { Length: >= 2 } n && !n.Any(char.IsDigit)
+        && !sugestoes.Any(s => string.Equals(s.Nome, n, StringComparison.OrdinalIgnoreCase)) ? n : null;
+
+    private async Task Buscar()
+    {
+        var seq = ++buscaSeq;
+        Sincronizar();
+        var r = await Servico.BuscarResponsaveisAsync(Usuario, busca);
+        if (seq != buscaSeq) return; // descarta resposta de uma digitação antiga
+        sugestoes = r;
+        Sincronizar();
+    }
+
+    private void Escolher(ResponsavelChave s)
+    {
+        escolhido = s;
+        sugestoes = [];
+        Sincronizar();
+    }
+
+    private void Trocar()
+    {
+        escolhido = null;
+        busca = "";
+        sugestoes = [];
+        Sincronizar();
+    }
+
+    /// <summary>Leva a escolha da tela para o formulário a cada mudança (a validação roda antes do envio).</summary>
+    private void Sincronizar()
+    {
+        if (entrega is null) return;
+        entrega.UsuarioId = escolhido is { Equipe: true } ? escolhido.Id : null;
+        entrega.PessoaId = escolhido is { Equipe: false } ? escolhido.Id : null;
+        entrega.PessoaNome = escolhido is null ? NomeNovo : null;
+    }
+
+    /// <summary>Atalhos de prazo (horário de Brasília, em minutos cheios para o seletor bater com o atalho).</summary>
+    private static List<(string Rotulo, DateTime Quando)> Prazos()
+    {
+        var agora = DatasBR.Agora();
+        agora = new DateTime(agora.Year, agora.Month, agora.Day, agora.Hour, agora.Minute, 0);
+        var hoje18 = agora.Date.AddHours(18);
+        return
+        [
+            ("Em 1 hora", agora.AddHours(1)),
+            ("Em 2 horas", agora.AddHours(2)),
+            (agora < hoje18.AddHours(-1) ? "Hoje às 18h" : "Em 4 horas", agora < hoje18.AddHours(-1) ? hoje18 : agora.AddHours(4)),
+            ("Amanhã às 18h", hoje18.AddDays(1)),
+            ("Em 7 dias", hoje18.AddDays(7)),
+        ];
+    }
+
+    private async Task Entregar()
+    {
+        if (entregando is null || entrega is null) return;
+        Sincronizar();
+        var c = entregando;
+        var ok = await Executar(() => Servico.EntregarAsync(Usuario, c.Id, entrega));
+        if (!ok) return;
+        entregando = null;
+        Sucesso = $"Saída da chave {c.Codigo} registrada.";
+        await Recarregar();
+    }
+
+    private void AbrirRecebimento(ChaveResumo c)
+    {
+        observacaoDevolucao = null;
+        recebendo = c;
+    }
+
+    private async Task Receber()
+    {
+        if (recebendo is null) return;
+        var c = recebendo;
+        var ok = await Executar(() => Servico.ReceberAsync(Usuario, c.Id, observacaoDevolucao));
+        if (!ok) return;
+        recebendo = null;
+        Sucesso = $"Chave {c.Codigo} recebida: está disponível.";
+        await Recarregar();
+    }
+
+    private async Task Excluir()
+    {
+        if (excluindo is null) return;
+        var c = excluindo;
+        var ok = await Executar(() => Servico.ExcluirAsync(Usuario, c.Id));
+        excluindo = null;
+        if (!ok) return;
+        Sucesso = $"Chave {c.Codigo} excluída.";
+        await Recarregar();
+    }
+
+    /// <summary>Recarrega sem apagar a mensagem de sucesso (o Executar a limpa).</summary>
+    private async Task Recarregar()
+    {
+        var msg = Sucesso;
+        await Carregar();
+        Sucesso ??= msg;
+    }
+}
