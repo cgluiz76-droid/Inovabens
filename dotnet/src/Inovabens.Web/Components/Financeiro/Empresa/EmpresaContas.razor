@@ -1,0 +1,202 @@
+@inherits ComponenteBase
+@inject FinanceiroEmpresaService Servico
+
+@* Contas bancárias, caixa, aplicações e cartões da imobiliária. O saldo inicial é o do extrato num dia escolhido; dali
+   em diante o saldo é calculado pelos lançamentos pagos. No cartão, o saldo é o que se deve. *@
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Contas e cartões</h2>
+        <div class="acoes-topo">
+            <label class="check"><input type="checkbox" @bind="inativas" @bind:after="Carregar" /> Mostrar inativas</label>
+            @if (PodeEditar) { <button class="btn-primary" @onclick="Nova">+ Nova conta</button> }
+        </div>
+    </div>
+    <MensagemErro Texto="@(form is null ? Erro : null)" />
+
+    @if (contas is null)
+    {
+        @if (Erro is null) { <p class="carregando">Carregando…</p> }
+    }
+    else if (contas.Count == 0)
+    {
+        <p class="vazio">Nenhuma conta. Cadastre as contas do Itaú, Sicoob e Sicredi, o caixa e os cartões, cada uma com o saldo do extrato de um dia.</p>
+    }
+    else
+    {
+        <div class="fin-contas-grade">
+            @foreach (var c in contas)
+            {
+                var k = c.Conta;
+                <article class="card fin-conta @(k.Ativa ? "" : "inativa")">
+                    <header>
+                        <b>@k.Nome</b>
+                        <span class="badge">@FinanceiroEmpresaService.RotuloTipoConta(k.Tipo)</span>
+                        @if (!k.Ativa) { <span class="badge">Inativa</span> }
+                    </header>
+                    @if (k.Banco is not null || k.Numero is not null)
+                    {
+                        <p class="pequeno mudo">@k.Banco @(k.Agencia is null ? "" : $"· ag. {k.Agencia}") @(k.Numero is null ? "" : $"· {k.Numero}")</p>
+                    }
+                    @if (k.Cartao)
+                    {
+                        <p class="fin-saldo">@Texto.Moeda(-c.Saldo) <span class="pequeno mudo">devido no cartão</span></p>
+                        <p class="pequeno">Fatura atual: <b>@Texto.Moeda(c.FaturaAtual)</b> · fecha @Texto.Data(c.ProximoFechamento) · vence @Texto.Data(c.ProximoVencimento)</p>
+                        @if (k.Limite is { } lim) { <p class="pequeno mudo">Limite disponível: @Texto.Moeda(lim + c.Saldo)</p> }
+                    }
+                    else
+                    {
+                        <p class="fin-saldo @(c.Saldo < 0 ? "texto-erro" : "")">@Texto.Moeda(c.Saldo)</p>
+                    }
+                    <p class="pequeno mudo">Saldo inicial @Texto.Moeda(k.Cartao ? -k.SaldoInicial : k.SaldoInicial) em @Texto.Data(k.DataSaldoInicial)</p>
+                    <div class="acoes">
+                        @if (PodeEditar)
+                        {
+                            @if (k.Cartao && c.Saldo < 0) { <button class="btn-primary mini" @onclick="() => AoPagarFatura.InvokeAsync(c)">Pagar fatura</button> }
+                            <button class="btn-ghost mini" @onclick="() => Editar(k)">Editar</button>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@if (form is not null)
+{
+    <Modal Titulo="@(editandoId is null ? "Nova conta" : "Editar conta")" AoFechar="Fechar">
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="chips-linha" role="radiogroup" aria-label="Tipo de conta">
+                @foreach (var t in Enum.GetValues<TipoContaBancaria>())
+                {
+                    <button type="button" class="chip @(form.Tipo == t ? "ativo" : "")" @onclick="() => form.Tipo = t">@FinanceiroEmpresaService.RotuloTipoConta(t)</button>
+                }
+            </div>
+            <div class="grade-2">
+                <label class="campo col-2">
+                    <span>Nome *</span>
+                    <InputText class="input" maxlength="80" placeholder="@(Cartao ? "Ex.: Cartão Sicredi Visa" : "Ex.: Itaú PJ")" @bind-Value="form.Nome" />
+                    <ValidationMessage For="() => form.Nome" />
+                </label>
+                @if (form.Tipo != TipoContaBancaria.CAIXA)
+                {
+                    <label class="campo">
+                        <span>Banco</span>
+                        <InputText class="input" maxlength="60" list="fin-bancos" @bind-Value="form.Banco" />
+                        <datalist id="fin-bancos"><option value="Itaú" /><option value="Sicoob" /><option value="Sicredi" /></datalist>
+                    </label>
+                    @if (!Cartao)
+                    {
+                        <label class="campo">
+                            <span>Agência</span>
+                            <InputText class="input" maxlength="20" @bind-Value="form.Agencia" />
+                        </label>
+                    }
+                    <label class="campo">
+                        <span>@(Cartao ? "Final do cartão" : "Número da conta")</span>
+                        <InputText class="input" maxlength="30" @bind-Value="form.Numero" />
+                    </label>
+                }
+                @if (Cartao)
+                {
+                    <label class="campo">
+                        <span>Dia do fechamento *</span>
+                        <InputNumber class="input" min="1" max="31" @bind-Value="form.DiaFechamento" />
+                        <ValidationMessage For="() => form.DiaFechamento" />
+                    </label>
+                    <label class="campo">
+                        <span>Dia do vencimento *</span>
+                        <InputNumber class="input" min="1" max="31" @bind-Value="form.DiaVencimento" />
+                        <ValidationMessage For="() => form.DiaVencimento" />
+                    </label>
+                    <label class="campo">
+                        <span>Limite (R$)</span>
+                        <InputNumber class="input" step="0.01" min="0" @bind-Value="form.Limite" />
+                        <ValidationMessage For="() => form.Limite" />
+                    </label>
+                }
+                <label class="campo">
+                    <span>@(Cartao ? "Valor já devido (R$)" : "Saldo inicial (R$)")</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="form.SaldoInicial" />
+                    <ValidationMessage For="() => form.SaldoInicial" />
+                </label>
+                <label class="campo">
+                    <span>Em (início do dia) *</span>
+                    <InputDate class="input" @bind-Value="form.DataSaldoInicial" />
+                    <ValidationMessage For="() => form.DataSaldoInicial" />
+                </label>
+                <p class="pequeno mudo col-2">
+                    @(Cartao ? "Some as faturas em aberto nesse dia (ou 0 se for começar zerado). Compras a partir dele entram como lançamentos."
+                             : "Copie do extrato o saldo do fim do dia anterior. Só os lançamentos pagos a partir dessa data mexem no saldo.")
+                </p>
+                @if (editandoId is not null)
+                {
+                    <label class="check col-2"><InputCheckbox @bind-Value="form.Ativa" /> Ativa (desmarque para esconder uma conta encerrada)</label>
+                }
+            </div>
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                <button type="button" class="btn-ghost" @onclick="Fechar">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    [Parameter] public int Versao { get; set; }
+    [Parameter] public EventCallback<ContaComSaldo> AoPagarFatura { get; set; }
+    [Parameter] public EventCallback<string> AoAlterar { get; set; }
+
+    private IReadOnlyList<ContaComSaldo>? contas;
+    private ContaBancariaForm? form;
+    private Guid? editandoId;
+    private bool inativas;
+    private int carregada = -1;
+    private bool PodeEditar => Usuario.Pode(Permissoes.FinanceiroEmpresaEditar);
+    private bool Cartao => form?.Tipo == TipoContaBancaria.CARTAO_CREDITO;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (carregada == Versao) return;
+        carregada = Versao;
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () => contas = await Servico.ContasAsync(Usuario, inativas));
+
+    private void Nova()
+    {
+        editandoId = null;
+        Erro = null;
+        form = new ContaBancariaForm();
+    }
+
+    private void Editar(ContaBancaria k)
+    {
+        editandoId = k.Id;
+        Erro = null;
+        form = ContaBancariaForm.De(k);
+    }
+
+    private async Task Salvar()
+    {
+        var novo = editandoId is null;
+        if (await Executar(async () =>
+            {
+                if (novo) await Servico.CriarContaAsync(Usuario, form!);
+                else await Servico.AtualizarContaAsync(Usuario, editandoId!.Value, form!);
+            }))
+        {
+            Fechar();
+            await AoAlterar.InvokeAsync(novo ? "Conta cadastrada." : "Conta atualizada.");
+        }
+    }
+
+    private void Fechar()
+    {
+        form = null;
+        editandoId = null;
+    }
+}

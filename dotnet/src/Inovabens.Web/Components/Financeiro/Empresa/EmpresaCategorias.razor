@@ -1,0 +1,115 @@
+@inherits ComponenteBase
+@inject FinanceiroEmpresaService Servico
+
+@* Plano de contas da imobiliária: cada categoria cai numa linha da DRE (o grupo). Categoria usada não se apaga:
+   inativa (some dos formulários, continua nos relatórios). *@
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Plano de contas</h2>
+        <div class="acoes-topo">
+            <label class="check"><input type="checkbox" @bind="inativas" @bind:after="Carregar" /> Mostrar inativas</label>
+            @if (PodeEditar) { <button class="btn-primary" @onclick="Nova">+ Nova categoria</button> }
+        </div>
+    </div>
+    <p class="pequeno mudo">O grupo define a linha da DRE. "Dinheiro de terceiros" e "Sócios, empréstimos e investimentos" mexem no caixa, mas não no resultado.</p>
+    <MensagemErro Texto="@(form is null ? Erro : null)" />
+    @if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+    @if (categorias is not null)
+    {
+        @foreach (var g in categorias.GroupBy(c => c.Grupo))
+        {
+            <h3 class="fin-grupo">@FinanceiroEmpresaService.RotuloGrupo(g.Key)</h3>
+            <ul class="fin-contas">
+                @foreach (var c in g)
+                {
+                    <li class="@(c.Ativa ? "" : "inativa")">
+                        <span>@c.Nome @if (!c.Ativa) { <span class="badge">Inativa</span> }</span>
+                        <span class="nowrap">
+                            <span class="pequeno @(c.Tipo == TipoCategoriaEmpresa.ENTRADA ? "texto-ok" : "texto-erro")">@(c.Tipo == TipoCategoriaEmpresa.ENTRADA ? "↓ entrada" : "↑ saída")</span>
+                            @if (PodeEditar) { <button class="btn-icone" title="Editar" @onclick="() => Editar(c)"><Icone Nome="lapis" /></button> }
+                        </span>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</section>
+
+@if (form is not null)
+{
+    <Modal Titulo="@(editandoId is null ? "Nova categoria" : "Editar categoria")" AoFechar="() => form = null">
+        <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <label class="campo">
+                <span>Nome *</span>
+                <InputText class="input" maxlength="80" @bind-Value="form.Nome" />
+                <ValidationMessage For="() => form.Nome" />
+            </label>
+            <div class="chips-linha" role="radiogroup" aria-label="Entrada ou saída">
+                <button type="button" class="chip @(form.Tipo == TipoCategoriaEmpresa.ENTRADA ? "ativo" : "")" @onclick="() => form.Tipo = TipoCategoriaEmpresa.ENTRADA">↓ Entrada</button>
+                <button type="button" class="chip @(form.Tipo == TipoCategoriaEmpresa.SAIDA ? "ativo" : "")" @onclick="() => form.Tipo = TipoCategoriaEmpresa.SAIDA">↑ Saída</button>
+            </div>
+            <label class="campo">
+                <span>Grupo (linha da DRE)</span>
+                <InputSelect class="input" @bind-Value="form.Grupo">
+                    @foreach (var g in Enum.GetValues<GrupoCategoriaEmpresa>())
+                    {
+                        <option value="@g">@FinanceiroEmpresaService.RotuloGrupo(g)</option>
+                    }
+                </InputSelect>
+            </label>
+            @if (editandoId is not null)
+            {
+                <label class="check"><InputCheckbox @bind-Value="form.Ativa" /> Ativa</label>
+            }
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                <button type="button" class="btn-ghost" @onclick="() => form = null">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<CategoriaEmpresa>? categorias;
+    private CategoriaEmpresaForm? form;
+    private Guid? editandoId;
+    private bool inativas;
+    private bool PodeEditar => Usuario.Pode(Permissoes.FinanceiroEmpresaEditar);
+
+    protected override Task OnInitializedAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () => categorias = await Servico.CategoriasAsync(Usuario, inativas));
+
+    private void Nova()
+    {
+        editandoId = null;
+        Erro = null;
+        form = new CategoriaEmpresaForm();
+    }
+
+    private void Editar(CategoriaEmpresa c)
+    {
+        editandoId = c.Id;
+        Erro = null;
+        form = new CategoriaEmpresaForm { Nome = c.Nome, Tipo = c.Tipo, Grupo = c.Grupo, Ativa = c.Ativa };
+    }
+
+    private async Task Salvar()
+    {
+        var novo = editandoId is null;
+        if (await Executar(async () =>
+            {
+                if (novo) await Servico.CriarCategoriaAsync(Usuario, form!);
+                else await Servico.AtualizarCategoriaAsync(Usuario, editandoId!.Value, form!);
+            }))
+        {
+            form = null;
+            await Carregar();
+            Sucesso = novo ? "Categoria criada." : "Categoria atualizada.";
+        }
+    }
+}

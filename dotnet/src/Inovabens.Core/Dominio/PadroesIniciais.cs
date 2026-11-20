@@ -47,6 +47,7 @@ public static class PadroesIniciais
         [
             P.PessoasVer, P.ImoveisVer, P.ImoveisExportar,
             P.FinanceiroVer, P.FinanceiroEditar, P.FinanceiroExportar,
+            P.FinanceiroEmpresaVer, P.FinanceiroEmpresaEditar,
             P.MemorandosVer, P.MemorandosCriar, P.MemorandosEditar,
             P.AgendaVer, P.AgendaCriar, P.AgendaEditar,
             P.CrmVer,

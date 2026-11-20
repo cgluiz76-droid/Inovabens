@@ -64,6 +64,13 @@ public static class Permissoes
     public const string ChavesEditar = "chaves:editar";
     public const string ChavesMovimentar = "chaves:movimentar";
 
+    /// <summary>
+    /// Financeiro da Imobiliária (menu Financeiro): contas bancárias, lançamentos da empresa, dinheiro de terceiros e DRE.
+    /// Só Administrador e Financeiro recebem por padrão.
+    /// </summary>
+    public const string FinanceiroEmpresaVer = "financeiro_empresa:ver";
+    public const string FinanceiroEmpresaEditar = "financeiro_empresa:editar";
+
     public static readonly IReadOnlyList<string> Todas =
     [
         UsuariosGerir, RbacGerir, AdminConfig, AuditoriaVer,
@@ -76,5 +83,6 @@ public static class Permissoes
         CrmVer, CrmCriar, CrmEditar, CrmExcluir, CrmPropostasDecidir,
         ProcessosVer, ProcessosEditar,
         ChavesVer, ChavesEditar, ChavesMovimentar,
+        FinanceiroEmpresaVer, FinanceiroEmpresaEditar,
     ];
 }

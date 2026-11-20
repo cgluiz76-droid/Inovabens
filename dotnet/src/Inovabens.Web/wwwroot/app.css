@@ -1250,3 +1250,32 @@ fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(-
 .chave-nova-pessoa { margin-top: var(--e-2); padding: var(--e-3); border: 1px dashed var(--borda-forte); border-radius: var(--raio-p); }
 .chave-nova-pessoa p { margin: 0 0 var(--e-2); }
 .chave-com-quem { margin-bottom: var(--e-3); }
+
+/* Financeiro da Imobiliária (menu Financeiro) */
+.fin-painel-grade { display: grid; gap: var(--e-4); grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); align-items: start; }
+.fin-contas { list-style: none; margin: 0; padding: 0; }
+.fin-contas li { display: flex; justify-content: space-between; align-items: center; gap: var(--e-3); padding: var(--e-2) 0; border-bottom: 1px solid var(--borda); font-size: var(--t-sm); }
+.fin-contas li:last-child { border-bottom: 0; }
+.fin-contas li.inativa, .fin-conta.inativa { opacity: .6; }
+.fin-contas .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fin-contas-grade { display: grid; gap: var(--e-4); grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
+.fin-conta { margin: 0; display: flex; flex-direction: column; gap: var(--e-1); }
+.fin-conta header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2); }
+.fin-conta .acoes { margin-top: auto; padding-top: var(--e-2); }
+.fin-saldo { font-size: var(--t-xl, 1.5rem); font-weight: 600; font-variant-numeric: tabular-nums; margin: var(--e-1) 0; }
+.fin-mes { display: inline-flex; align-items: center; gap: var(--e-1); }
+.fin-painel-grade .titulo-secao .btn-ghost { white-space: nowrap; }
+.fin-grupo { font-size: var(--t-sm); text-transform: uppercase; letter-spacing: .04em; color: var(--mudo); margin: var(--e-5) 0 var(--e-1); }
+.fin-dre { font-variant-numeric: tabular-nums; }
+.fin-dre th[scope="row"] { text-align: left; white-space: nowrap; font-weight: 400; }
+.fin-dre .dre-grupo th, .fin-dre .dre-grupo td { font-weight: 600; background: var(--superficie-2, transparent); }
+.fin-dre .dre-categoria th { padding-left: var(--e-6); color: var(--texto-2); }
+.fin-dre .dre-total th, .fin-dre .dre-total td { font-weight: 700; border-top: 2px solid var(--borda-forte); }
+.fin-dre-fora { font-size: var(--t-base, 1rem); margin: var(--e-6) 0 var(--e-2); }
+.secao-mais { margin-top: var(--e-4); }
+.secao-mais > .grade-2 { margin-top: var(--e-3); }
+@media (max-width: 640px) {
+    .fin-saldo { font-size: 1.25rem; }
+    /* dois campos de data + setas cabem na largura do celular */
+    .fin-mes .w-data { width: 7.25rem; min-width: 0; }
+}

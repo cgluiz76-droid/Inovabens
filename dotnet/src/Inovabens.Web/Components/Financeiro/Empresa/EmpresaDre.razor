@@ -1,0 +1,73 @@
+@inherits ComponenteBase
+@inject FinanceiroEmpresaService Servico
+
+@* DRE por competência: o mês em que a receita/despesa aconteceu, pago ou não. Aluguel de terceiros, sócios e
+   empréstimos aparecem à parte, porque mexem no caixa mas não no lucro. *@
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>DRE @ano</h2>
+        <div class="acoes-topo">
+            <button class="btn-ghost mini" title="Ano anterior" @onclick="() => Ano(-1)">‹ @(ano - 1)</button>
+            <button class="btn-ghost mini" title="Próximo ano" @onclick="() => Ano(1)">@(ano + 1) ›</button>
+        </div>
+    </div>
+    <p class="pequeno mudo">Regime de competência: entra no mês de competência, mesmo que ainda não tenha sido pago.</p>
+    <MensagemErro Texto="@Erro" />
+
+    @if (dre is not null)
+    {
+        <div class="tabela-container">
+            <table class="tabela fin-dre">
+                <thead>
+                    <tr><th></th>@foreach (var m in Meses) { <th class="num">@m</th> }<th class="num">Total</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var l in dre.Linhas) { @Linha(l) }
+                </tbody>
+            </table>
+        </div>
+
+        <h3 class="fin-dre-fora">Fora do resultado (só caixa)</h3>
+        <div class="tabela-container">
+            <table class="tabela fin-dre">
+                <tbody>
+                    @foreach (var l in dre.ForaDoResultado) { @Linha(l) }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public int Versao { get; set; }
+
+    private static readonly string[] Meses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+    private int ano = DatasBR.Hoje().Year;
+    private DreEmpresa? dre;
+    private int carregada = -1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (carregada == Versao) return;
+        carregada = Versao;
+        await Carregar();
+    }
+
+    private Task Carregar() => Executar(async () => dre = await Servico.DreAsync(Usuario, ano));
+
+    private async Task Ano(int delta)
+    {
+        ano += delta;
+        await Carregar();
+    }
+
+    private RenderFragment Linha(LinhaDre l) => __builder =>
+    {
+        <tr class="@($"dre-{l.Nivel.ToString().ToLowerInvariant()}")">
+            <th scope="row">@l.Rotulo</th>
+            @foreach (var v in l.Meses) { <td class="num @(v < 0 ? "texto-erro" : "")">@(v == 0 ? "–" : v.ToString("N2", Texto.PtBr))</td> }
+            <td class="num @(l.Total < 0 ? "texto-erro" : "")"><b>@Texto.Moeda(l.Total)</b></td>
+        </tr>
+    };
+}

@@ -1,0 +1,207 @@
+@inherits ComponenteBase
+@inject FinanceiroEmpresaService Servico
+
+@* Lista de lançamentos do período (mês corrente por padrão). Pago conta pela data do pagamento; em aberto, pelo
+   vencimento. Com uma conta escolhida, mostra o saldo do período como extrato. *@
+
+<section class="card">
+    <form class="linha-form extrato-filtros" @onsubmit="Carregar" @onsubmit:preventDefault>
+        <label class="campo-inline">
+            <span>Mês</span>
+            <span class="fin-mes">
+                <button type="button" class="btn-ghost mini" title="Mês anterior" @onclick="() => Mes(-1)">‹</button>
+                <input type="date" class="input w-data" @bind="filtro.De" />
+                <input type="date" class="input w-data" @bind="filtro.Ate" />
+                <button type="button" class="btn-ghost mini" title="Próximo mês" @onclick="() => Mes(1)">›</button>
+            </span>
+        </label>
+        <label class="campo-inline">
+            <span>Situação</span>
+            <select class="input" @bind="filtro.Situacao" @bind:after="Carregar">
+                <option value="@SituacaoFiltroEmpresa.TODOS">Todos</option>
+                <option value="@SituacaoFiltroEmpresa.EM_ABERTO">Em aberto</option>
+                <option value="@SituacaoFiltroEmpresa.PAGOS">Pagos / recebidos</option>
+                <option value="@SituacaoFiltroEmpresa.ATRASADOS">Atrasados (todos)</option>
+            </select>
+        </label>
+        <label class="campo-inline">
+            <span>Conta</span>
+            <select class="input" @bind="ContaFiltro" @bind:after="Carregar">
+                <option value="">Todas</option>
+                @foreach (var c in contas) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
+            </select>
+        </label>
+        <label class="campo-inline">
+            <span>Categoria</span>
+            <select class="input" @bind="CategoriaFiltro" @bind:after="Carregar">
+                <option value="">Todas</option>
+                @foreach (var g in categorias.GroupBy(c => c.Grupo))
+                {
+                    <optgroup label="@FinanceiroEmpresaService.RotuloGrupo(g.Key)">
+                        @foreach (var c in g) { <option value="@c.Id">@c.Nome</option> }
+                    </optgroup>
+                }
+            </select>
+        </label>
+        <label class="campo-inline">
+            <span>Buscar</span>
+            <input class="input" type="search" placeholder="Descrição, pessoa, documento, imóvel" @bind="filtro.Busca" />
+        </label>
+        <button type="submit" class="btn-ghost" disabled="@Ocupado">Filtrar</button>
+    </form>
+
+    <MensagemErro Texto="@(pagando is null ? Erro : null)" />
+
+    @if (linhas is null)
+    {
+        @if (Erro is null) { <p class="carregando">Carregando…</p> }
+    }
+    else if (linhas.Count == 0)
+    {
+        <p class="vazio">Nenhum lançamento neste filtro.</p>
+    }
+    else
+    {
+        <p class="pequeno">
+            Entradas <b class="texto-ok">@Texto.Moeda(linhas.Where(l => l.Valor > 0).Sum(l => l.Valor))</b> ·
+            Saídas <b class="texto-erro">@Texto.Moeda(linhas.Where(l => l.Valor < 0).Sum(l => l.Valor))</b> ·
+            Diferença <b>@Texto.Moeda(linhas.Sum(l => l.Valor))</b>
+            @if (linhas.Count >= FinanceiroEmpresaService.LimiteLista) { <span class="texto-erro"> · mostrando só os primeiros @FinanceiroEmpresaService.LimiteLista; refine o filtro</span> }
+        </p>
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th>Situação</th><th class="num">Valor</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var l in linhas)
+                    {
+                        <tr>
+                            <td class="nowrap">
+                                @Texto.Data(l.DataPagamento ?? l.Vencimento)
+                                @if (l.Pago && l.DataPagamento != l.Vencimento && !l.Transferencia) { <p class="pequeno mudo">venc. @Texto.Data(l.Vencimento)</p> }
+                            </td>
+                            <td>
+                                @l.Descricao @if (l.Parcela is not null) { <span class="badge">@l.Parcela</span> }
+                                @if (l.PessoaNome is not null || l.ImovelCodigo is not null)
+                                {
+                                    <p class="pequeno mudo">
+                                        @l.PessoaNome
+                                        @if (l.ImovelId is { } im) { <text> · </text><a href="imoveis/@im">@l.ImovelCodigo</a> }
+                                    </p>
+                                }
+                            </td>
+                            <td>
+                                @if (l.Transferencia) { <span class="mudo">⇄ Transferência</span><p class="pequeno mudo">@(l.Valor < 0 ? "para" : "de") @contrapartes.GetValueOrDefault(l.Id)</p> }
+                                else { @l.Categoria }
+                            </td>
+                            <td>@(l.Conta ?? "—")</td>
+                            <td>
+                                @if (l.Pago) { <span class="badge badge-ok">@(l.Valor < 0 ? "Pago" : "Recebido")</span> }
+                                else if (l.Atrasado(hoje)) { <span class="badge badge-alerta">Atrasado</span> }
+                                else { <span class="badge">Em aberto</span> }
+                            </td>
+                            <td class="num @(l.Valor < 0 ? "texto-erro" : "texto-ok")">@Texto.Moeda(l.Valor)</td>
+                            <td class="nowrap">
+                                @if (PodeEditar)
+                                {
+                                    @if (!l.Pago) { <button class="btn-primary mini" @onclick="() => pagando = l">@(l.Valor < 0 ? "Pagar" : "Receber")</button> }
+                                    else if (!l.Transferencia) { <button class="btn-ghost mini" title="Volta a ficar em aberto" disabled="@Ocupado" @onclick="() => Desfazer(l)">Desfazer baixa</button> }
+                                    @if (!l.Transferencia) { <button class="btn-icone" title="Editar" @onclick="() => AoEditar.InvokeAsync(l.Id)"><Icone Nome="lapis" /></button> }
+                                    <button class="btn-icone" title="Excluir" @onclick="() => excluindo = l"><Icone Nome="lixeira" /></button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@if (pagando is not null)
+{
+    <EmpresaPagarModal Lancamento="pagando" AoFechar="() => pagando = null" AoPagar="Pago" />
+}
+
+@if (excluindo is not null)
+{
+    <Modal Titulo="Excluir lançamento?" AoFechar="() => excluindo = null">
+        <MensagemErro Texto="@Erro" />
+        <p><b>@excluindo.Descricao</b> — @Texto.Moeda(excluindo.Valor), @Texto.Data(excluindo.DataPagamento ?? excluindo.Vencimento).</p>
+        @if (excluindo.Transferencia) { <p class="pequeno mudo">É uma transferência: os dois lados (saída e entrada) serão excluídos.</p> }
+        @if (excluindo.Parcela is not null) { <p class="pequeno mudo">Só esta parcela (@excluindo.Parcela) será excluída.</p> }
+        <div class="acoes">
+            <button class="btn-perigo" disabled="@Ocupado" @onclick="Excluir">Excluir</button>
+            <button class="btn-ghost" @onclick="() => excluindo = null">Cancelar</button>
+        </div>
+    </Modal>
+}
+
+@code {
+    [Parameter] public int Versao { get; set; }
+    [Parameter] public EventCallback<Guid> AoEditar { get; set; }
+    [Parameter] public EventCallback<string> AoAlterar { get; set; }
+
+    private readonly FiltroLancamentosEmpresa filtro = new();
+    private IReadOnlyList<LancamentoEmpresaLinha>? linhas;
+    private IReadOnlyDictionary<Guid, string> contrapartes = new Dictionary<Guid, string>();
+    private IReadOnlyList<ContaComSaldo> contas = [];
+    private IReadOnlyList<CategoriaEmpresa> categorias = [];
+    private LancamentoEmpresaLinha? pagando, excluindo;
+    private int carregada = -1;
+    private readonly DateOnly hoje = DatasBR.Hoje();
+    private bool PodeEditar => Usuario.Pode(Permissoes.FinanceiroEmpresaEditar);
+
+    private string ContaFiltro { get => filtro.ContaId?.ToString() ?? ""; set => filtro.ContaId = Guid.TryParse(value, out var g) ? g : null; }
+    private string CategoriaFiltro { get => filtro.CategoriaId?.ToString() ?? ""; set => filtro.CategoriaId = Guid.TryParse(value, out var g) ? g : null; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () =>
+        {
+            contas = await Servico.ContasAsync(Usuario, incluirInativas: true);
+            categorias = await Servico.CategoriasAsync(Usuario, incluirInativas: true);
+        });
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (carregada == Versao) return;
+        carregada = Versao;
+        await Carregar();
+    }
+
+    private async Task Carregar() => await Executar(async () =>
+    {
+        linhas = await Servico.LancamentosAsync(Usuario, filtro);
+        contrapartes = await Servico.ContrapartesAsync(Usuario, linhas.Where(l => l.TransferenciaId is not null).Select(l => l.TransferenciaId!.Value));
+    });
+
+    private async Task Mes(int delta)
+    {
+        var inicio = new DateOnly(filtro.De.Year, filtro.De.Month, 1).AddMonths(delta);
+        filtro.De = inicio;
+        filtro.Ate = inicio.AddMonths(1).AddDays(-1);
+        await Carregar();
+    }
+
+    private async Task Pago(string mensagem)
+    {
+        pagando = null;
+        await AoAlterar.InvokeAsync(mensagem);
+    }
+
+    private async Task Desfazer(LancamentoEmpresaLinha l)
+    {
+        if (await Executar(() => Servico.DesfazerPagamentoAsync(Usuario, l.Id)))
+            await AoAlterar.InvokeAsync("Baixa desfeita: o lançamento voltou a ficar em aberto.");
+    }
+
+    private async Task Excluir()
+    {
+        if (await Executar(() => Servico.ExcluirAsync(Usuario, excluindo!.Id)))
+        {
+            excluindo = null;
+            await AoAlterar.InvokeAsync("Lançamento excluído.");
+        }
+    }
+}

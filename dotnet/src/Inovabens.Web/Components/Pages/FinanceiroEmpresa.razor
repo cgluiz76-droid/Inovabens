@@ -1,0 +1,191 @@
+@page "/financeiro"
+@attribute [Authorize(Policy = Permissoes.FinanceiroEmpresaVer)]
+@inherits ComponenteBase
+@inject FinanceiroEmpresaService Servico
+@inject NavigationManager Nav
+
+@* Financeiro da Imobiliária: o dinheiro da própria empresa (contas, cartões, contas a pagar/receber, aluguel que passa
+   pela conta e DRE). O financeiro de cada imóvel continua na aba Financeiro do imóvel.
+   Os botões de lançar ficam no topo, em qualquer aba: lançar é o que mais se faz aqui. *@
+
+<PageTitle>Financeiro · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Financeiro da Imobiliária</h1>
+    @if (PodeEditar)
+    {
+        <div class="acoes-topo">
+            <button class="btn-primary" @onclick="() => Novo(TipoCategoriaEmpresa.ENTRADA)">+ Entrada</button>
+            <button class="btn-primary btn-despesa" @onclick="() => Novo(TipoCategoriaEmpresa.SAIDA)">+ Saída</button>
+            <button class="btn-ghost" @onclick="() => NovaTransferencia()" title="Entre contas, aplicação ou pagamento da fatura do cartão">⇄ Transferência</button>
+        </div>
+    }
+</div>
+
+<div class="abas" role="tablist">
+    @foreach (var (chave, rotulo) in Abas)
+    {
+        <a class="aba @(AbaAtual == chave ? "ativa" : "")" href="@($"financeiro?aba={chave}")" role="tab" aria-selected="@(AbaAtual == chave)">@rotulo</a>
+    }
+</div>
+
+@if (Sucesso is not null && !ModalAberto) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@switch (AbaAtual)
+{
+    case "lancamentos":
+        <EmpresaLancamentos Versao="versao" AoEditar="Editar" AoAlterar="Alterado" />
+        break;
+    case "dre":
+        <EmpresaDre Versao="versao" />
+        break;
+    case "contas":
+        <EmpresaContas Versao="versao" AoPagarFatura="PagarFatura" AoAlterar="Alterado" />
+        break;
+    case "categorias":
+        <EmpresaCategorias />
+        break;
+    default:
+        <EmpresaPainel Versao="versao" AoAlterar="Alterado" />
+        break;
+}
+
+@if (form is not null)
+{
+    <EmpresaLancamentoModal Form="form" EditandoId="editandoId" AoFechar="Fechar" AoSalvar="Salvo" />
+}
+
+@if (transferencia is not null)
+{
+    <Modal Titulo="Transferência entre contas" AoFechar="Fechar">
+        <EditForm Model="transferencia" OnValidSubmit="Transferir" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <p class="pequeno mudo">Dinheiro que muda de lugar: não é receita nem despesa. Use também para pagar a fatura do cartão
+                (origem = banco, destino = cartão) e para aplicar ou resgatar.</p>
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Sai de</span>
+                    <select class="input" @bind="Origem">
+                        <option value="">Selecione…</option>
+                        @foreach (var c in contas) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
+                    </select>
+                    <ValidationMessage For="() => transferencia.OrigemId" />
+                </label>
+                <label class="campo">
+                    <span>Entra em</span>
+                    <select class="input" @bind="Destino">
+                        <option value="">Selecione…</option>
+                        @foreach (var c in contas) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
+                    </select>
+                    <ValidationMessage For="() => transferencia.DestinoId" />
+                </label>
+                <label class="campo">
+                    <span>Valor (R$)</span>
+                    <InputNumber class="input" step="0.01" min="0.01" @bind-Value="transferencia.Valor" />
+                    <ValidationMessage For="() => transferencia.Valor" />
+                </label>
+                <label class="campo">
+                    <span>Data</span>
+                    <InputDate class="input" @bind-Value="transferencia.Data" />
+                    <ValidationMessage For="() => transferencia.Data" />
+                </label>
+                <label class="campo col-2">
+                    <span>Descrição (opcional)</span>
+                    <InputText class="input" maxlength="200" placeholder="Em branco: o sistema descreve sozinho" @bind-Value="transferencia.Descricao" />
+                </label>
+            </div>
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Transferir</button>
+                <button type="button" class="btn-ghost" @onclick="Fechar">Cancelar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    private static readonly (string Chave, string Rotulo)[] Abas =
+        [("painel", "Painel"), ("lancamentos", "Lançamentos"), ("dre", "DRE"), ("contas", "Contas e cartões"), ("categorias", "Plano de contas")];
+
+    [SupplyParameterFromQuery(Name = "aba")] public string? Aba { get; set; }
+    private string AbaAtual => Abas.Any(a => a.Chave == Aba) ? Aba! : "painel";
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.FinanceiroEmpresaEditar);
+    private bool ModalAberto => form is not null || transferencia is not null;
+
+    // muda a cada gravação: as abas recarregam quando recebem um número novo
+    private int versao;
+    private LancamentoEmpresaForm? form;
+    private Guid? editandoId;
+    private TransferenciaForm? transferencia;
+    private IReadOnlyList<ContaComSaldo> contas = [];
+
+    // select de Guid? via texto (o valor vazio é "Selecione…")
+    private string Origem { get => transferencia?.OrigemId?.ToString() ?? ""; set => transferencia!.OrigemId = Guid.TryParse(value, out var g) ? g : null; }
+    private string Destino { get => transferencia?.DestinoId?.ToString() ?? ""; set => transferencia!.DestinoId = Guid.TryParse(value, out var g) ? g : null; }
+
+    private void Novo(TipoCategoriaEmpresa tipo)
+    {
+        Sucesso = null;
+        editandoId = null;
+        form = new LancamentoEmpresaForm { Tipo = tipo };
+    }
+
+    private async Task Editar(Guid id)
+    {
+        Sucesso = null;
+        await Executar(async () =>
+        {
+            form = await Servico.FormularioAsync(Usuario, id);
+            editandoId = id;
+        });
+    }
+
+    private async Task NovaTransferencia(Guid? destino = null, decimal? valor = null)
+    {
+        Sucesso = null;
+        await Executar(async () =>
+        {
+            contas = await Servico.ContasAsync(Usuario);
+            transferencia = new TransferenciaForm
+            {
+                DestinoId = destino, Valor = valor,
+                // pagando a fatura, sugere a primeira conta corrente como origem
+                OrigemId = destino is null ? null : contas.FirstOrDefault(c => c.Conta.Tipo == TipoContaBancaria.CORRENTE)?.Conta.Id,
+            };
+        });
+    }
+
+    private Task PagarFatura(ContaComSaldo cartao) =>
+        NovaTransferencia(cartao.Conta.Id, cartao.Saldo < 0 ? -cartao.Saldo : null);
+
+    private async Task Transferir()
+    {
+        if (await Executar(() => Servico.TransferirAsync(Usuario, transferencia!)))
+        {
+            transferencia = null;
+            Alterado("Transferência registrada.");
+        }
+    }
+
+    private void Salvo(string mensagem)
+    {
+        form = null;
+        editandoId = null;
+        Alterado(mensagem);
+    }
+
+    private void Alterado(string mensagem)
+    {
+        Sucesso = mensagem;
+        versao++;
+    }
+
+    private void Fechar()
+    {
+        form = null;
+        editandoId = null;
+        transferencia = null;
+        Erro = null;
+    }
+}

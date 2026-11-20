@@ -44,6 +44,12 @@
                 <NavLink class="nav-item" href="agenda" title="Agenda"><Icone Nome="agenda" /><span class="nav-texto">Agenda</span></NavLink>
                 <NavLink class="nav-item" href="atividades" title="Atividades"><Icone Nome="atividades" /><span class="nav-texto">Atividades</span></NavLink>
             }
+            @if (usuario?.Pode(Permissoes.FinanceiroEmpresaVer) == true)
+            {
+                @* financeiro da própria imobiliária (o de cada imóvel fica na aba do imóvel) *@
+                <span class="nav-titulo">Gestão</span>
+                <NavLink class="nav-item" href="financeiro" Match="NavLinkMatch.All" title="Financeiro"><Icone Nome="dinheiro" /><span class="nav-texto">Financeiro</span></NavLink>
+            }
             @if (usuario is not null && Pages.AdminPagina.PodeAlgo(usuario))
             {
                 <NavLink class="nav-item nav-admin" href="admin" title="Administração"><Icone Nome="admin" /><span class="nav-texto">Administração</span></NavLink>

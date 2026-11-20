@@ -1,0 +1,237 @@
+@inherits ComponenteBase
+@inject FinanceiroEmpresaService Servico
+
+@* Nova entrada/saída (ou edição) do financeiro da imobiliária. Pensado para o caso comum ser rápido: categoria, valor,
+   vencimento e, se já pagou, a conta. Extras só aparecem quando fazem sentido: taxa retida no aluguel recebido,
+   parcelas na compra nova, competência diferente do vencimento. *@
+
+<Modal Titulo="@Titulo" AoFechar="AoFechar" Largo="true">
+    <EditForm Model="Form" OnValidSubmit="Salvar" class="formulario">
+        <DataAnnotationsValidator />
+        <MensagemErro Texto="@Erro" />
+
+        @if (EditandoId is null)
+        {
+            <div class="chips-linha" role="radiogroup" aria-label="Tipo">
+                <button type="button" class="chip @(Form.Tipo == TipoCategoriaEmpresa.ENTRADA ? "ativo" : "")" @onclick="() => TrocarTipo(TipoCategoriaEmpresa.ENTRADA)">↓ Entrada</button>
+                <button type="button" class="chip @(Form.Tipo == TipoCategoriaEmpresa.SAIDA ? "ativo" : "")" @onclick="() => TrocarTipo(TipoCategoriaEmpresa.SAIDA)">↑ Saída</button>
+            </div>
+        }
+
+        <div class="grade-2">
+            <label class="campo col-2">
+                <span>Categoria *</span>
+                <select class="input" @bind="Categoria">
+                    <option value="">Selecione…</option>
+                    @foreach (var g in categorias.Where(c => c.Tipo == Form.Tipo && (c.Ativa || c.Id == Form.CategoriaId)).GroupBy(c => c.Grupo))
+                    {
+                        <optgroup label="@FinanceiroEmpresaService.RotuloGrupo(g.Key)">
+                            @foreach (var c in g) { <option value="@c.Id">@c.Nome</option> }
+                        </optgroup>
+                    }
+                </select>
+                <ValidationMessage For="() => Form.CategoriaId" />
+                @if (CategoriaAtual?.Grupo == GrupoCategoriaEmpresa.TERCEIROS)
+                {
+                    <p class="pequeno mudo">Dinheiro de terceiros: passa pela conta da imobiliária, mas não é receita nem despesa dela.</p>
+                }
+            </label>
+            <label class="campo col-2">
+                <span>Descrição *</span>
+                <InputText class="input" maxlength="200" placeholder="@(Form.Tipo == TipoCategoriaEmpresa.ENTRADA ? "Ex.: Comissão venda apto 302" : "Ex.: Conta de energia de outubro")" @bind-Value="Form.Descricao" />
+                <ValidationMessage For="() => Form.Descricao" />
+            </label>
+            <label class="campo">
+                <span>@(Form.Parcelas > 1 ? "Valor total (R$) *" : "Valor (R$) *")</span>
+                <InputNumber class="input" step="0.01" min="0.01" @bind-Value="Form.Valor" />
+                <ValidationMessage For="() => Form.Valor" />
+            </label>
+            <label class="campo">
+                <span>@(ContaAtual?.Cartao == true ? "Data da compra *" : "Vencimento *")</span>
+                <InputDate class="input" @bind-Value="Form.Vencimento" @bind-Value:after="AoMudarVencimento" />
+                <ValidationMessage For="() => Form.Vencimento" />
+            </label>
+            <label class="campo">
+                <span>Conta / cartão</span>
+                <select class="input" @bind="Conta" @bind:after="AoMudarConta">
+                    <option value="">@(Form.Pago ? "Selecione…" : "Definir ao pagar")</option>
+                    @foreach (var c in contas.Where(c => c.Conta.Ativa || c.Conta.Id == Form.ContaId))
+                    {
+                        <option value="@c.Conta.Id">@c.Conta.Nome</option>
+                    }
+                </select>
+                <ValidationMessage For="() => Form.ContaId" />
+            </label>
+            <div class="campo">
+                @if (ContaAtual?.Cartao == true)
+                {
+                    <span>Cartão</span>
+                    <p class="pequeno mudo">Compra no cartão: entra na fatura na data da compra. A fatura se paga com uma transferência do banco para o cartão.</p>
+                }
+                else
+                {
+                    <span>&nbsp;</span>
+                    <label class="check"><InputCheckbox @bind-Value="Form.Pago" @bind-Value:after="AoMarcarPago" /> @(Form.Tipo == TipoCategoriaEmpresa.ENTRADA ? "Já recebido" : "Já pago")</label>
+                }
+            </div>
+            @if (Form.Pago && ContaAtual?.Cartao != true)
+            {
+                <label class="campo">
+                    <span>Data do @(Form.Tipo == TipoCategoriaEmpresa.ENTRADA ? "recebimento" : "pagamento")</span>
+                    <InputDate class="input" @bind-Value="Form.DataPagamento" />
+                    <ValidationMessage For="() => Form.DataPagamento" />
+                </label>
+            }
+
+            @if (EditandoId is null && Form.Tipo == TipoCategoriaEmpresa.ENTRADA && CategoriaAtual?.Grupo == GrupoCategoriaEmpresa.TERCEIROS)
+            {
+                <fieldset class="campo col-2">
+                    <legend>Taxa retida pela imobiliária (opcional)</legend>
+                    <div class="grade-2">
+                        <label class="campo">
+                            <span>Valor da taxa (R$)</span>
+                            <InputNumber class="input" step="0.01" min="0" @bind-Value="Form.TaxaRetida" />
+                            <ValidationMessage For="() => Form.TaxaRetida" />
+                        </label>
+                        <label class="campo">
+                            <span>Categoria da taxa</span>
+                            <select class="input" @bind="CategoriaTaxa">
+                                <option value="">Selecione…</option>
+                                @foreach (var c in categorias.Where(c => c.Ativa && c.Tipo == TipoCategoriaEmpresa.ENTRADA && c.Grupo == GrupoCategoriaEmpresa.RECEITA))
+                                {
+                                    <option value="@c.Id">@c.Nome</option>
+                                }
+                            </select>
+                            <ValidationMessage For="() => Form.CategoriaTaxaId" />
+                        </label>
+                    </div>
+                    @if (Form.TaxaRetida is > 0 && Form.Valor is > 0)
+                    {
+                        <p class="pequeno">Vira dois lançamentos: <b>@Texto.Moeda(Form.Valor - Form.TaxaRetida)</b> do proprietário (a repassar)
+                            e <b>@Texto.Moeda(Form.TaxaRetida)</b> de receita da imobiliária.</p>
+                    }
+                </fieldset>
+            }
+
+            <label class="campo">
+                <span>@(Form.Tipo == TipoCategoriaEmpresa.ENTRADA ? "Quem pagou" : "A quem pagar") (opcional)</span>
+                <InputText class="input" maxlength="200" @bind-Value="Form.PessoaNome" />
+            </label>
+            <label class="campo">
+                <span>Imóvel (código, opcional)</span>
+                <InputText class="input" maxlength="30" placeholder="Ex.: AP0012" @bind-Value="Form.ImovelCodigo" />
+                <ValidationMessage For="() => Form.ImovelCodigo" />
+            </label>
+        </div>
+
+        <details class="secao-mais" open="@MaisAberto">
+            <summary>Mais opções (competência, parcelas, documento)</summary>
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Competência (mês do resultado)</span>
+                    <input type="month" class="input" @bind="Form.Competencia" @bind:format="yyyy-MM" />
+                    <p class="pequeno mudo">Em branco: o mês do vencimento. Use quando a despesa é de outro mês (ex.: energia de outubro paga em novembro).</p>
+                </label>
+                @if (EditandoId is null)
+                {
+                    <label class="campo">
+                        <span>Parcelas</span>
+                        <InputNumber class="input" min="1" max="48" @bind-Value="Form.Parcelas" />
+                        <ValidationMessage For="() => Form.Parcelas" />
+                        @if (Form.Parcelas > 1 && Form.Valor is > 0)
+                        {
+                            <p class="pequeno mudo">@Form.Parcelas × @Texto.Moeda(decimal.Round(Form.Valor.Value / Form.Parcelas, 2)), uma por mês.</p>
+                        }
+                    </label>
+                }
+                <label class="campo">
+                    <span>Documento (NF, boleto)</span>
+                    <InputText class="input" maxlength="60" @bind-Value="Form.Documento" />
+                </label>
+                <label class="campo col-2">
+                    <span>Observação</span>
+                    <InputTextArea class="input" rows="2" maxlength="1000" @bind-Value="Form.Observacao" />
+                </label>
+            </div>
+        </details>
+
+        <div class="acoes">
+            <button type="submit" class="btn-primary" disabled="@Ocupado">@(EditandoId is null ? "Lançar" : "Salvar")</button>
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public LancamentoEmpresaForm Form { get; set; } = default!;
+    [Parameter] public Guid? EditandoId { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public EventCallback<string> AoSalvar { get; set; }
+
+    private IReadOnlyList<CategoriaEmpresa> categorias = [];
+    private IReadOnlyList<ContaComSaldo> contas = [];
+    private bool MaisAberto;
+
+    private string Titulo => EditandoId is not null ? "Editar lançamento"
+        : Form.Tipo == TipoCategoriaEmpresa.ENTRADA ? "Nova entrada" : "Nova saída";
+
+    private CategoriaEmpresa? CategoriaAtual => categorias.FirstOrDefault(c => c.Id == Form.CategoriaId);
+    private ContaBancaria? ContaAtual => contas.FirstOrDefault(c => c.Conta.Id == Form.ContaId)?.Conta;
+
+    private string Categoria { get => Form.CategoriaId?.ToString() ?? ""; set => Form.CategoriaId = Id(value); }
+    private string CategoriaTaxa { get => Form.CategoriaTaxaId?.ToString() ?? ""; set => Form.CategoriaTaxaId = Id(value); }
+    private string Conta { get => Form.ContaId?.ToString() ?? ""; set => Form.ContaId = Id(value); }
+    private static Guid? Id(string? v) => Guid.TryParse(v, out var g) ? g : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () =>
+        {
+            categorias = await Servico.CategoriasAsync(Usuario, incluirInativas: true);
+            contas = await Servico.ContasAsync(Usuario, incluirInativas: true);
+        });
+        // a taxa de administração é a sugestão natural para aluguel recebido
+        Form.CategoriaTaxaId ??= categorias.FirstOrDefault(c => c.Ativa && c.Grupo == GrupoCategoriaEmpresa.RECEITA
+            && c.Nome.Contains("administração", StringComparison.OrdinalIgnoreCase))?.Id;
+        MaisAberto = Form.Documento is not null || Form.Observacao is not null
+            || (Form.Competencia is { } c && Form.Vencimento is { } v && (c.Year != v.Year || c.Month != v.Month));
+    }
+
+    private void TrocarTipo(TipoCategoriaEmpresa tipo)
+    {
+        if (Form.Tipo == tipo) return;
+        Form.Tipo = tipo;
+        Form.CategoriaId = null;
+        Form.TaxaRetida = null;
+    }
+
+    private void AoMarcarPago()
+    {
+        if (Form.Pago) Form.DataPagamento ??= Form.Vencimento;
+    }
+
+    // no cartão a compra já "saiu" na data da compra
+    private void AoMudarConta()
+    {
+        if (ContaAtual?.Cartao != true) return;
+        Form.Pago = true;
+        Form.DataPagamento = Form.Vencimento;
+    }
+
+    private void AoMudarVencimento()
+    {
+        if (ContaAtual?.Cartao == true) Form.DataPagamento = Form.Vencimento;
+    }
+
+    private async Task Salvar()
+    {
+        var novo = EditandoId is null;
+        var quantos = 0;
+        if (await Executar(async () =>
+            {
+                if (novo) quantos = (await Servico.CriarAsync(Usuario, Form)).Count;
+                else await Servico.AtualizarAsync(Usuario, EditandoId!.Value, Form);
+            }))
+            await AoSalvar.InvokeAsync(!novo ? "Lançamento atualizado." : quantos > 1 ? $"{quantos} lançamentos criados." : "Lançamento criado.");
+    }
+}

@@ -1,0 +1,173 @@
+@inherits ComponenteBase
+@inject FinanceiroEmpresaService Servico
+
+@* Painel: quanto há nas contas, quanto disso é dos proprietários (aluguel ainda não repassado), o que é de fato da
+   imobiliária, o que vence nos próximos 30 dias e o resultado do mês. *@
+
+<MensagemErro Texto="@Erro" />
+
+@if (p is null)
+{
+    @if (Erro is null) { <p class="carregando">Carregando…</p> }
+}
+else
+{
+    @if (p.Contas.Count == 0)
+    {
+        <section class="card">
+            <p class="vazio">Nenhuma conta cadastrada. Comece em <a href="financeiro?aba=contas">Contas e cartões</a>:
+                cadastre Itaú, Sicoob, Sicredi e o cartão com o saldo de hoje.</p>
+        </section>
+    }
+
+    <div class="kpis">
+        <div class="kpi">
+            <p class="rotulo-kpi">Saldo nas contas</p>
+            <p class="valor-kpi">@Texto.Moeda(p.Disponivel)</p>
+            <p class="contexto-kpi">soma das contas e aplicações</p>
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">De terceiros (a repassar)</p>
+            <p class="valor-kpi">@Texto.Moeda(p.Terceiros)</p>
+            <p class="contexto-kpi">aluguel recebido e não repassado</p>
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">Da imobiliária</p>
+            <p class="valor-kpi @(p.Proprio < 0 ? "texto-erro" : "")">@Texto.Moeda(p.Proprio)</p>
+            <p class="contexto-kpi">saldo menos o dos proprietários</p>
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">Cartões (a pagar)</p>
+            <p class="valor-kpi">@Texto.Moeda(p.DividaCartoes)</p>
+            <p class="contexto-kpi">total das faturas</p>
+        </div>
+    </div>
+
+    <div class="kpis">
+        <div class="kpi">
+            <p class="rotulo-kpi">A receber em 30 dias</p>
+            <p class="valor-kpi texto-ok">@Texto.Moeda(p.AReceber30)</p>
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">A pagar em 30 dias</p>
+            <p class="valor-kpi">@Texto.Moeda(p.APagar30)</p>
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">Em atraso</p>
+            <p class="valor-kpi @(p.Atrasados > 0 ? "texto-erro" : "")">@p.Atrasados</p>
+            <p class="contexto-kpi">@(p.Atrasados > 0 ? Texto.Moeda(p.AtrasadosValor) : "nada vencido")</p>
+        </div>
+        <div class="kpi">
+            <p class="rotulo-kpi">Resultado do mês</p>
+            <p class="valor-kpi @(p.ResultadoMes < 0 ? "texto-erro" : "")">@Texto.Moeda(p.ResultadoMes)</p>
+            <p class="contexto-kpi">receitas @Texto.MoedaCompacta(p.ReceitaMes) · despesas @Texto.MoedaCompacta(p.DespesaMes)</p>
+        </div>
+    </div>
+
+    <div class="fin-painel-grade">
+        <section class="card">
+            <div class="titulo-secao"><h2>Contas</h2><a class="btn-ghost mini" href="financeiro?aba=contas">Gerenciar</a></div>
+            <ul class="fin-contas">
+                @foreach (var c in p.Contas)
+                {
+                    <li>
+                        <span><b>@c.Conta.Nome</b> <span class="pequeno mudo">@FinanceiroEmpresaService.RotuloTipoConta(c.Conta.Tipo)</span></span>
+                        @if (c.Conta.Cartao)
+                        {
+                            <span class="num">@Texto.Moeda(-c.Saldo) <span class="pequeno mudo">devido</span></span>
+                        }
+                        else
+                        {
+                            <span class="num @(c.Saldo < 0 ? "texto-erro" : "")">@Texto.Moeda(c.Saldo)</span>
+                        }
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <section class="card">
+            <div class="titulo-secao"><h2>Próximos vencimentos</h2><a class="btn-ghost mini" href="financeiro?aba=lancamentos">Ver todos</a></div>
+            @if (p.Proximos.Count == 0)
+            {
+                <p class="pequeno mudo">Nada a pagar ou receber nos próximos 30 dias.</p>
+            }
+            else
+            {
+                <div class="tabela-container">
+                    <table class="tabela">
+                        <tbody>
+                            @foreach (var l in p.Proximos)
+                            {
+                                <tr>
+                                    <td class="nowrap @(l.Atrasado(hoje) ? "texto-erro" : "")">@Texto.Data(l.Vencimento)</td>
+                                    <td>@l.Descricao<p class="pequeno mudo">@l.Categoria</p></td>
+                                    <td class="num @(l.Valor < 0 ? "texto-erro" : "texto-ok")">@Texto.Moeda(l.Valor)</td>
+                                    @if (PodeEditar)
+                                    {
+                                        <td><button class="btn-primary mini" @onclick="() => pagando = l">@(l.Valor < 0 ? "Pagar" : "Receber")</button></td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        @if (p.TerceirosImoveis.Count > 0)
+        {
+            <section class="card">
+                <div class="titulo-secao"><h2>A repassar por imóvel</h2></div>
+                <ul class="fin-contas">
+                    @foreach (var t in p.TerceirosImoveis)
+                    {
+                        <li>
+                            @if (t.ImovelId is { } id)
+                            {
+                                <a href="imoveis/@id">@t.ImovelCodigo</a>
+                            }
+                            else
+                            {
+                                <span class="mudo">Sem imóvel informado</span>
+                            }
+                            <span class="num @(t.Saldo < 0 ? "texto-erro" : "")">@Texto.Moeda(t.Saldo)</span>
+                        </li>
+                    }
+                </ul>
+                @if (p.TerceirosImoveis.Any(t => t.Saldo < 0))
+                {
+                    <p class="pequeno mudo">Negativo = repassou mais do que recebeu (confira os lançamentos).</p>
+                }
+            </section>
+        }
+    </div>
+}
+
+@if (pagando is not null)
+{
+    <EmpresaPagarModal Lancamento="pagando" AoFechar="() => pagando = null" AoPagar="Pago" />
+}
+
+@code {
+    [Parameter] public int Versao { get; set; }
+    [Parameter] public EventCallback<string> AoAlterar { get; set; }
+
+    private PainelFinanceiroEmpresa? p;
+    private LancamentoEmpresaLinha? pagando;
+    private int carregada = -1;
+    private readonly DateOnly hoje = DatasBR.Hoje();
+    private bool PodeEditar => Usuario.Pode(Permissoes.FinanceiroEmpresaEditar);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (carregada == Versao) return;
+        carregada = Versao;
+        await Executar(async () => p = await Servico.PainelAsync(Usuario));
+    }
+
+    private async Task Pago(string mensagem)
+    {
+        pagando = null;
+        await AoAlterar.InvokeAsync(mensagem);
+    }
+}

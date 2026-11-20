@@ -1,0 +1,48 @@
+@inherits ComponenteBase
+@inject FinanceiroEmpresaService Servico
+
+@* Baixa de um lançamento em aberto: em que dia e por qual conta o dinheiro saiu/entrou. *@
+
+<Modal Titulo="@($"{(Lancamento.Valor < 0 ? "Pagar" : "Receber")} — {Lancamento.Descricao}")" AoFechar="AoFechar">
+    <MensagemErro Texto="@Erro" />
+    <p class="pequeno mudo">@Lancamento.Categoria · vencimento @Texto.Data(Lancamento.Vencimento) · <b>@Texto.Moeda(Lancamento.Valor)</b></p>
+    <div class="grade-2">
+        <label class="campo">
+            <span>Data</span>
+            <input type="date" class="input" @bind="data" />
+        </label>
+        <label class="campo">
+            <span>Conta</span>
+            <select class="input" @bind="conta">
+                <option value="">Selecione…</option>
+                @foreach (var c in contas) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
+            </select>
+        </label>
+    </div>
+    <div class="acoes">
+        <button class="btn-primary" disabled="@(Ocupado || !Guid.TryParse(conta, out _))" @onclick="Confirmar">Confirmar</button>
+        <button class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+    </div>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public LancamentoEmpresaLinha Lancamento { get; set; } = default!;
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public EventCallback<string> AoPagar { get; set; }
+
+    private IReadOnlyList<ContaComSaldo> contas = [];
+    private DateOnly data = DatasBR.Hoje();
+    private string conta = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () => contas = await Servico.ContasAsync(Usuario));
+        conta = Lancamento.ContaId?.ToString() ?? "";
+    }
+
+    private async Task Confirmar()
+    {
+        if (await Executar(() => Servico.PagarAsync(Usuario, Lancamento.Id, data, Guid.Parse(conta))))
+            await AoPagar.InvokeAsync(Lancamento.Valor < 0 ? "Pagamento registrado." : "Recebimento registrado.");
+    }
+}

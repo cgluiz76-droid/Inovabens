@@ -51,6 +51,9 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Memorando> Memorandos => Set<Memorando>();
     public DbSet<Chave> Chaves => Set<Chave>();
     public DbSet<ChaveMovimento> ChaveMovimentos => Set<ChaveMovimento>();
+    public DbSet<ContaBancaria> ContasBancarias => Set<ContaBancaria>();
+    public DbSet<CategoriaEmpresa> CategoriasEmpresa => Set<CategoriaEmpresa>();
+    public DbSet<LancamentoEmpresa> LancamentosEmpresa => Set<LancamentoEmpresa>();
     public DbSet<Compromisso> Compromissos => Set<Compromisso>();
     public DbSet<CompromissoParticipante> CompromissoParticipantes => Set<CompromissoParticipante>();
     public DbSet<CompromissoHistorico> CompromissoHistoricos => Set<CompromissoHistorico>();
@@ -191,6 +194,19 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         {
             e.HasOne(x => x.Chave).WithMany().HasForeignKey(x => x.ChaveId);
             e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId);
+        });
+        // financeiro da imobiliária: tipos/grupos gravados como texto (varchar com CHECK na migração 0037)
+        mb.Entity<ContaBancaria>().Property(x => x.Tipo).HasConversion<string>();
+        mb.Entity<CategoriaEmpresa>(e =>
+        {
+            e.Property(x => x.Tipo).HasConversion<string>();
+            e.Property(x => x.Grupo).HasConversion<string>();
+        });
+        mb.Entity<LancamentoEmpresa>(e =>
+        {
+            e.HasOne(x => x.Categoria).WithMany().HasForeignKey(x => x.CategoriaId);
+            e.HasOne(x => x.Conta).WithMany().HasForeignKey(x => x.ContaId);
+            e.HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);
         });
         mb.Entity<Compromisso>(e =>
         {
