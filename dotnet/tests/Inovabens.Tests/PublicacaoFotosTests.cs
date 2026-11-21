@@ -44,13 +44,13 @@ public class PublicacaoFotosUnidadeTests
     public void Versoes_web_em_webp_sem_ampliar_e_sem_aceitar_o_que_nao_e_imagem()
     {
         var versoes = ImagemFoto.VersoesWeb(Imagens.Gerar(3000, 2000), PublicacaoFotosService.Larguras)!;
-        Assert.Equal([(400, 267), (1200, 800), (1920, 1280)], versoes.Select(Imagens.Tamanho));
+        Assert.Equal([(400, 267), (800, 533), (1200, 800), (1920, 1280)], versoes.Select(Imagens.Tamanho));
         Assert.All(versoes, v => Assert.Equal("RIFF", System.Text.Encoding.ASCII.GetString(v, 0, 4)));
         Assert.All(versoes, v => Assert.Equal("WEBP", System.Text.Encoding.ASCII.GetString(v, 8, 4)));
 
         // foto pequena: nenhuma versão maior que a original
         var pequenas = ImagemFoto.VersoesWeb(Imagens.Gerar(800, 600, SKEncodedImageFormat.Png), PublicacaoFotosService.Larguras)!;
-        Assert.Equal([(400, 300), (800, 600), (800, 600)], pequenas.Select(Imagens.Tamanho));
+        Assert.Equal([(400, 300), (800, 600), (800, 600), (800, 600)], pequenas.Select(Imagens.Tamanho));
 
         Assert.Null(ImagemFoto.VersoesWeb("não é imagem"u8.ToArray(), PublicacaoFotosService.Larguras));
     }
@@ -152,7 +152,7 @@ public class PublicacaoFotosIntegracaoTests : IAsyncLifetime
         Assert.False((await M("planta.pdf")).Midia.Publica);
         Assert.False((await M("matricula.jpg")).Midia.Publica);
 
-        // rodada: a sala vai em três tamanhos; a falsa fica como falha e não é tentada de novo
+        // rodada: a sala vai em todos os tamanhos; a falsa fica como falha e não é tentada de novo
         Assert.Equal(1, await publicacao.ProcessarAsync());
         var sala = await M("sala.jpg");
         Assert.Equal(SituacaoPublicacao.Publicada, sala.Publicacao);
@@ -165,7 +165,7 @@ public class PublicacaoFotosIntegracaoTests : IAsyncLifetime
         var falsa = await M("falsa.jpg");
         Assert.Equal(SituacaoPublicacao.Falha, falsa.Publicacao);
         Assert.Contains("Formato de imagem não suportado", falsa.Midia.PublicacaoErro);
-        Assert.Equal(3, _r2.Arquivos.Count);
+        Assert.Equal(PublicacaoFotosService.Larguras.Count, _r2.Arquivos.Count);
         Assert.Equal(0, await publicacao.ProcessarAsync());
 
         // marcar o quarto como público publica; desmarcar a sala retira do R2 (continua no Drive)
@@ -206,7 +206,7 @@ public class PublicacaoFotosIntegracaoTests : IAsyncLifetime
         await imoveis.AtualizarMidiaAsync(admin, sala.Midia.Id, new MidiaAlteracao { Publica = true });
         await publicacao.ProcessarAsync();
         sala = await M("sala.jpg");
-        Assert.Equal(3, _r2.Com(sala.Midia.PublicaChave).Count());
+        Assert.Equal(PublicacaoFotosService.Larguras.Count, _r2.Com(sala.Midia.PublicaChave).Count());
         await imoveis.RemoverMidiaAsync(admin, quarto.Midia.Id);
         Assert.Empty(_r2.Com(quarto.Midia.PublicaChave));
 
@@ -216,5 +216,45 @@ public class PublicacaoFotosIntegracaoTests : IAsyncLifetime
         Assert.Empty(_r2.Com(sala.Midia.PublicaChave));
         await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
             Assert.Null((await db.ImovelMidias.SingleAsync(m => m.Id == sala.Midia.Id)).PublicaChave);
+    }
+
+    [Fact]
+    public async Task Fotos_publicadas_antes_da_versao_de_800_ganham_essa_versao_sem_sair_do_ar()
+    {
+        var admin = (await S<AuthService>().LoginAsync("admin@inovabens.com.br", BancoFixture.Senha, null)).Usuario!;
+        var imoveis = S<ImoveisService>();
+        var publicacao = S<PublicacaoFotosService>();
+        var id = await imoveis.CriarAsync(admin, new ImovelForm { NomeDrive = Guid.NewGuid().ToString(), Titulo = "Casa antiga no site", Tipo = "casa" });
+        foreach (var nome in new[] { "fachada.jpg", "piscina.jpg" })
+        {
+            using var s = new MemoryStream(Imagens.Gerar(3000, 2000));
+            await imoveis.EnviarMidiaAsync(admin, id, s, nome, "image/jpeg", SubpastasDrive.FotosVideos, publica: true);
+        }
+        async Task<MidiaDetalhe> M(string nome) => (await imoveis.MidiasAsync(admin, id)).Single(m => m.Midia.NomeOriginal == nome);
+        await publicacao.ProcessarAsync();
+        var fachada = await M("fachada.jpg");
+        Assert.Equal($"https://fotos.exemplo/{fachada.Midia.PublicaChave}-800.webp", fachada.Media);
+
+        // como estavam antes da migração 0039: sem o -800.webp e sem a marca; na piscina falta também a de 1920
+        var piscina = await M("piscina.jpg");
+        _r2.Arquivos.TryRemove($"{fachada.Midia.PublicaChave}-800.webp", out _);
+        _r2.Arquivos.TryRemove($"{piscina.Midia.PublicaChave}-800.webp", out _);
+        _r2.Arquivos.TryRemove($"{piscina.Midia.PublicaChave}-1920.webp", out _);
+        await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+            await db.ImovelMidias.Where(m => m.ImovelId == id).ExecuteUpdateAsync(s => s.SetProperty(m => m.PublicadaMedia, false));
+        fachada = await M("fachada.jpg");
+        Assert.Equal((SituacaoPublicacao.Publicada, (string?)null), (fachada.Publicacao, fachada.Media)); // o site não oferece a 800 que não existe
+
+        // rodada: a fachada ganha a de 800 (gerada da de 1920, sem sair do ar); a piscina, com a cópia incompleta, volta à fila
+        Assert.Equal(0, await publicacao.ProcessarAsync());
+        fachada = await M("fachada.jpg");
+        Assert.Equal((SituacaoPublicacao.Publicada, true), (fachada.Publicacao, fachada.Midia.PublicadaMedia));
+        Assert.Equal((800, 533), Imagens.Tamanho(_r2.Arquivos[$"{fachada.Midia.PublicaChave}-800.webp"].Dados));
+        Assert.Equal($"https://fotos.exemplo/{fachada.Midia.PublicaChave}-800.webp", fachada.Media);
+        Assert.Equal(SituacaoPublicacao.Pendente, (await M("piscina.jpg")).Publicacao);
+        Assert.Equal(1, await publicacao.ProcessarAsync());
+        piscina = await M("piscina.jpg");
+        Assert.True(piscina.Midia.PublicadaMedia);
+        Assert.Equal(PublicacaoFotosService.Larguras.Count, _r2.Com(piscina.Midia.PublicaChave).Count());
     }
 }

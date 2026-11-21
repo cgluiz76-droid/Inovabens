@@ -204,14 +204,14 @@ public sealed class ImoveisService(
         var publica = PublicacaoFotosService.Situacao(m) == SituacaoPublicacao.Publicada ? publicacao.Url(m) : null;
         if (m.Tipo != TipoMidia.FOTO || url is null) return new(m, url, publica);
         return publica is not null
-            ? new(m, url, publica, publicacao.Url(m, LarguraMiniatura), publica)
-            : new(m, url, null, $"{url}?l={LarguraMiniatura}", $"{url}?l={LarguraTela}");
+            ? new(m, url, publica, publicacao.Url(m, LarguraMiniatura), publica, m.PublicadaMedia ? publicacao.Url(m, LarguraMedia) : null)
+            : new(m, url, null, $"{url}?l={LarguraMiniatura}", $"{url}?l={LarguraTela}", $"{url}?l={LarguraMedia}");
     }
 
-    /// <summary>Larguras que o sistema reduz ao entregar fotos do Drive (400 e 1200 = as mesmas versões publicadas no R2;
+    /// <summary>Larguras que o sistema reduz ao entregar fotos do Drive (400, 800 e 1200 = as mesmas versões publicadas no R2;
     /// 160 = ícone da lista de imóveis no computador, que aparece com 64 px).</summary>
-    public const int LarguraIcone = 160, LarguraMiniatura = 400, LarguraTela = 1200;
-    public static bool LarguraValida(int largura) => largura is LarguraIcone or LarguraMiniatura or LarguraTela;
+    public const int LarguraIcone = 160, LarguraMiniatura = 400, LarguraMedia = PublicacaoFotosService.LarguraMedia, LarguraTela = 1200;
+    public static bool LarguraValida(int largura) => largura is LarguraIcone or LarguraMiniatura or LarguraMedia or LarguraTela;
 
     /// <param name="codigoExterno">Código que o imóvel já tem fora do sistema (anúncio do Imobibrasil, ex.: CA0060):
     /// usado se estiver no padrão e livre; senão o próximo do prefixo do tipo.</param>

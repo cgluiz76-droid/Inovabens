@@ -384,9 +384,11 @@
 
     /// <param name="Src">Foto para exibir grande (1200 px).</param>
     /// <param name="Pequena">Versão reduzida (400 px): fundos desfocados, miniaturas e telas pequenas.</param>
-    private sealed record FotoSite(string Src, string Pequena, string? Legenda)
+    /// <param name="Media">Versão de 800 px: a foto principal no celular (tela de ~400 px com densidade 2) sem baixar a de 1200.</param>
+    private sealed record FotoSite(string Src, string Pequena, string? Media, string? Legenda)
     {
-        public string Srcset => Pequena == Src ? Src : $"{Pequena} 400w, {Src} 1200w";
+        public string Srcset => Pequena == Src ? Src
+            : Media is null ? $"{Pequena} 400w, {Src} 1200w" : $"{Pequena} 400w, {Media} 800w, {Src} 1200w";
     }
     private sealed record Paragrafo(string? Texto, IReadOnlyList<string>? Itens);
 
@@ -469,7 +471,7 @@
     {
         var midias = Detalhe.Midias.Where(m => m.Midia.Publica && m.Url is not null)
             .OrderByDescending(m => m.Midia.Capa).ThenBy(m => m.Midia.Ordem).ToList();
-        Fotos = [.. midias.Where(m => m.Midia.Tipo == TipoMidia.FOTO).Select(m => new FotoSite(m.Tela ?? m.Url!, m.Miniatura ?? m.Tela ?? m.Url!, m.Midia.Legenda))];
+        Fotos = [.. midias.Where(m => m.Midia.Tipo == TipoMidia.FOTO).Select(m => new FotoSite(m.Tela ?? m.Url!, m.Miniatura ?? m.Tela ?? m.Url!, m.Media, m.Midia.Legenda))];
         Videos = [.. midias.Where(m => m.Midia.Tipo == TipoMidia.VIDEO).Select(m => m.Url!)];
         FotosJson = System.Text.Json.JsonSerializer.Serialize(Fotos.Select(f => new { src = f.Src, legenda = f.Legenda }))
             .Replace("<", "\\u003c"); // dentro de <script>: nunca fecha a tag

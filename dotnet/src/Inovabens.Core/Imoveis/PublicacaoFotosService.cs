@@ -18,9 +18,9 @@ public sealed class PublicacaoFotosService(
     IDbContextFactory<InovabensDb> fabrica, IArmazenamento drive, IArmazenamentoPublico publico,
     ILogger<PublicacaoFotosService> log)
 {
-    /// <summary>Larguras máximas geradas: miniatura (listas), ficha e tela cheia.</summary>
-    public static readonly IReadOnlyList<int> Larguras = [400, 1200, 1920];
-    public const int LarguraFicha = 1200;
+    /// <summary>Larguras máximas geradas: miniatura (listas), ficha no celular, ficha e tela cheia.</summary>
+    public static readonly IReadOnlyList<int> Larguras = [400, LarguraMedia, 1200, 1920];
+    public const int LarguraFicha = 1200, LarguraMedia = 800;
     private const int PorRodada = 10;
 
     public bool Habilitada => publico.Habilitado && drive.Habilitado;
@@ -95,6 +95,8 @@ public sealed class PublicacaoFotosService(
             if (anterior is not null && anterior != nova) await RemoverCopiaAsync(anterior);
         }
 
+        if (publicadas < PorRodada) await CompletarMediasAsync(db, PorRodada - publicadas, ct);
+
         var aRetirar = await db.ImovelMidias
             .Where(m => m.PublicaChave != null
                 && (!m.Publica || m.Tipo != TipoMidia.FOTO || !db.Imoveis.Any(i => i.Id == m.ImovelId && i.ExcluidoEm == null)))
@@ -105,6 +107,7 @@ public sealed class PublicacaoFotosService(
             await RemoverCopiaAsync(m.PublicaChave);
             m.PublicaChave = m.PublicadaArquivo = m.PublicacaoErro = null;
             m.PublicadaEm = null;
+            m.PublicadaMedia = false;
         }
         if (aRetirar.Count > 0) await db.SaveChangesAsync(ct);
         return publicadas;
@@ -126,9 +129,42 @@ public sealed class PublicacaoFotosService(
         m.PublicaChave = prefixo;
         m.PublicadaArquivo = m.ArquivoChave;
         m.PublicadaEm = DateTime.UtcNow;
+        m.PublicadaMedia = true;
         m.PublicacaoErro = null;
         log.LogInformation("Foto {Midia} publicada no R2", m.Id);
         return prefixo;
+    }
+
+    /// <summary>
+    /// Fotos publicadas antes da versão de 800 px: gera a partir da de 1920 já no R2 (sem baixar o original do Drive e sem
+    /// tirar a foto do ar). Se a de 1920 sumiu, a cópia está incompleta: a foto volta à fila e é publicada de novo inteira.
+    /// </summary>
+    private async Task CompletarMediasAsync(InovabensDb db, int limite, CancellationToken ct)
+    {
+        var faltando = await db.ImovelMidias
+            .Where(m => !m.PublicadaMedia && m.PublicaChave != null && m.PublicadaArquivo == m.ArquivoChave && m.PublicacaoErro == null)
+            .OrderBy(m => m.PublicadaEm)
+            .Take(limite)
+            .ToListAsync(ct);
+        foreach (var m in faltando)
+        {
+            try
+            {
+                var grande = await publico.BaixarAsync(ChaveVersao(m.PublicaChave!, Larguras[^1]), ct);
+                if (grande is not null && ImagemFoto.VersoesWeb(grande, [LarguraMedia])?[0] is { } media)
+                {
+                    await publico.EnviarAsync(ChaveVersao(m.PublicaChave!, LarguraMedia), media, "image/webp", ct);
+                    m.PublicadaMedia = true;
+                }
+                else m.PublicadaArquivo = null;
+            }
+            catch (Exception e) when (e is HttpRequestException or Amazon.S3.AmazonS3Exception or Amazon.Runtime.AmazonServiceException
+                                          or TaskCanceledException && !ct.IsCancellationRequested)
+            {
+                log.LogWarning("Versão de 800 px da foto {Midia} adiada: {Erro}", m.Id, e.Message);
+            }
+        }
+        if (faltando.Count > 0) await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Apaga as versões públicas da foto (sem erro se não existirem).</summary>

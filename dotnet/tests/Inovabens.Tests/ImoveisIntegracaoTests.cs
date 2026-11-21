@@ -121,6 +121,7 @@ public class ImoveisIntegracaoTests
         // larguras que o sistema reduz: 160 (ícone da lista no computador), 400 e 1200; outras são recusadas
         Assert.True(ImoveisService.LarguraValida(ImoveisService.LarguraIcone));
         Assert.True(ImoveisService.LarguraValida(ImoveisService.LarguraMiniatura));
+        Assert.True(ImoveisService.LarguraValida(ImoveisService.LarguraMedia));
         Assert.False(ImoveisService.LarguraValida(300));
 
         // --- mídias: sem Google Drive configurado, envio é recusado de forma controlada ---

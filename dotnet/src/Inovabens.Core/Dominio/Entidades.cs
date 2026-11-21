@@ -139,11 +139,13 @@ public class ImovelMidia
     public string? MelhoriaTarefa { get; set; }
     public string? MelhoriaErro { get; set; }
     public DateTime? MelhoriaAtualizadaEm { get; set; }
-    /// <summary>Prefixo da cópia pública no R2 (…-400.webp, -1200.webp, -1920.webp); null = não publicada.</summary>
+    /// <summary>Prefixo da cópia pública no R2 (…-400.webp, -800.webp, -1200.webp, -1920.webp); null = não publicada.</summary>
     public string? PublicaChave { get; set; }
     /// <summary>Id do arquivo do Drive que gerou a cópia pública (outro valor = a foto mudou e é publicada de novo).</summary>
     public string? PublicadaArquivo { get; set; }
     public DateTime? PublicadaEm { get; set; }
+    /// <summary>A cópia pública já tem a versão de 800 px (fotos publicadas antes dela ganham aos poucos).</summary>
+    public bool PublicadaMedia { get; set; }
     public string? PublicacaoErro { get; set; }
 }
 

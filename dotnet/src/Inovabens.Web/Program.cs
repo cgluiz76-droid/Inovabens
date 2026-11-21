@@ -393,7 +393,7 @@ site.MapGet("imoveis", async (string? finalidade, string? tipo, string? cidade, 
 
 // Fotos e documentos: o Drive é privado, então o sistema confere o acesso ao imóvel e repassa o arquivo.
 // O id do arquivo no Drive vai na URL e muda quando a foto é trocada, por isso o navegador pode guardar em cache.
-// ?l=160|400|1200: foto reduzida em WebP (ícone da lista, cartões, galeria) em vez do original de vários MB.
+// ?l=160|400|800|1200: foto reduzida em WebP (ícone da lista, cartões, galeria) em vez do original de vários MB.
 app.MapGet("/imoveis/midias/{midiaId:guid}/{arquivo}", async (Guid midiaId, string arquivo, int? l, HttpContext c, ImoveisService s, FotosReduzidas reduzidas) =>
 {
     try
