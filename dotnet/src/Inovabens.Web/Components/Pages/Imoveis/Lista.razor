@@ -76,7 +76,10 @@ else
                                 @if (i.CapaUrl is { } capa)
                                 {
                                     @* no computador a miniatura tem 64 px: o navegador escolhe a versão de 160 px; no celular (cartão largo), a de 400 *@
-                                    <img class="miniatura-imovel" src="@capa" srcset="@SrcsetCapa(capa)" sizes="@(SrcsetCapa(capa) is null ? null : "(max-width: 640px) 100vw, 64px")" alt="" loading="lazy" />
+                                    @* a 1ª capa é o maior elemento da tela no celular (LCP): carrega já e com prioridade *@
+                                    var primeira = ReferenceEquals(i, resultado.Itens[0]);
+                                    <img class="miniatura-imovel" src="@capa" srcset="@SrcsetCapa(capa)" sizes="@(SrcsetCapa(capa) is null ? null : "(max-width: 640px) 100vw, 64px")" alt=""
+                                         loading="@(primeira ? "eager" : "lazy")" fetchpriority="@(primeira ? "high" : "auto")" />
                                 }
                                 else
                                 {

@@ -51,7 +51,8 @@ button { font: inherit; color: inherit; }
 .marca-txt b { font-family: var(--f-titulo); font-weight: 700; font-size: 1.2rem; letter-spacing: .02em; }
 .marca-txt b span { background: var(--degrade-ouro); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .marca-txt small { font-size: .58rem; letter-spacing: .28em; margin-top: 4px; color: var(--mudo); font-weight: 600; }
-.marca-txt .marca-creci { font-size: .52rem; letter-spacing: .12em; margin-top: 3px; font-weight: 500; opacity: .75; }
+/* sem opacity: a cor --mudo já é discreta e mantém o contraste mínimo (WCAG 1.4.3) */
+.marca-txt .marca-creci { font-size: .52rem; letter-spacing: .12em; margin-top: 3px; font-weight: 500; }
 .nav { display: flex; gap: 4px; margin-left: auto; }
 .nav a { color: var(--texto); font-weight: 500; padding: 8px 12px; border-radius: 8px; text-decoration: none; }
 .nav a:hover { background: var(--sup-2); color: var(--acento); }

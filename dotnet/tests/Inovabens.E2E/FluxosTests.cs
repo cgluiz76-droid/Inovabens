@@ -462,7 +462,7 @@ public class FluxosTests(Aplicacao app)
         await Expect(p.Locator("#simPrazoTxt")).ToHaveTextAsync("20 anos e 6 meses (246 meses)");
 
         // logo volta ao início; "Comprar" lista todos à venda; o cartão abre a ficha
-        await p.GetByRole(AriaRole.Banner).GetByRole(AriaRole.Link, new() { Name = "Inovabens: página inicial" }).ClickAsync();
+        await p.GetByRole(AriaRole.Banner).GetByRole(AriaRole.Link, new() { Name = "Inovabens" }).ClickAsync();
         await Expect(p).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/site$"));
         await Expect(p.GetByRole(AriaRole.Heading, new() { Name = "Imóveis à venda" })).ToBeVisibleAsync();
         await p.GetByRole(AriaRole.Navigation, new() { Name = "Principal" }).GetByRole(AriaRole.Link, new() { Name = "Comprar" }).ClickAsync();
