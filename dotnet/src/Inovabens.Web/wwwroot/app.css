@@ -1297,3 +1297,8 @@ fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(-
 .pagina-opcoes { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--e-5); }
 .pagina-link code { word-break: break-all; font-size: var(--t-sm); }
 .contador { font-weight: 400; margin-left: var(--e-1); }
+.pagina-proposta { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: var(--e-4); max-height: 55vh; overflow-y: auto; display: grid; gap: var(--e-2); }
+.pagina-proposta h4 { margin: var(--e-2) 0 0; }
+.pagina-proposta .pre { white-space: pre-line; }
+.pagina-chips { display: flex; flex-wrap: wrap; gap: var(--e-2); list-style: none; padding: 0; margin: 0; }
+.pagina-chips li { border: 1px solid var(--borda); border-radius: 999px; padding: 2px var(--e-3); font-size: var(--t-sm); }

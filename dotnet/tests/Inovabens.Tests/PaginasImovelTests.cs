@@ -3,6 +3,7 @@ using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Imoveis;
+using Inovabens.Core.Redes;
 using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,13 @@ public class PaginasImovelUnidadeTests
     [InlineData("  Casa  Nº 12 / Centro!! ", "casa-n-12-centro")]
     [InlineData("###", "imovel")]
     public void Slug_sem_acento_e_com_hifen(string texto, string esperado) => Assert.Equal(esperado, PaginasImovelService.Slug(texto));
+
+    [Fact]
+    public void Endereco_sugerido_nao_repete_a_cidade()
+    {
+        var im = new Imovel { Titulo = "Sítio à venda em Cedral", Tipo = "sitio", Cidade = "Cedral" };
+        Assert.Equal("sitio-a-venda-em-cedral", PaginasImovelService.Sugestao(im, []).Slug);
+    }
 
     [Fact]
     public void Slug_longo_corta_em_palavra()
@@ -50,6 +58,45 @@ public class PaginasImovelUnidadeTests
         Assert.True(f.TituloSeo!.Length <= 60);
         Assert.True(f.DescricaoSeo!.Length <= 155);
         Assert.Empty(f.Conteudo.Perguntas); // nada inventado
+    }
+
+    [Fact]
+    public void Proposta_da_ia_respeita_os_limites_da_tela()
+    {
+        var g = new PaginaGerada
+        {
+            Titulo = new string('a', 50) + " " + new string('b', 100), Chamada = "Chamada.", TituloSeo = "Título", DescricaoSeo = "Resumo",
+            Destaques = [.. Enumerable.Range(1, 9).Select(i => new DestaqueGerado { Valor = $"{i}", Rotulo = "quartos" }), new() { Valor = "", Rotulo = "vazio" }],
+            Secoes = [new() { Titulo = "Sobre", Texto = "Texto." }, new() { Titulo = "Vazia", Texto = " " }],
+            Diferenciais = ["Piscina", "Piscina", " "],
+            Perguntas = [new() { Pergunta = "Aceita permuta?", Resposta = "Sim." }, new() { Pergunta = "Sem resposta?", Resposta = "" }],
+            Condicoes = "",
+        };
+        var f = PaginasImovelService.Converter(g);
+        Assert.True(f.Titulo.Length <= 120);
+        Assert.Equal(PaginaForm.MaxDestaques, f.Conteudo.Destaques.Count);
+        Assert.Equal("Sobre", Assert.Single(f.Conteudo.Secoes).Titulo);
+        Assert.Equal(["Piscina"], f.Conteudo.Diferenciais);
+        Assert.Single(f.Conteudo.Perguntas);
+        Assert.Null(f.Conteudo.Condicoes);
+        f.Slug = "casa";
+        var erros = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+        Assert.True(System.ComponentModel.DataAnnotations.Validator.TryValidateObject(f, new(f), erros, true), string.Join("; ", erros.Select(e => e.ErrorMessage)));
+    }
+
+    [Fact]
+    public void Pedido_para_ia_leva_o_pedido_do_usuario_ou_deixa_a_ia_decidir()
+    {
+        var im = new Imovel { Titulo = "Casa Jardim", Tipo = "casa", Cidade = "Jales", Uf = "SP", PrecoVenda = 450_000, Quartos = 3 };
+        var d = PaginasImovelService.Dados(im, [new ImovelCaracteristica { Chave = "Cofre", Publico = false }], []);
+        var vazio = ClaudePagina.PedidoUsuario(d, null);
+        Assert.Contains("Pedido do usuário: nenhum", vazio);
+        Assert.Contains("R$", vazio);
+        Assert.DoesNotContain("Cofre", vazio); // característica privada não vai para a IA
+        Assert.Contains("Pedido do usuário: foco em investidores", ClaudePagina.PedidoUsuario(d, "foco em investidores"));
+        // structured outputs: todo objeto fechado (additionalProperties=false) e com todos os campos obrigatórios
+        var esquema = System.Text.Json.JsonSerializer.Serialize(ClaudePagina.Esquema());
+        Assert.Equal(4, System.Text.RegularExpressions.Regex.Matches(esquema, "\"additionalProperties\":false").Count);
     }
 
     [Fact]
@@ -172,5 +219,56 @@ public class PaginasImovelTests : IAsyncLifetime
         var carla = await Entrar("carla@inovabens.com.br");
         var id = await NovoImovel(admin, "Casa sem acesso " + Guid.NewGuid().ToString("N")[..6]);
         await Assert.ThrowsAsync<AcessoNegadoException>(() => S<PaginasImovelService>().EdicaoAsync(carla, id));
+    }
+
+    [Fact]
+    public async Task Ia_gera_proposta_sem_gravar_e_so_com_fotos_publicas()
+    {
+        var admin = await Entrar("admin@inovabens.com.br");
+        var drive = (ArmazenamentoMemoria)S<IArmazenamento>();
+        var falso = new GeradorPaginaFalso();
+        var svc = new PaginasImovelService(S<IDbContextFactory<InovabensDb>>(), S<AuditService>(), S<PublicacaoFotosService>(),
+            drive, S<IArmazenamentoPublico>(), falso);
+        var id = await NovoImovel(admin, "Casa IA " + Guid.NewGuid().ToString("N")[..6]);
+        var (pub, priv) = await Fotos(id);
+        await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+        {
+            // as duas fotos existem no Drive; só a pública pode ir para a IA
+            foreach (var m in await db.ImovelMidias.Where(m => m.ImovelId == id).ToListAsync())
+                m.ArquivoChave = await drive.EnviarAsync(ArmazenamentoMemoria.Raiz, m.Id + ".jpg", new MemoryStream(Imagens.Gerar(1600, 1200)), "image/jpeg");
+            await db.SaveChangesAsync();
+        }
+
+        var f = await svc.GerarComIaAsync(admin, id, "  foco em investidores  ");
+        Assert.Equal("foco em investidores", falso.Instrucoes);
+        Assert.Single(falso.Ultimo!.Fotos);
+        Assert.True(Imagens.Tamanho(falso.Ultimo.Fotos[0]).W <= 1024);
+        Assert.Equal("Casa para investir", f.Titulo);
+        Assert.Null((await svc.EdicaoAsync(admin, id)).Pagina); // proposta não grava nada
+
+        await Assert.ThrowsAsync<RegraNegocioException>(() => svc.GerarComIaAsync(admin, id, new string('x', PaginasImovelService.MaxInstrucoesIa + 1)));
+        var carla = await Entrar("carla@inovabens.com.br");
+        await Assert.ThrowsAnyAsync<Exception>(() => svc.GerarComIaAsync(carla, id, null));
+        // sem chave do Claude (serviço do container): avisa em vez de chamar a API
+        var erro = await Assert.ThrowsAsync<RegraNegocioException>(() => S<PaginasImovelService>().GerarComIaAsync(admin, id, null));
+        Assert.Contains("chave do Claude", erro.Message);
+    }
+}
+
+/// <summary>Claude de mentira para a página: guarda o pedido e devolve uma proposta fixa.</summary>
+public sealed class GeradorPaginaFalso : IGeradorPagina
+{
+    public DadosPost? Ultimo { get; private set; }
+    public string? Instrucoes { get; private set; }
+    public bool Configurado => true;
+
+    public Task<PaginaGerada> GerarAsync(DadosPost dados, string? instrucoes, CancellationToken ct = default)
+    {
+        (Ultimo, Instrucoes) = (dados, instrucoes);
+        return Task.FromResult(new PaginaGerada
+        {
+            Titulo = "Casa para investir", Chamada = "Boa casa.", TituloSeo = "Casa", DescricaoSeo = "Casa em Jales",
+            Secoes = [new() { Titulo = "Sobre", Texto = "Texto." }],
+        });
     }
 }

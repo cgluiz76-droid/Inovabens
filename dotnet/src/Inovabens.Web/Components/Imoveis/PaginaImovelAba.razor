@@ -70,8 +70,12 @@ else
                     <h3>Abertura</h3>
                     @if (Editar)
                     {
-                        <button type="button" class="btn-ghost" disabled="@Ocupado" @onclick="Restaurar"
-                                title="Troca os textos pela sugestão montada do cadastro (só grava ao clicar em Salvar)">↺ Sugestão do cadastro</button>
+                        <div class="acoes-topo">
+                            <button type="button" class="btn-primary" disabled="@(Ocupado || !Servico.IaConfigurada)" @onclick="AbrirIa"
+                                    title="@(Servico.IaConfigurada ? "O Claude escreve a página a partir do cadastro e das fotos públicas; você aprova antes" : "Configure a chave do Claude em Administração → Configurações")">✨ Gerar com IA</button>
+                            <button type="button" class="btn-ghost" disabled="@Ocupado" @onclick="Restaurar"
+                                    title="Troca os textos pela sugestão montada do cadastro (só grava ao clicar em Salvar)">↺ Sugestão do cadastro</button>
+                        </div>
                     }
                 </div>
                 <label class="campo">
@@ -207,6 +211,63 @@ else
     </EditForm>
 }
 
+@if (ia is not null)
+{
+    <Modal Titulo="Gerar a página com IA" Largo AoFechar="FecharIa">
+        @if (ia.Proposta is null)
+        {
+            <label class="campo">
+                <span>O que você quer na página? <Contador Texto="@ia.Pedido" Max="PaginasImovelService.MaxInstrucoesIa" /></span>
+                <textarea class="input" rows="5" @bind="ia.Pedido" @bind:event="oninput" maxlength="@PaginasImovelService.MaxInstrucoesIa" disabled="@Ocupado"
+                          placeholder="Ex.: foco em investidores, destacar o tamanho do terreno e a possibilidade de permuta; tom sóbrio."></textarea>
+                <small class="mudo">Deixe em branco para o sistema decidir. O Claude usa só os dados do cadastro e as fotos públicas (até @PaginasImovelService.MaxFotosIa) e não inventa informações. Cada geração custa alguns centavos na API.</small>
+            </label>
+            <MensagemErro Texto="@Erro" />
+            <div class="acoes">
+                <button type="button" class="btn-primary" disabled="@Ocupado" @onclick="Gerar">@(Ocupado ? "Escrevendo… (até 1 minuto)" : "Gerar proposta")</button>
+                <button type="button" class="btn-ghost" disabled="@Ocupado" @onclick="FecharIa">Cancelar</button>
+            </div>
+        }
+        else
+        {
+            var p = ia.Proposta;
+            <p class="pequeno mudo">Proposta @(string.IsNullOrWhiteSpace(ia.Pedido) ? "sugerida pelo sistema" : "para o seu pedido"). Confira antes de usar: nada é gravado até você clicar em Salvar na página.</p>
+            <div class="pagina-proposta">
+                <h3>@p.Titulo</h3>
+                @if (p.Chamada is { } ch) { <p>@ch</p> }
+                @if (p.Conteudo.Destaques.Count > 0)
+                {
+                    <ul class="pagina-chips">@foreach (var d in p.Conteudo.Destaques) { <li><b>@d.Valor</b> @d.Rotulo</li> }</ul>
+                }
+                @foreach (var sec in p.Conteudo.Secoes)
+                {
+                    <h4>@sec.Titulo</h4>
+                    <p class="pre">@sec.Texto</p>
+                }
+                @if (p.Conteudo.Diferenciais.Count > 0)
+                {
+                    <h4>Diferenciais</h4>
+                    <ul>@foreach (var d in p.Conteudo.Diferenciais) { <li>@d</li> }</ul>
+                }
+                @if (p.Conteudo.Perguntas.Count > 0)
+                {
+                    <h4>Perguntas frequentes</h4>
+                    @foreach (var q in p.Conteudo.Perguntas) { <p><b>@q.Pergunta</b><br />@q.Resposta</p> }
+                }
+                @if (p.Conteudo.Condicoes is { } cd) { <h4>Condições</h4><p class="pre">@cd</p> }
+                <h4>Google e prévia do link</h4>
+                <p><b>@p.TituloSeo</b><br /><span class="mudo">@p.DescricaoSeo</span></p>
+            </div>
+            <MensagemErro Texto="@Erro" />
+            <div class="acoes">
+                <button type="button" class="btn-primary" disabled="@Ocupado" @onclick="UsarProposta">Usar esta versão</button>
+                <button type="button" class="btn-ghost" disabled="@Ocupado" @onclick="() => ia.Proposta = null">Mudar o pedido</button>
+                <button type="button" class="btn-ghost" disabled="@Ocupado" @onclick="Gerar">@(Ocupado ? "Escrevendo…" : "Gerar outra")</button>
+            </div>
+        }
+    </Modal>
+}
+
 @code {
     [Parameter, EditorRequired] public Guid ImovelId { get; set; }
 
@@ -270,6 +331,33 @@ else
             await Carregar();
             Sucesso = publicar ? "Página no ar: o link já abre para clientes." : "Página fora do ar: o link só abre para usuários do sistema.";
         }
+    }
+
+
+    private sealed class PedidoIa { public string? Pedido { get; set; } public PaginaForm? Proposta { get; set; } }
+    private PedidoIa? ia;
+
+    private void AbrirIa() { Erro = null; Sucesso = null; ia = new(); }
+    private void FecharIa() { if (!Ocupado) ia = null; }
+
+    private async Task Gerar()
+    {
+        var pedido = ia!;
+        await Executar(async () => pedido.Proposta = await Servico.GerarComIaAsync(Usuario, ImovelId, pedido.Pedido));
+    }
+
+    /// <summary>Troca os textos pela proposta; endereço, foto de abertura e opções de exibição ficam como estavam.</summary>
+    private void UsarProposta()
+    {
+        var p = ia!.Proposta!;
+        p.Slug = form!.Slug;
+        p.FotoCapaId = form.FotoCapaId;
+        p.Conteudo.MostrarPreco = C.MostrarPreco;
+        p.Conteudo.MostrarFicha = C.MostrarFicha;
+        p.Conteudo.MostrarMapa = C.MostrarMapa;
+        Usar(p);
+        ia = null;
+        Sucesso = "Proposta da IA aplicada. Revise e clique em Salvar.";
     }
 
     private static void Mover<T>(List<T> lista, int k, int passo)

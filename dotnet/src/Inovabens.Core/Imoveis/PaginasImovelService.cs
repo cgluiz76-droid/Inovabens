@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
+using Inovabens.Core.Redes;
 using Inovabens.Core.Servicos;
 using Microsoft.EntityFrameworkCore;
 using P = Inovabens.Core.Dominio.Permissoes;
@@ -141,7 +142,7 @@ public sealed record PaginaPublica(
 /// </summary>
 public sealed class PaginasImovelService(
     IDbContextFactory<InovabensDb> fabrica, AuditService audit, PublicacaoFotosService publicacao,
-    IArmazenamento drive, IArmazenamentoPublico publico)
+    IArmazenamento drive, IArmazenamentoPublico publico, IGeradorPagina gerador)
 {
     public const string Prefixo = "imovel";
 
@@ -176,6 +177,78 @@ public sealed class PaginasImovelService(
         var form = Sugestao(im, carac);
         form.Slug = await SlugLivre(db, form.Slug, imovelId);
         return form;
+    }
+
+    /// <summary>Fotos públicas enviadas à IA (capa primeiro): bastam para ela ver o imóvel sem encarecer o pedido.</summary>
+    public const int MaxFotosIa = 6;
+    public const int MaxInstrucoesIa = 2000;
+
+    public bool IaConfigurada => gerador.Configurado;
+
+    /// <summary>
+    /// Proposta de página escrita pelo Claude a partir do cadastro, das fotos públicas e do pedido do usuário (vazio = a
+    /// IA decide). Não grava nada: a tela mostra a proposta e o usuário aprova antes de salvar. Cada chamada é cobrada
+    /// pela Anthropic; fica na auditoria do imóvel.
+    /// </summary>
+    public async Task<PaginaForm> GerarComIaAsync(UsuarioAtual u, Guid imovelId, string? instrucoes, CancellationToken ct = default)
+    {
+        u.Exigir(P.ImoveisEditar);
+        instrucoes = Texto.Limpo(instrucoes);
+        if (instrucoes?.Length > MaxInstrucoesIa)
+            throw new RegraNegocioException("instrucoes", $"Pedido com no máximo {MaxInstrucoesIa:N0} caracteres.");
+        if (!gerador.Configurado)
+            throw new RegraNegocioException("ia", "Configure a chave do Claude em Administração → Configurações para gerar com IA.");
+
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var im = await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        var carac = await db.ImovelCaracteristicas.AsNoTracking().Where(c => c.ImovelId == imovelId && c.Publico)
+            .OrderBy(c => c.Grupo).ThenBy(c => c.Chave).ToListAsync(ct);
+        var fotos = new List<byte[]>();
+        foreach (var m in (await FotosPublicas(db, imovelId, ct)).OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).Take(MaxFotosIa))
+            // foto que sumiu do Drive ou em formato sem suporte fica de fora: a IA trabalha com as que houver
+            if (await drive.BaixarAsync(m.ArquivoChave, ct) is { } arq && ImagemPost.Reduzir(arq.Dados, 1024) is { } jpeg) fotos.Add(jpeg);
+
+        var g = await gerador.GerarAsync(Dados(im, carac, fotos), instrucoes, ct);
+        audit.Registrar(db, u.Id, "imoveis", imovelId, "GERAR_PAGINA_IA", depois: new { instrucoes, fotos = fotos.Count });
+        await db.SaveChangesAsync(ct);
+        return Converter(g);
+    }
+
+    internal static DadosPost Dados(Imovel i, IEnumerable<ImovelCaracteristica> caracteristicas, IReadOnlyList<byte[]> fotos)
+    {
+        var locacao = i.Finalidade == FinalidadeImovel.LOCACAO;
+        var carac = caracteristicas.Where(c => c.Publico)
+            .Select(c => string.IsNullOrWhiteSpace(c.Valor) || c.Valor.Equals("sim", StringComparison.OrdinalIgnoreCase) ? c.Chave : $"{c.Chave}: {c.Valor}")
+            .Take(40).ToList();
+        return new DadosPost(i.Finalidade, i.Tipo, i.Subtipo, i.Titulo, i.DescricaoPublica, i.Bairro, i.Cidade, i.Uf,
+            i.Quartos, i.Suites, i.Banheiros, i.Vagas, i.AreaUtilM2 ?? i.AreaConstruidaM2 ?? i.AreaTotalM2 ?? i.AreaTerrenoM2,
+            locacao ? i.PrecoLocacao : i.PrecoVenda ?? i.PrecoLocacao, i.ValorCondominio, i.ValorIptu, i.AceitaPermuta,
+            carac, i.Referencia ?? i.Codigo, null, null, null, fotos);
+    }
+
+    /// <summary>Proposta da IA dentro dos limites da tela (textos cortados em palavra, blocos vazios fora).</summary>
+    public static PaginaForm Converter(PaginaGerada g)
+    {
+        static string C(string? t, int max) => Cortar((t ?? "").Trim(), max);
+        var titulo = C(g.Titulo, 120);
+        return new PaginaForm
+        {
+            Titulo = titulo,
+            Chamada = Texto.Limpo(C(g.Chamada, 300)),
+            TituloSeo = Texto.Limpo(C(g.TituloSeo, 70)),
+            DescricaoSeo = Texto.Limpo(C(g.DescricaoSeo, 170)),
+            Conteudo = new ConteudoPagina
+            {
+                Destaques = [.. g.Destaques.Select(d => new DestaquePagina { Valor = C(d.Valor, 30), Rotulo = C(d.Rotulo, 40) })
+                    .Where(d => d.Valor.Length > 0).Take(PaginaForm.MaxDestaques)],
+                Secoes = [.. g.Secoes.Select(s => new SecaoPagina { Titulo = C(s.Titulo, 100), Texto = C(s.Texto, 4000) })
+                    .Where(s => s.Texto.Length > 0).Take(PaginaForm.MaxSecoes)],
+                Diferenciais = [.. g.Diferenciais.Select(d => C(d, 120)).Where(d => d.Length > 0).Distinct().Take(PaginaForm.MaxDiferenciais)],
+                Perguntas = [.. g.Perguntas.Select(p => new PerguntaPagina { Pergunta = C(p.Pergunta, 200), Resposta = C(p.Resposta, 1500) })
+                    .Where(p => p.Pergunta.Length > 0 && p.Resposta.Length > 0).Take(PaginaForm.MaxPerguntas)],
+                Condicoes = Texto.Limpo(C(g.Condicoes, 1000)),
+            },
+        };
     }
 
     public async Task SalvarAsync(UsuarioAtual u, Guid imovelId, PaginaForm form)
@@ -354,7 +427,8 @@ public sealed class PaginasImovelService(
         var seo = $"{tipo} {(locacao ? "para alugar" : "à venda")}{(im.Cidade is { } c ? " em " + c : "")}";
         return new PaginaForm
         {
-            Slug = Slug(string.Join(' ', new[] { im.Titulo, im.Cidade }.Where(x => !string.IsNullOrWhiteSpace(x)))),
+            // cidade no endereço só se o título ainda não a tem (evita "...-cedral-cedral")
+            Slug = Slug(im.Cidade is { Length: > 0 } cid && !Slug(im.Titulo).Contains(Slug(cid)) ? $"{im.Titulo} {cid}" : im.Titulo),
             Titulo = titulo,
             Chamada = chamada,
             TituloSeo = Cortar($"{titulo} | {im.Cidade ?? "Inovabens"}", 60),
