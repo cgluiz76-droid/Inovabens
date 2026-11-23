@@ -564,6 +564,20 @@ app.MapPost("/api/v1/webhooks/google/calendar", async (HttpRequest req, GoogleSe
 }).AllowAnonymous().DisableAntiforgery();
 
 // WhatsApp Business (Cloud API): a Meta confere a URL com GET e entrega as mensagens com POST assinado.
+// Ferramenta local GeradorPaginas: dados públicos do imóvel pelo código, com a chave de Administração → Integrações
+// no cabeçalho X-Chave-Gerador. Sem chave configurada (ou errada), 404: o endereço não revela que existe.
+app.MapGet("/api/v1/gerador/imovel/{codigo}", async (string codigo, HttpRequest req, InovabensOpcoes op, PaginasImovelService s, CancellationToken ct) =>
+{
+    var chave = op.Integracoes.GeradorPaginasChave;
+    var enviada = req.Headers["X-Chave-Gerador"].ToString();
+    if (chave is null || !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(enviada), System.Text.Encoding.UTF8.GetBytes(chave)))
+        return Results.NotFound();
+    var dados = await s.DadosGeradorAsync(codigo, ct);
+    if (dados is null) return Results.NotFound(new { erro = $"Imóvel {codigo} não encontrado." });
+    var url = op.SitePublicoUrl ?? $"{req.Scheme}://{req.Host}";
+    return Results.Ok(dados with { PaginaPublica = dados.PaginaPublica is { } pg ? $"{url.TrimEnd('/')}/{pg}" : null });
+}).AllowAnonymous();
 app.MapGet("/api/v1/webhooks/whatsapp", (HttpRequest req, WhatsappService w) =>
 {
     SemPaginaDeErro(req);

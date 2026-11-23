@@ -8,6 +8,17 @@
              DadosEstruturados="@Estruturados" Indexavel="@(Op.SitePublicoUrl is not null && !Dados.Previa)"
              MensagemWhatsapp="@MensagemWhatsapp" Faixa="@(Dados.Previa ? FaixaRascunho : null)">
     <ChildContent>
+        @if (Pg.Personalizada)
+        {
+            @* página feita na ferramenta GeradorPaginas: HTML e CSS já limpos ao salvar (HtmlPersonalizado.Limpar) *@
+            <main class="lp lp-personalizada">
+                @if (Pg.CssPersonalizado is { Length: > 0 } css) { <style>@((MarkupString)css)</style> }
+                @((MarkupString)Pg.HtmlPersonalizado!)
+                <div class="miolo">@Contato</div>
+            </main>
+        }
+        else
+        {
         <main class="lp">
             <section class="lp-hero">
                 @if (Capa is { } capa)
@@ -133,30 +144,7 @@
                         </section>
                     }
 
-                    <section class="bloco" id="contato">
-                        <h2>Quero mais informações</h2>
-                        <p class="mudo">Prefere não usar o WhatsApp? Deixe seus dados e a Inova Bens retorna o contato.</p>
-                        @if (ContatoQuery == "ok")
-                        {
-                            <p class="lp-form-ok" role="status">Recebemos sua mensagem! A Inova Bens vai entrar em contato pelo telefone informado.</p>
-                        }
-                        else
-                        {
-                            <form class="lp-form" method="post" action="@(Caminho)/formulario" data-contato>
-                                <label>Nome *<input name="nome" required maxlength="120" autocomplete="name" /></label>
-                                <label>Telefone com DDD *<input name="telefone" type="tel" required maxlength="30" autocomplete="tel" inputmode="tel" placeholder="(17) 99999-9999" /></label>
-                                <label>Mensagem *<textarea name="mensagem" required maxlength="1000" rows="4" placeholder="Conte o que quer saber ou quando pode visitar."></textarea></label>
-                                <label class="lp-check"><input type="checkbox" name="consentimento" required />
-                                    <span>@ContatoPaginaService.TextoConsentimento <a href="privacidade" target="_blank" rel="noopener">Política de privacidade</a>.</span></label>
-                                @* campo-isca: escondido de pessoas; robô de spam preenche e o envio é descartado *@
-                                <div class="lp-isca" aria-hidden="true"><label>Site<input name="site" tabindex="-1" autocomplete="off" /></label></div>
-                                <input type="hidden" name="o" />
-                                <button class="btn btn-ouro" type="submit" disabled="@Dados.Previa">Enviar mensagem</button>
-                                @if (Dados.Previa) { <p class="mudo" style="font-size:.85rem">O formulário funciona quando a página estiver publicada.</p> }
-                                <p class="lp-form-msg" role="status" aria-live="polite">@(ContatoQuery == "erro" ? "Não foi possível enviar. Confira os campos ou fale conosco pelo WhatsApp." : "")</p>
-                            </form>
-                        }
-                    </section>
+                    @Contato
 
                     @if (C.Perguntas.Count > 0)
                     {
@@ -203,6 +191,7 @@
                 </div>
             </section>
         </main>
+        }
     </ChildContent>
     <Scripts>
         @if (Dados.Fotos.Count > 0)
@@ -289,6 +278,32 @@
 </SiteMoldura>
 
 @code {
+    /// <summary>Formulário "Quero mais informações": nos blocos padrão e no fim da página personalizada.</summary>
+    private RenderFragment Contato => @<section class="bloco" id="contato">
+        <h2>Quero mais informações</h2>
+        <p class="mudo">Prefere não usar o WhatsApp? Deixe seus dados e a Inova Bens retorna o contato.</p>
+        @if (ContatoQuery == "ok")
+        {
+            <p class="lp-form-ok" role="status">Recebemos sua mensagem! A Inova Bens vai entrar em contato pelo telefone informado.</p>
+        }
+        else
+        {
+            <form class="lp-form" method="post" action="@(Caminho)/formulario" data-contato>
+                <label>Nome *<input name="nome" required maxlength="120" autocomplete="name" /></label>
+                <label>Telefone com DDD *<input name="telefone" type="tel" required maxlength="30" autocomplete="tel" inputmode="tel" placeholder="(17) 99999-9999" /></label>
+                <label>Mensagem *<textarea name="mensagem" required maxlength="1000" rows="4" placeholder="Conte o que quer saber ou quando pode visitar."></textarea></label>
+                <label class="lp-check"><input type="checkbox" name="consentimento" required />
+                    <span>@ContatoPaginaService.TextoConsentimento <a href="privacidade" target="_blank" rel="noopener">Política de privacidade</a>.</span></label>
+                @* campo-isca: escondido de pessoas; robô de spam preenche e o envio é descartado *@
+                <div class="lp-isca" aria-hidden="true"><label>Site<input name="site" tabindex="-1" autocomplete="off" /></label></div>
+                <input type="hidden" name="o" />
+                <button class="btn btn-ouro" type="submit" disabled="@Dados.Previa">Enviar mensagem</button>
+                @if (Dados.Previa) { <p class="mudo" style="font-size:.85rem">O formulário funciona quando a página estiver publicada.</p> }
+                <p class="lp-form-msg" role="status" aria-live="polite">@(ContatoQuery == "erro" ? "Não foi possível enviar. Confira os campos ou fale conosco pelo WhatsApp." : "")</p>
+            </form>
+        }
+    </section>;
+
     [Parameter, EditorRequired] public PaginaPublica Dados { get; set; } = default!;
     /// <summary>Página renderizada no servidor: lê ?contato=ok|erro da volta do formulário enviado sem JavaScript.</summary>
     [CascadingParameter] public HttpContext? Http { get; set; }

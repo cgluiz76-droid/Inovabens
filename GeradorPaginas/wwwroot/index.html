@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GeradorPaginas · Inovabens</title>
+    <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+    <header class="topo">
+        <div>
+            <h1>GeradorPaginas</h1>
+            <p class="mudo">HTML e CSS com IA para colar na aba <b>Página</b> do imóvel no Inovabens.</p>
+        </div>
+        <span id="situacao" class="selo">Verificando login…</span>
+    </header>
+
+    <div id="aviso-chave" class="aviso" hidden></div>
+
+    <!-- Tela "Login necessário": aparece quando alguma verificação falha; nenhuma geração sem login válido -->
+    <main id="tela-login" class="cartao login" hidden>
+        <h2>Login necessário</h2>
+        <ul id="itens-verificacao" class="verificacao"></ul>
+        <ol class="passos">
+            <li>Abra um terminal (PowerShell ou Prompt de Comando) com o <b>mesmo usuário do Windows</b> que roda esta ferramenta.</li>
+            <li>Digite <code>claude</code> e tecle Enter. Se o comando não existir, instale o Claude Code (veja o README).</li>
+            <li>Dentro do Claude Code, digite <code>/login</code>, escolha a conta da <b>assinatura Claude</b> (não “API key”) e conclua no navegador.</li>
+            <li>Saia com <code>/exit</code> e clique em <b>Verificar novamente</b>.</li>
+        </ol>
+        <button id="verificar" class="btn primario" type="button">Verificar novamente</button>
+    </main>
+
+    <main id="tela-principal" class="grade" hidden>
+        <section class="cartao">
+            <h2>Gerar</h2>
+            <form id="form-gerar">
+                <label class="campo">Descrição da página ou componente
+                    <textarea id="descricao" rows="8" required
+                              placeholder="Ex.: CA0060 (só o código: busca todas as características do imóvel no Inovabens)&#10;ou: faixa de destaques com 4 números e ícones, fundo escuro"></textarea>
+                    <small class="mudo">Com um código de imóvel (ex.: CA0060, TE0044-03), os dados públicos dele vêm do Inovabens.</small>
+                </label>
+                <label class="campo">Paleta de cores / estilo visual
+                    <input id="paleta" type="text" placeholder="azul marinho e dourado, moderno" />
+                </label>
+                <div class="linha">
+                    <label class="campo">Prefixo das classes CSS
+                        <input id="prefixo" type="text" value="inb-" maxlength="15" pattern="[a-z][a-z0-9-]*" />
+                    </label>
+                    <fieldset class="campo">
+                        <legend>Formato de saída</legend>
+                        <label><input type="radio" name="formato" value="unico" checked /> HTML único com &lt;style&gt;</label>
+                        <label><input type="radio" name="formato" value="separado" /> HTML e CSS separados</label>
+                    </fieldset>
+                </div>
+                <label class="check"><input id="responsivo" type="checkbox" checked /> Responsivo (mobile first)</label>
+                <div class="acoes">
+                    <button id="gerar" class="btn primario" type="submit">Gerar com IA</button>
+                    <button id="cancelar" class="btn" type="button" hidden>Cancelar</button>
+                    <span id="progresso" class="mudo" role="status" aria-live="polite"></span>
+                </div>
+            </form>
+
+            <h2 class="sub">Histórico</h2>
+            <ul id="historico" class="historico"><li class="mudo">Nada gerado ainda.</li></ul>
+        </section>
+
+        <section class="cartao resultado">
+            <div class="titulo-linha">
+                <h2>Resultado</h2>
+                <div class="tamanhos" role="group" aria-label="Largura da pré-visualização">
+                    <button type="button" class="btn mini" data-largura="390">Celular</button>
+                    <button type="button" class="btn mini" data-largura="820">Tablet</button>
+                    <button type="button" class="btn mini ativo" data-largura="">Desktop</button>
+                </div>
+            </div>
+            <p id="erro" class="erro" role="alert" hidden></p>
+            <p id="aviso-resultado" class="aviso" hidden></p>
+            <div id="vazio" class="vazio mudo">A pré-visualização aparece aqui.</div>
+            <div id="conteudo" hidden>
+                <!-- sandbox sem allow-scripts: nada do código gerado executa -->
+                <div class="moldura"><iframe id="previa" title="Pré-visualização" sandbox=""></iframe></div>
+                <div class="abas" role="tablist">
+                    <button type="button" role="tab" class="aba ativa" data-aba="html" aria-selected="true">HTML</button>
+                    <button type="button" role="tab" class="aba" data-aba="css" aria-selected="false">CSS</button>
+                </div>
+                <textarea id="codigo" class="codigo" rows="14" readonly spellcheck="false" aria-label="Código"></textarea>
+                <div class="acoes">
+                    <button type="button" class="btn" data-copiar="html">Copiar HTML</button>
+                    <button type="button" class="btn" data-copiar="css">Copiar CSS</button>
+                    <button type="button" class="btn" data-copiar="tudo">Copiar tudo</button>
+                    <button type="button" class="btn" id="baixar">Baixar .html</button>
+                    <span id="copiado" class="mudo" role="status" aria-live="polite"></span>
+                </div>
+                <p class="mudo pequeno">No Inovabens: imóvel → aba <b>Página</b> → <b>Página personalizada (HTML e CSS)</b> → cole e clique em Salvar HTML.</p>
+
+                <form id="form-refinar" class="refinar">
+                    <label class="campo">Refinar
+                        <textarea id="instrucao" rows="2" placeholder="Ex.: aumente o título, troque a cor do botão para dourado"></textarea>
+                    </label>
+                    <button id="refinar" class="btn primario" type="submit">Aplicar ajuste</button>
+                </form>
+            </div>
+            <details id="bruto-caixa" hidden>
+                <summary>Resposta bruta do Claude</summary>
+                <pre id="bruto" class="codigo"></pre>
+            </details>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

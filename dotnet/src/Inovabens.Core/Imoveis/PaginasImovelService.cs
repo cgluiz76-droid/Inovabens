@@ -133,6 +133,16 @@ public sealed record PaginaPublica(
     PaginaImovel Pagina, ConteudoPagina Conteudo, Imovel Imovel, IReadOnlyList<ImovelCaracteristica> Caracteristicas,
     IReadOnlyList<FotoPagina> Fotos, string? CorretorNome, bool Previa, QuadroLotes? Lotes = null);
 
+/// <summary>Dados públicos do imóvel entregues à ferramenta GeradorPaginas (endpoint protegido por chave).</summary>
+public sealed record DadosImovelGerador(string Codigo, string Titulo, string Tipo, string Finalidade, string? Bairro, string? Cidade,
+    string? Uf, string? Endereco, decimal? PrecoVenda, decimal? PrecoLocacao, decimal? LotesAPartirDe, decimal? Condominio, decimal? Iptu,
+    bool AceitaPermuta, int? Quartos, int? Suites, int? Banheiros, int? Vagas, decimal? AreaUtilM2, decimal? AreaConstruidaM2,
+    decimal? AreaTerrenoM2, decimal? AreaTotalM2, string? Descricao, IReadOnlyList<CaracteristicaGerador> Caracteristicas,
+    IReadOnlyList<FotoGerador> Fotos, string? Corretor, IReadOnlyList<LoteGerador>? Lotes, string? PaginaPublica);
+public sealed record CaracteristicaGerador(string? Grupo, string Chave, string? Valor);
+public sealed record FotoGerador(string Url, string? Miniatura, string? Legenda);
+public sealed record LoteGerador(string Nome, decimal? AreaM2, decimal? Preco, string Situacao);
+
 /// <summary>Proposta da IA: o formulário preenchido e o que falta no cadastro para a página convencer.</summary>
 public sealed record PropostaIa(PaginaForm Form, IReadOnlyList<string> Faltando);
 
@@ -354,6 +364,65 @@ public sealed class PaginasImovelService(
         p.AtualizadoEm = DateTime.UtcNow;
         audit.Registrar(db, u.Id, "paginas_imovel", p.Id, antes is null ? "CRIAR" : "ATUALIZAR", antes, p);
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// HTML/CSS colado na aba Página (gerado pela ferramenta GeradorPaginas). Gravado já limpo (<see cref="HtmlPersonalizado"/>);
+    /// HTML vazio remove a personalização e a página volta aos blocos padrão.
+    /// </summary>
+    public async Task<(string Html, string Css)> SalvarPersonalizadoAsync(UsuarioAtual u, Guid imovelId, string? html, string? css)
+    {
+        u.Exigir(P.ImoveisEditar);
+        if ((html?.Length ?? 0) > HtmlPersonalizado.TamanhoMaximo || (css?.Length ?? 0) > HtmlPersonalizado.TamanhoMaximo)
+            throw new RegraNegocioException("", $"O HTML e o CSS podem ter até {HtmlPersonalizado.TamanhoMaximo / 1000} mil caracteres cada.");
+        await using var db = await fabrica.CreateDbContextAsync();
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        var p = await db.PaginasImovel.SingleOrDefaultAsync(x => x.ImovelId == imovelId)
+            ?? throw new RegraNegocioException("", "Salve a página (endereço e título) antes de colar o HTML.");
+        var (h, c) = HtmlPersonalizado.Limpar(html, css);
+        if (string.IsNullOrWhiteSpace(html) is false && h.Length == 0)
+            throw new RegraNegocioException("", "O HTML colado ficou vazio depois da limpeza (só havia código não permitido).");
+        var antes = p.Copia();
+        p.HtmlPersonalizado = h.Length == 0 ? null : h;
+        p.CssPersonalizado = h.Length == 0 || c.Length == 0 ? null : c;
+        p.AtualizadoPor = u.Id;
+        p.AtualizadoEm = DateTime.UtcNow;
+        audit.Registrar(db, u.Id, "paginas_imovel", p.Id, "ATUALIZAR", antes, p);
+        await db.SaveChangesAsync();
+        return (p.HtmlPersonalizado ?? "", p.CssPersonalizado ?? "");
+    }
+
+    /// <summary>
+    /// Dados públicos do imóvel para a ferramenta GeradorPaginas (busca pelo código): o mesmo que a página pública pode
+    /// mostrar — sem proprietário, sem valores internos e endereço exato só se for público. Fotos: só as publicadas no R2.
+    /// </summary>
+    public async Task<DadosImovelGerador?> DadosGeradorAsync(string codigo, CancellationToken ct = default)
+    {
+        var cod = codigo.Trim().ToUpperInvariant();
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var im = await db.Imoveis.AsNoTracking()
+            .Where(i => i.ExcluidoEm == null && (i.Codigo.ToUpper() == cod || (i.Referencia != null && i.Referencia.ToUpper() == cod)))
+            .FirstOrDefaultAsync(ct);
+        if (im is null) return null;
+        var carac = await db.ImovelCaracteristicas.AsNoTracking().Where(c => c.ImovelId == im.Id && c.Publico)
+            .OrderBy(c => c.Grupo).ThenBy(c => c.Chave)
+            .Select(c => new CaracteristicaGerador(c.Grupo, c.Chave, c.Valor)).ToListAsync(ct);
+        var fotos = (await FotosPublicas(db, im.Id, ct)).OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem)
+            .Where(m => PublicacaoFotosService.Situacao(m) == SituacaoPublicacao.Publicada)
+            .Select(m => publicacao.Url(m) is { } url ? new FotoGerador(url, publicacao.Url(m, ImoveisService.LarguraMiniatura), m.Legenda) : null)
+            .OfType<FotoGerador>().ToList();
+        var corretor = im.CorretorResponsavelId is { } cid
+            ? await db.Usuarios.Where(x => x.Id == cid).Select(x => x.Nome).FirstOrDefaultAsync(ct)
+            : null;
+        var lotes = im.EmpreendimentoId is null ? await QuadroEmpreendimento.CarregarAsync(db, im.Id, ct) : null;
+        var pagina = await db.PaginasImovel.AsNoTracking().Where(x => x.ImovelId == im.Id && x.Publicada).Select(x => x.Slug).FirstOrDefaultAsync(ct);
+        return new DadosImovelGerador(im.Referencia ?? im.Codigo, im.Titulo, im.Subtipo ?? Texto.Rotulo(im.Tipo), Texto.Rotulo(im.Finalidade),
+            im.Bairro, im.Cidade, im.Uf, im.EnderecoPublico ? RegrasImovel.EnderecoParaMapa(im.Logradouro, im.Numero, im.Bairro, im.Cidade, im.Uf, null) : null,
+            im.PrecoVenda, im.PrecoLocacao, lotes?.APartirDe, im.ValorCondominio, im.ValorIptu, im.AceitaPermuta,
+            im.Quartos, im.Suites, im.Banheiros, im.Vagas, im.AreaUtilM2, im.AreaConstruidaM2, im.AreaTerrenoM2, im.AreaTotalM2,
+            Texto.Limpo(im.DescricaoPublica), carac, fotos, corretor,
+            lotes?.Lotes.Select(l => new LoteGerador(l.Nome, l.AreaM2, l.Preco, l.Situacao.ToString())).ToList(),
+            pagina is null ? null : Caminho(pagina));
     }
 
     /// <summary>Põe no ar (abre sem login) ou tira do ar (volta a rascunho; o link deixa de abrir para quem não é do sistema).</summary>

@@ -23,7 +23,7 @@ public static class CatalogoConfiguracoes
 {
     public const string GoogleDrive = "google_drive", R2 = "r2", Magnific = "magnific", GoogleAgenda = "google_agenda",
         GoogleMaps = "google_maps", Site = "site", Imobibrasil = "imobibrasil", Whatsapp = "whatsapp",
-        Claude = "claude", Meta = "meta", Crm = "crm";
+        Claude = "claude", Meta = "meta", Crm = "crm", GeradorPaginas = "gerador_paginas";
 
     /// <summary>Distribuição dos leads novos do WhatsApp: fila aberta (padrão) ou rodízio entre os corretores.</summary>
     public const string DistribuicaoFila = "fila", DistribuicaoRodizio = "rodizio";
@@ -70,6 +70,10 @@ public static class CatalogoConfiguracoes
             "aberto do mesmo contato). No app da Meta (WhatsApp → Configuração → Webhooks), cadastre a URL " +
             "https://SEU-SITE/api/v1/webhooks/whatsapp com o mesmo token de verificação daqui e assine os campos " +
             "\"messages\" e \"smb_message_echoes\". Parceiro (BSP) que repassa as mensagens: use a URL com ?token=<token de verificação>."),
+        new(GeradorPaginas, "GeradorPaginas (ferramenta local de páginas com IA)",
+            "A ferramenta GeradorPaginas, que roda no computador do administrador, busca os dados públicos do imóvel pelo código " +
+            "(endereço /api/v1/gerador/imovel/CÓDIGO). Crie aqui uma chave longa e aleatória e coloque a mesma no arquivo " +
+            "appsettings.Local.json da ferramenta. Sem chave, o endereço fica desligado."),
         new(Imobibrasil, "Imobibrasil (site atual)",
             "Endereço do site atual, de onde a importação lê os anúncios publicados.", Testavel: true),
         .. Portais.Select(p => new GrupoConfiguracao("portal_" + p.Codigo, p.Nome,
@@ -135,6 +139,10 @@ public static class CatalogoConfiguracoes
             Secreto: true, Variavel: "WHATSAPP_APP_SECRET"),
         new("whatsapp.phone_number_id", Whatsapp, "ID do número de telefone (opcional)",
             "Com ele, só as mensagens desse número entram no CRM.", Variavel: "WHATSAPP_PHONE_NUMBER_ID"),
+
+        new("gerador_paginas.chave", GeradorPaginas, "Chave de acesso da ferramenta",
+            "Texto longo e aleatório (40 caracteres ou mais); o mesmo vai no appsettings.Local.json do GeradorPaginas.",
+            Secreto: true, Variavel: "GERADOR_PAGINAS_CHAVE"),
 
         new("imobibrasil.site", Imobibrasil, "Endereço do site no Imobibrasil", Variavel: "IMOBIBRASIL_SITE",
             Tipo: TipoCampoConfig.Url, Padrao: "https://www.inovabens.com.br"),
@@ -226,6 +234,8 @@ public sealed class Integracoes(IReadOnlyDictionary<string, string> valores)
     public bool GoogleConfigurado => GoogleClientId is not null && GoogleClientSecret is not null && GoogleRedirectUri is not null;
 
     public string? WhatsappVerifyToken => this["whatsapp.verify_token"];
+    /// <summary>Chave da ferramenta GeradorPaginas; curta demais conta como não configurada.</summary>
+    public string? GeradorPaginasChave => this["gerador_paginas.chave"] is { Length: >= 24 } c ? c : null;
     public string? WhatsappAppSecret => this["whatsapp.app_secret"];
     public string? WhatsappPhoneNumberId => this["whatsapp.phone_number_id"];
 

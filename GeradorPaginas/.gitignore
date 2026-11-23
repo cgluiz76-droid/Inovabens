@@ -1,0 +1,5 @@
+bin/
+obj/
+historico/
+# chave de acesso ao Inovabens: nunca versionar
+appsettings.Local.json

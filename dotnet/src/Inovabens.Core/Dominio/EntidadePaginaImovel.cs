@@ -22,6 +22,11 @@ public class PaginaImovel
     public Guid? FotoCapaId { get; set; }
     /// <summary>Blocos da página (<c>ConteudoPagina</c> em JSON).</summary>
     public string Conteudo { get; set; } = "{}";
+    /// <summary>HTML colado na aba Página (já limpo). Preenchido, substitui os blocos padrão na página pública.</summary>
+    public string? HtmlPersonalizado { get; set; }
+    /// <summary>CSS que acompanha o HTML personalizado (já limpo).</summary>
+    public string? CssPersonalizado { get; set; }
+    [NotMapped] public bool Personalizada => !string.IsNullOrWhiteSpace(HtmlPersonalizado);
     public DateTime? PublicadaEm { get; set; }
     public Guid? CriadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;

@@ -234,6 +234,46 @@ else
             </div>
         }
     </EditForm>
+
+    @* HTML/CSS feito na ferramenta GeradorPaginas (no computador do administrador) e colado aqui. Preenchido, a página
+       pública mostra esse conteúdo no lugar dos blocos acima; cabeçalho, rodapé, formulário de contato e WhatsApp continuam. *@
+    <section class="card pagina-personalizada">
+        <div class="titulo-secao">
+            <div>
+                <h3>Página personalizada (HTML e CSS)</h3>
+                <p class="pequeno mudo">Cole o código gerado pela ferramenta GeradorPaginas. Script, eventos (onclick…), formulários e
+                    iframes são removidos ao salvar. Deixe o HTML vazio para voltar aos blocos padrão.</p>
+            </div>
+            @if (dados.Pagina?.Personalizada == true) { <span class="pagina-estado no-ar">Em uso</span> }
+        </div>
+        @if (dados.Pagina is null)
+        {
+            <p class="pequeno mudo">Crie a página (endereço e título) antes de colar o HTML.</p>
+        }
+        else
+        {
+            <label class="campo">
+                <span>HTML <small class="mudo">(@htmlColado.Length.ToString("N0") caracteres)</small></span>
+                <textarea class="input codigo-colado" rows="12" spellcheck="false" @bind="htmlColado" @bind:event="oninput"
+                          disabled="@(!Editar)" placeholder="<div class=&quot;inb-root&quot;>…</div>"></textarea>
+            </label>
+            <label class="campo">
+                <span>CSS <small class="mudo">(pode ficar vazio se o HTML já traz o &lt;style&gt;)</small></span>
+                <textarea class="input codigo-colado" rows="8" spellcheck="false" @bind="cssColado" @bind:event="oninput"
+                          disabled="@(!Editar)" placeholder=".inb-root { … }"></textarea>
+            </label>
+            @if (Editar)
+            {
+                <div class="acoes">
+                    <button type="button" class="btn-primary" disabled="@Ocupado" @onclick="SalvarPersonalizado">Salvar HTML</button>
+                    @if (dados.Pagina.Personalizada)
+                    {
+                        <button type="button" class="btn-ghost" disabled="@Ocupado" @onclick="RemoverPersonalizado">Voltar aos blocos padrão</button>
+                    }
+                </div>
+            }
+        }
+    </section>
 }
 
 @if (ia is not null)
@@ -332,8 +372,29 @@ else
         {
             dados = await Servico.EdicaoAsync(Usuario, ImovelId);
             Usar(dados.Form);
+            htmlColado = dados.Pagina?.HtmlPersonalizado ?? "";
+            cssColado = dados.Pagina?.CssPersonalizado ?? "";
             desempenho = dados.Pagina is null ? null : await Servico.DesempenhoAsync(Usuario, ImovelId);
         });
+    }
+
+    private string htmlColado = "", cssColado = "";
+
+    private async Task SalvarPersonalizado()
+    {
+        (string Html, string Css) limpo = default;
+        if (await Executar(async () => limpo = await Servico.SalvarPersonalizadoAsync(Usuario, ImovelId, htmlColado, cssColado)))
+        {
+            await Carregar();
+            Sucesso = limpo.Html.Length == 0 ? "HTML removido: a página voltou aos blocos padrão."
+                : "HTML salvo. Confira em \"Ver página\"; o que não é permitido foi removido.";
+        }
+    }
+
+    private async Task RemoverPersonalizado()
+    {
+        htmlColado = cssColado = "";
+        await SalvarPersonalizado();
     }
 
     private void Usar(PaginaForm f)

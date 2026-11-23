@@ -12,6 +12,7 @@
     <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="Docnet.Core" Version="2.6.0" />
     <PackageReference Include="Google.Apis.Drive.v3" Version="1.78.0.4313" />
+    <PackageReference Include="HtmlSanitizer" Version="11.0.26" />
     <PackageReference Include="Isopoh.Cryptography.Argon2" Version="2.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
