@@ -133,6 +133,15 @@ public sealed record PaginaPublica(
     PaginaImovel Pagina, ConteudoPagina Conteudo, Imovel Imovel, IReadOnlyList<ImovelCaracteristica> Caracteristicas,
     IReadOnlyList<FotoPagina> Fotos, string? CorretorNome, bool Previa);
 
+/// <summary>Proposta da IA: o formulário preenchido e o que falta no cadastro para a página convencer.</summary>
+public sealed record PropostaIa(PaginaForm Form, IReadOnlyList<string> Faltando);
+
+/// <summary>Visitas e cliques no WhatsApp de uma origem no período.</summary>
+public sealed record LinhaDesempenho(string Origem, int Visitas, int Whatsapp);
+
+/// <summary>Desempenho da página nos últimos <paramref name="Dias"/> dias (Linhas por origem, mais visitas primeiro).</summary>
+public sealed record DesempenhoPagina(int Dias, IReadOnlyList<LinhaDesempenho> Linhas, int TotalVisitas, int TotalWhatsapp, DateTime? UltimaVisita);
+
 /* ------------------------------------------------ serviço ------------------------------------------------ */
 
 /// <summary>
@@ -190,7 +199,7 @@ public sealed class PaginasImovelService(
     /// IA decide). Não grava nada: a tela mostra a proposta e o usuário aprova antes de salvar. Cada chamada é cobrada
     /// pela Anthropic; fica na auditoria do imóvel.
     /// </summary>
-    public async Task<PaginaForm> GerarComIaAsync(UsuarioAtual u, Guid imovelId, string? instrucoes, CancellationToken ct = default)
+    public async Task<PropostaIa> GerarComIaAsync(UsuarioAtual u, Guid imovelId, string? instrucoes, CancellationToken ct = default)
     {
         u.Exigir(P.ImoveisEditar);
         instrucoes = Texto.Limpo(instrucoes);
@@ -211,7 +220,67 @@ public sealed class PaginasImovelService(
         var g = await gerador.GerarAsync(Dados(im, carac, fotos), instrucoes, ct);
         audit.Registrar(db, u.Id, "imoveis", imovelId, "GERAR_PAGINA_IA", depois: new { instrucoes, fotos = fotos.Count });
         await db.SaveChangesAsync(ct);
-        return Converter(g);
+        return new(Converter(g), [.. g.Faltando.Select(f => Cortar(f.Trim(), 200)).Where(f => f.Length > 0).Distinct().Take(10)]);
+    }
+
+    /* ------------------------------ medição (visitas e cliques no WhatsApp) ------------------------------ */
+
+    /// <summary>Origens aceitas no utm_source dos links (as da aba Página e as redes onde o link costuma ir).</summary>
+    public static readonly string[] Origens = ["link", "whatsapp", "email", "qrcode", "instagram", "facebook", "google"];
+
+    /// <summary>utm_source da URL; sem utm, "google" se veio da busca do Google, senão "direto". Fora da lista: "outro".</summary>
+    public static string Origem(string? utm, string? referer)
+    {
+        var o = utm?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(o)) return Origens.Contains(o) ? o : "outro";
+        return Uri.TryCreate(referer, UriKind.Absolute, out var r) && r.Host.Contains("google.", StringComparison.OrdinalIgnoreCase) ? "google" : "direto";
+    }
+
+    private static readonly Regex Robo = new("bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|skype|lighthouse|headless|curl|wget|python|java/|monitor",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Robôs (buscadores, leitores de prévia de link, medições) não contam como visita.</summary>
+    public static bool EhRobo(string? userAgent) => string.IsNullOrWhiteSpace(userAgent) || Robo.IsMatch(userAgent);
+
+    /// <summary>
+    /// Conta uma visita ou um clique no WhatsApp da página publicada. Só a contagem: nada do visitante é gravado.
+    /// Falha aqui nunca derruba a página (a medição é acessória).
+    /// </summary>
+    public async Task RegistrarEventoAsync(string slug, string tipo, string origem, CancellationToken ct = default)
+    {
+        if (tipo is not (PaginaImovelEvento.Visita or PaginaImovelEvento.Whatsapp)) return;
+        try
+        {
+            await using var db = await fabrica.CreateDbContextAsync(ct);
+            var id = await db.PaginasImovel.Where(p => p.Slug == slug && p.Publicada
+                    && db.Imoveis.Any(i => i.Id == p.ImovelId && i.ExcluidoEm == null))
+                .Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct);
+            if (id is null) return;
+            db.PaginasImovelEventos.Add(new PaginaImovelEvento { PaginaId = id.Value, Tipo = tipo, Origem = origem is "direto" or "outro" || Origens.Contains(origem) ? origem : "outro" });
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // contador perdido não é motivo para o visitante ver erro
+        }
+    }
+
+    public async Task<DesempenhoPagina> DesempenhoAsync(UsuarioAtual u, Guid imovelId, int dias = 30)
+    {
+        u.Exigir(P.ImoveisVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        var desde = DateTime.UtcNow.AddDays(-dias);
+        var q = db.PaginasImovelEventos.Where(e => db.PaginasImovel.Any(p => p.Id == e.PaginaId && p.ImovelId == imovelId));
+        var grupos = await q.Where(e => e.CriadoEm >= desde).GroupBy(e => new { e.Origem, e.Tipo })
+            .Select(g => new { g.Key.Origem, g.Key.Tipo, N = g.Count() }).ToListAsync();
+        var linhas = grupos.GroupBy(g => g.Origem)
+            .Select(g => new LinhaDesempenho(g.Key,
+                g.Where(x => x.Tipo == PaginaImovelEvento.Visita).Sum(x => x.N),
+                g.Where(x => x.Tipo == PaginaImovelEvento.Whatsapp).Sum(x => x.N)))
+            .OrderByDescending(l => l.Visitas).ThenByDescending(l => l.Whatsapp).ToList();
+        var ultima = await q.Where(e => e.Tipo == PaginaImovelEvento.Visita).MaxAsync(e => (DateTime?)e.CriadoEm);
+        return new(dias, linhas, linhas.Sum(l => l.Visitas), linhas.Sum(l => l.Whatsapp), ultima);
     }
 
     internal static DadosPost Dados(Imovel i, IEnumerable<ImovelCaracteristica> caracteristicas, IReadOnlyList<byte[]> fotos)

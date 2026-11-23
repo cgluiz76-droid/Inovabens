@@ -23,6 +23,8 @@ public sealed class PaginaGerada
     public List<PerguntaGerada> Perguntas { get; set; } = [];
     /// <summary>Texto vazio = sem condições informadas.</summary>
     public string Condicoes { get; set; } = "";
+    /// <summary>O que falta no cadastro para a página convencer (só para o usuário; não vai para a página).</summary>
+    public List<string> Faltando { get; set; } = [];
 
     public static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
 }
@@ -130,6 +132,9 @@ public sealed class ClaudePagina(InovabensOpcoes op) : IGeradorPagina
           WhatsApp da Inova Bens".
         - condicoes: condições comerciais informadas (permuta, condomínio, IPTU, financiamento se informado), até 400
           caracteres. Sem condições informadas: texto vazio.
+        - faltando: de 0 a 8 itens curtos com o que falta no cadastro ou nas fotos para a página convencer (ex.:
+          "Valor do condomínio", "Foto da fachada", "Metragem construída", "Situação da documentação"). Não vai para a
+          página: é uma lista para o corretor completar o cadastro.
         - titulo_seo: até 60 caracteres, para a aba do navegador e o Google. descricao_seo: até 155 caracteres, resumo
           que aparece no Google e na prévia do link no WhatsApp.
 
@@ -181,6 +186,7 @@ public sealed class ClaudePagina(InovabensOpcoes op) : IGeradorPagina
             ["destaques"] = new { type = "array", items = Obj("valor", "rotulo") },
             ["secoes"] = new { type = "array", items = Obj("titulo", "texto") },
             ["diferenciais"] = new { type = "array", items = Txt() },
+            ["faltando"] = new { type = "array", items = Txt() },
             ["perguntas"] = new { type = "array", items = Obj("pergunta", "resposta") },
         };
         var esquema = new { type = "object", additionalProperties = false, required = props.Keys.ToArray(), properties = props };

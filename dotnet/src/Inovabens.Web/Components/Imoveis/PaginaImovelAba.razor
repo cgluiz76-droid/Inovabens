@@ -57,7 +57,31 @@ else
             }
         </section>
     }
-    else if (dados.Pagina is not null)
+    @if (desempenho is { } dp && dados.Pagina is not null)
+    {
+        <section class="card">
+            <h3>Desempenho <small class="mudo">(últimos @dp.Dias dias)</small></h3>
+            @if (dp.TotalVisitas == 0 && dp.TotalWhatsapp == 0)
+            {
+                <p class="pequeno mudo">Nenhuma visita ainda. Conta só visitantes de fora do sistema; robôs e a prévia do link no WhatsApp não contam.</p>
+            }
+            else
+            {
+                <table class="tabela pagina-desempenho">
+                    <thead><tr><th>Origem</th><th class="num">Visitas</th><th class="num">Cliques no WhatsApp</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in dp.Linhas)
+                        {
+                            <tr><td>@NomeOrigem(l.Origem)</td><td class="num">@l.Visitas</td><td class="num">@l.Whatsapp</td></tr>
+                        }
+                    </tbody>
+                    <tfoot><tr><th>Total</th><th class="num">@dp.TotalVisitas</th><th class="num">@dp.TotalWhatsapp</th></tr></tfoot>
+                </table>
+                @if (dp.UltimaVisita is { } uv) { <p class="pequeno mudo">Última visita: @DatasBR.DeUtc(uv).ToString("dd/MM/yyyy HH:mm")</p> }
+            }
+        </section>
+    }
+    @if (dados.Pagina is { Publicada: false })
     {
         <p class="pequeno mudo">Em rascunho: o link só abre para usuários do sistema. Clique em <b>Publicar</b> para liberar aos clientes.</p>
     }
@@ -230,8 +254,15 @@ else
         }
         else
         {
-            var p = ia.Proposta;
+            var p = ia.Proposta.Form;
             <p class="pequeno mudo">Proposta @(string.IsNullOrWhiteSpace(ia.Pedido) ? "sugerida pelo sistema" : "para o seu pedido"). Confira antes de usar: nada é gravado até você clicar em Salvar na página.</p>
+            @if (ia.Proposta.Faltando.Count > 0)
+            {
+                <div class="pagina-faltando">
+                    <b>Para a página convencer, falta no cadastro:</b>
+                    <ul>@foreach (var f in ia.Proposta.Faltando) { <li>@f</li> }</ul>
+                </div>
+            }
             <div class="pagina-proposta">
                 <h3>@p.Titulo</h3>
                 @if (p.Chamada is { } ch) { <p>@ch</p> }
@@ -274,6 +305,14 @@ else
     private PaginaEdicao? dados;
     private PaginaForm? form;
     private string diferenciais = "";
+    private DesempenhoPagina? desempenho;
+
+    private static string NomeOrigem(string o) => o switch
+    {
+        "link" => "Link copiado", "whatsapp" => "WhatsApp", "email" => "E-mail", "qrcode" => "QR code",
+        "instagram" => "Instagram", "facebook" => "Facebook", "google" => "Google", "direto" => "Direto (sem origem)",
+        _ => "Outros",
+    };
 
     private bool Editar => Usuario.Pode(Permissoes.ImoveisEditar);
     private ConteudoPagina C => form!.Conteudo;
@@ -292,6 +331,7 @@ else
         {
             dados = await Servico.EdicaoAsync(Usuario, ImovelId);
             Usar(dados.Form);
+            desempenho = dados.Pagina is null ? null : await Servico.DesempenhoAsync(Usuario, ImovelId);
         });
     }
 
@@ -334,7 +374,7 @@ else
     }
 
 
-    private sealed class PedidoIa { public string? Pedido { get; set; } public PaginaForm? Proposta { get; set; } }
+    private sealed class PedidoIa { public string? Pedido { get; set; } public PropostaIa? Proposta { get; set; } }
     private PedidoIa? ia;
 
     private void AbrirIa() { Erro = null; Sucesso = null; ia = new(); }
@@ -349,7 +389,7 @@ else
     /// <summary>Troca os textos pela proposta; endereço, foto de abertura e opções de exibição ficam como estavam.</summary>
     private void UsarProposta()
     {
-        var p = ia!.Proposta!;
+        var p = ia!.Proposta!.Form;
         p.Slug = form!.Slug;
         p.FotoCapaId = form.FotoCapaId;
         p.Conteudo.MostrarPreco = C.MostrarPreco;

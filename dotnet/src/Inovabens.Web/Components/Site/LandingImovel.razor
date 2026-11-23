@@ -210,6 +210,18 @@
                 })();
             </script>
         }
+        @if (!Dados.Previa)
+        {
+            @* medição: conta o clique no WhatsApp com a origem do link (utm_source); só contagem, nada do visitante *@
+            <script>
+                (() => {
+                    const o = new URLSearchParams(location.search).get("utm_source") || (/google\./.test(document.referrer) ? "google" : "");
+                    document.querySelectorAll('a[href^="https://wa.me/"]').forEach(a => a.addEventListener("click", () => {
+                        try { navigator.sendBeacon("@(Caminho)/contato?o=" + encodeURIComponent(o)); } catch (_) { }
+                    }));
+                })();
+            </script>
+        }
         <script>
             document.querySelectorAll("[data-mapa]").forEach(b => b.addEventListener("click", () => {
                 const f = document.createElement("iframe");

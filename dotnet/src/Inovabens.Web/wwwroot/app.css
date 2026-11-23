@@ -1302,3 +1302,6 @@ fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(-
 .pagina-proposta .pre { white-space: pre-line; }
 .pagina-chips { display: flex; flex-wrap: wrap; gap: var(--e-2); list-style: none; padding: 0; margin: 0; }
 .pagina-chips li { border: 1px solid var(--borda); border-radius: 999px; padding: 2px var(--e-3); font-size: var(--t-sm); }
+.pagina-desempenho .num { text-align: right; }
+.pagina-faltando { border: 1px solid var(--borda); border-left: 4px solid var(--alerta); border-radius: var(--raio-p); padding: var(--e-3); margin-bottom: var(--e-3); font-size: var(--t-sm); }
+.pagina-faltando ul { margin: var(--e-1) 0 0; padding-left: var(--e-5); }

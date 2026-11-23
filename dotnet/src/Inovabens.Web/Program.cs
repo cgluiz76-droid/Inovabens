@@ -399,8 +399,19 @@ paginaImovel.MapGet("{slug}", async (string slug, HttpContext c, PaginasImovelSe
     var pg = await s.PublicaAsync(slug, UsuarioAtual.De(c.User), c.RequestAborted);
     if (pg is null) return Results.NotFound();
     c.Response.Headers.CacheControl = pg.Previa ? "private, no-store" : "public, max-age=300";
+    // medição: visitante de verdade (sem login, não robô); usuários do sistema conferindo a página não contam
+    if (!pg.Previa && c.User.Identity?.IsAuthenticated != true && !PaginasImovelService.EhRobo(c.Request.Headers.UserAgent))
+        await s.RegistrarEventoAsync(slug, PaginaImovelEvento.Visita,
+            PaginasImovelService.Origem(c.Request.Query["utm_source"], c.Request.Headers.Referer), c.RequestAborted);
     return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.LandingImovel>(new { Dados = pg });
 });
+// clique no WhatsApp (enviado pelo navegador com sendBeacon ao clicar no botão); sempre 204, sem revelar nada
+paginaImovel.MapPost("{slug}/contato", async (string slug, string? o, HttpContext c, PaginasImovelService s) =>
+{
+    if (c.User.Identity?.IsAuthenticated != true && !PaginasImovelService.EhRobo(c.Request.Headers.UserAgent))
+        await s.RegistrarEventoAsync(slug, PaginaImovelEvento.Whatsapp, PaginasImovelService.Origem(o, null), c.RequestAborted);
+    return Results.NoContent();
+}).DisableAntiforgery();
 paginaImovel.MapGet("{slug}/compartilhar.jpg", async (string slug, HttpContext c, PaginasImovelService s) =>
 {
     var u = UsuarioAtual.De(c.User);

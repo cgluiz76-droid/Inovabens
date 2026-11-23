@@ -30,3 +30,17 @@ public class PaginaImovel
 
     public PaginaImovel Copia() => (PaginaImovel)MemberwiseClone();
 }
+
+/// <summary>Visita ou clique no WhatsApp da página do imóvel (só contagem, sem dados do visitante).</summary>
+[Table("paginas_imovel_eventos")]
+public class PaginaImovelEvento
+{
+    public const string Visita = "VISITA", Whatsapp = "WHATSAPP";
+
+    public long Id { get; set; }
+    public Guid PaginaId { get; set; }
+    public string Tipo { get; set; } = Visita;
+    /// <summary>link, whatsapp, email, qrcode, instagram, facebook, google, outro ou direto.</summary>
+    public string Origem { get; set; } = "direto";
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}

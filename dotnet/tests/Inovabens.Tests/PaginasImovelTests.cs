@@ -96,8 +96,26 @@ public class PaginasImovelUnidadeTests
         Assert.Contains("Pedido do usuário: foco em investidores", ClaudePagina.PedidoUsuario(d, "foco em investidores"));
         // structured outputs: todo objeto fechado (additionalProperties=false) e com todos os campos obrigatórios
         var esquema = System.Text.Json.JsonSerializer.Serialize(ClaudePagina.Esquema());
+        Assert.Contains("\"faltando\"", esquema);
         Assert.Equal(4, System.Text.RegularExpressions.Regex.Matches(esquema, "\"additionalProperties\":false").Count);
     }
+
+    [Theory]
+    [InlineData("whatsapp", null, "whatsapp")]
+    [InlineData("QRCODE", null, "qrcode")]
+    [InlineData("tiktok", null, "outro")]
+    [InlineData(null, "https://www.google.com.br/", "google")]
+    [InlineData("", "https://exemplo.com/", "direto")]
+    [InlineData(null, null, "direto")]
+    public void Origem_da_visita(string? utm, string? referer, string esperado) => Assert.Equal(esperado, PaginasImovelService.Origem(utm, referer));
+
+    [Theory]
+    [InlineData("WhatsApp/2.24.1 A", true)]
+    [InlineData("facebookexternalhit/1.1", true)]
+    [InlineData("Mozilla/5.0 (compatible; Googlebot/2.1)", true)]
+    [InlineData(null, true)]
+    [InlineData("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36", false)]
+    public void Robos_nao_contam(string? ua, bool robo) => Assert.Equal(robo, PaginasImovelService.EhRobo(ua));
 
     [Fact]
     public void Imagem_de_compartilhamento_1200x630_e_leve()
@@ -239,7 +257,9 @@ public class PaginasImovelTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        var f = await svc.GerarComIaAsync(admin, id, "  foco em investidores  ");
+        var proposta = await svc.GerarComIaAsync(admin, id, "  foco em investidores  ");
+        var f = proposta.Form;
+        Assert.Equal(["Valor do condomínio"], proposta.Faltando);
         Assert.Equal("foco em investidores", falso.Instrucoes);
         Assert.Single(falso.Ultimo!.Fotos);
         Assert.True(Imagens.Tamanho(falso.Ultimo.Fotos[0]).W <= 1024);
@@ -252,6 +272,39 @@ public class PaginasImovelTests : IAsyncLifetime
         // sem chave do Claude (serviço do container): avisa em vez de chamar a API
         var erro = await Assert.ThrowsAsync<RegraNegocioException>(() => S<PaginasImovelService>().GerarComIaAsync(admin, id, null));
         Assert.Contains("chave do Claude", erro.Message);
+    }
+
+    [Fact]
+    public async Task Medicao_conta_so_pagina_publicada_e_agrupa_por_origem()
+    {
+        var admin = await Entrar("admin@inovabens.com.br");
+        var svc = S<PaginasImovelService>();
+        var id = await NovoImovel(admin, "Casa medida " + Guid.NewGuid().ToString("N")[..6]);
+        var ed = await svc.EdicaoAsync(admin, id);
+        await svc.SalvarAsync(admin, id, ed.Form);
+        var slug = ed.Form.Slug;
+
+        await svc.RegistrarEventoAsync(slug, PaginaImovelEvento.Visita, "whatsapp"); // rascunho: não conta
+        Assert.Equal(0, (await svc.DesempenhoAsync(admin, id)).TotalVisitas);
+
+        await svc.PublicarAsync(admin, id, true);
+        await svc.RegistrarEventoAsync(slug, PaginaImovelEvento.Visita, "whatsapp");
+        await svc.RegistrarEventoAsync(slug, PaginaImovelEvento.Visita, "whatsapp");
+        await svc.RegistrarEventoAsync(slug, PaginaImovelEvento.Visita, "qrcode");
+        await svc.RegistrarEventoAsync(slug, PaginaImovelEvento.Whatsapp, "whatsapp");
+        await svc.RegistrarEventoAsync(slug, PaginaImovelEvento.Visita, "inventada"); // origem fora da lista vira "outro"
+        await svc.RegistrarEventoAsync(slug, "QUALQUER", "whatsapp"); // tipo desconhecido: ignorado
+        await svc.RegistrarEventoAsync("nao-existe", PaginaImovelEvento.Visita, "link"); // sem erro
+
+        var d = await svc.DesempenhoAsync(admin, id);
+        Assert.Equal(4, d.TotalVisitas);
+        Assert.Equal(1, d.TotalWhatsapp);
+        Assert.Equal(("whatsapp", 2, 1), (d.Linhas[0].Origem, d.Linhas[0].Visitas, d.Linhas[0].Whatsapp));
+        Assert.Contains(d.Linhas, l => l.Origem == "outro" && l.Visitas == 1);
+        Assert.NotNull(d.UltimaVisita);
+
+        var carla = await Entrar("carla@inovabens.com.br");
+        await Assert.ThrowsAsync<AcessoNegadoException>(() => svc.DesempenhoAsync(carla, id));
     }
 }
 
@@ -269,6 +322,7 @@ public sealed class GeradorPaginaFalso : IGeradorPagina
         {
             Titulo = "Casa para investir", Chamada = "Boa casa.", TituloSeo = "Casa", DescricaoSeo = "Casa em Jales",
             Secoes = [new() { Titulo = "Sobre", Texto = "Texto." }],
+            Faltando = ["Valor do condomínio", " ", "Valor do condomínio"],
         });
     }
 }
