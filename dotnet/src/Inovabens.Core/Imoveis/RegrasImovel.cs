@@ -85,7 +85,7 @@ public static partial class RegrasImovel
     [GeneratedRegex(@"^[A-Z]{2}\d{4}$")]
     private static partial Regex CodigoPadrao();
 
-    [GeneratedRegex(@"^([A-Za-z]{2}\d{4}|IMV-\d+)\s*-?\s*")]
+    [GeneratedRegex(@"^([A-Za-z]{2}\d{4}(?:-R?\d+)?|IMV-\d+)\s*-?\s*")]
     private static partial Regex CodigoNoInicio();
 
     /// <summary>Limite de fotos por imóvel (vídeos, plantas e documentos não contam). Anúncios do Imobibrasil chegam a 56.</summary>

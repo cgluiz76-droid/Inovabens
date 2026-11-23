@@ -1,0 +1,33 @@
+@* Andamento de uma fase do desmembramento (usado ao desmembrar e ao editar a fase). *@
+<div class="grade-4">
+    <label class="campo">
+        <span>Andamento</span>
+        <InputSelect class="input" @bind-Value="Form.Situacao">
+            @foreach (var s in Enum.GetValues<SituacaoDesmembramento>())
+            {
+                <option value="@s">@Texto.Rotulo(s)</option>
+            }
+        </InputSelect>
+    </label>
+    <label class="campo">
+        <span>Protocolo / registro</span>
+        <InputText class="input" @bind-Value="Form.Protocolo" maxlength="60" placeholder="Nº do protocolo ou da averbação" />
+        <ValidationMessage For="() => Form.Protocolo" />
+    </label>
+    <label class="campo">
+        <span>Data do registro</span>
+        <InputDate class="input" @bind-Value="Form.DataRegistro" />
+    </label>
+    <label class="campo">
+        <span>Área doada ao município (m²)</span>
+        <InputNumber class="input" step="0.01" @bind-Value="Form.AreaDoadaM2" title="Ruas e áreas públicas: não são vendidas" />
+    </label>
+    <label class="campo col-4">
+        <span>Observação</span>
+        <InputTextArea class="input" rows="2" @bind-Value="Form.Observacao" />
+    </label>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FaseForm Form { get; set; } = default!;
+}

@@ -14,6 +14,8 @@ public sealed record FiltroImoveis
     public string? Tipo { get; init; }
     public string? Cidade { get; init; }
     public Guid? CorretorId { get; init; }
+    /// <summary>Lotes e áreas remanescentes de empreendimentos aparecem só com isso ou numa busca (ficam na aba Lotes).</summary>
+    public bool IncluirUnidades { get; init; }
     public int Pagina { get; init; } = 1;
     public int TamanhoPagina { get; init; } = 25;
 }
@@ -21,7 +23,7 @@ public sealed record FiltroImoveis
 public sealed record ImovelListaItem(
     Guid Id, string Codigo, string Titulo, string Tipo, SituacaoImovel Situacao, FinalidadeImovel Finalidade,
     string? Cidade, string? Bairro, string? Uf, decimal? PrecoVenda, decimal? PrecoLocacao, string? CorretorNome,
-    string? CapaUrl = null, string? NomeDrive = null)
+    string? CapaUrl = null, string? NomeDrive = null, string? Unidades = null)
 {
     /// <summary>Nome do imóvel na lista: o "Nome do Imóvel" (pasta do Drive) sem o código na frente; sem ele, o título.</summary>
     public string Nome => RegrasImovel.NomeSemCodigo(Codigo, NomeDrive) ?? Titulo;

@@ -90,10 +90,12 @@ public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, I
             throw new RegraNegocioException(nameof(Imovel.NomeDrive),
                 "Preencha o campo \"Nome do Imóvel\" nos dados do imóvel antes de enviar arquivos.");
 
+        // lote ou área remanescente: pasta dentro da do empreendimento (a matrícula de origem fica junto dos lotes)
+        var pai = im.EmpreendimentoId is { } emp ? await GarantirAsync(emp, ct) : null;
         var raiz = await Chamar(async () =>
         {
-            var existente = await armazenamento.BuscarPastaAsync(nome, null, ct);
-            var id = existente ?? await armazenamento.CriarPastaAsync(nome, null, ct);
+            var existente = await armazenamento.BuscarPastaAsync(nome, pai, ct);
+            var id = existente ?? await armazenamento.CriarPastaAsync(nome, pai, ct);
             // em paralelo (cada chamada ao Drive leva ~0,5 s); pasta recém-criada não precisa de busca
             await Task.WhenAll(PastasPadrao.Select(async s =>
             {

@@ -87,6 +87,17 @@ public class Imovel
     public bool DriveRenomear { get; set; }
     /// <summary>Código anterior (IMV-000012), antes do padrão do Imobibrasil; só para busca.</summary>
     public string? CodigoAntigo { get; set; }
+    /// <summary>Empreendimento a que este lote ou área remanescente pertence (o imóvel da matrícula de origem).</summary>
+    public Guid? EmpreendimentoId { get; set; }
+    /// <summary>Matrícula de onde a unidade saiu: o empreendimento (fase 1) ou uma área remanescente desmembrada de novo.</summary>
+    public Guid? OrigemId { get; set; }
+    public Guid? DesmembramentoId { get; set; }
+    /// <summary>LOTE ou REMANESCENTE (<see cref="TipoUnidade"/>); null = imóvel comum ou o próprio empreendimento.</summary>
+    public string? UnidadeTipo { get; set; }
+    /// <summary>Como a unidade é chamada na matrícula e no anúncio ("Lote 3 - Quadra A").</summary>
+    public string? UnidadeIdentificacao { get; set; }
+    /// <summary>Número do código (TE0043-07 = 7, TE0043-R2 = 2).</summary>
+    public int? UnidadeNumero { get; set; }
     /// <summary>jsonb livre (atributos extras).</summary>
     public string? Atributos { get; set; } = "{}";
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;

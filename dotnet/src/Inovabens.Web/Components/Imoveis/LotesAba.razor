@@ -1,0 +1,280 @@
+@* Aba Lotes: empreendimento desmembrado em lotes com matrícula, área, preço e situação próprios, fase a fase. *@
+@inherits ComponenteBase
+@inject EmpreendimentosService Servico
+
+@if (detalhe is null)
+{
+    <MensagemErro Texto="@Erro" />
+    <p class="carregando">Carregando…</p>
+}
+else
+{
+    <section class="card">
+        <div class="titulo-secao">
+            <h2>Lotes</h2>
+            @if (Editar && detalhe.Desmembraveis.Count > 0 && novo is null)
+            {
+                <button class="btn-primary" @onclick="AbrirDesmembrar">+ Desmembrar</button>
+            }
+        </div>
+        <MensagemErro Texto="@Erro" />
+        <MensagemErro Texto="@Sucesso" Sucesso />
+
+        @if (detalhe.Unidades.Count == 0 && novo is null)
+        {
+            <p class="mudo">
+                Área com uma matrícula que vai virar (ou já virou) vários lotes? Use "Desmembrar": cada lote ganha código próprio
+                (@detalhe.Codigo-01, @detalhe.Codigo-02…), matrícula, área, preço e situação. O anúncio continua sendo este imóvel.
+            </p>
+        }
+        else if (detalhe.Unidades.Count > 0)
+        {
+            <div class="kpis">
+                <div class="kpi"><p class="rotulo-kpi">Lotes</p><p class="valor-kpi">@detalhe.Lotes.Count()</p></div>
+                <div class="kpi"><p class="rotulo-kpi">Disponíveis</p><p class="valor-kpi">@detalhe.Disponiveis</p></div>
+                <div class="kpi"><p class="rotulo-kpi">Vendidos</p><p class="valor-kpi">@detalhe.Vendidos</p></div>
+                <div class="kpi"><p class="rotulo-kpi">A partir de</p><p class="valor-kpi">@Texto.Moeda(detalhe.APartirDe)</p></div>
+            </div>
+        }
+
+        @if (novo is { } n)
+        {
+            <EditForm Model="n" OnValidSubmit="Desmembrar" class="card interno">
+                <DataAnnotationsValidator />
+                <h3>Desmembrar</h3>
+                <div class="grade-4">
+                    <label class="campo col-2">
+                        <span>Matrícula a dividir</span>
+                        <select class="input" @bind="origemId">
+                            @foreach (var o in detalhe.Desmembraveis)
+                            {
+                                <option value="@o.Id">@o.Codigo@(o.Id == detalhe.Id ? " (matrícula de origem)" : " (área remanescente)")@(o.AreaM2 is { } a ? $" · {a:N2} m²" : "")</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="campo">
+                        <span>Quantidade de lotes *</span>
+                        <InputNumber class="input" @bind-Value="n.Quantidade" min="1" max="300" />
+                        <ValidationMessage For="() => n.Quantidade" />
+                    </label>
+                    <label class="campo">
+                        <span>Nome dos lotes *</span>
+                        <InputText class="input" @bind-Value="n.Identificacao" placeholder="Lote" />
+                        <ValidationMessage For="() => n.Identificacao" />
+                    </label>
+                    <label class="campo">
+                        <span>Área de cada lote (m²)</span>
+                        <InputNumber class="input" step="0.01" @bind-Value="n.AreaLoteM2" />
+                    </label>
+                    <label class="campo">
+                        <span>Preço de cada lote (R$)</span>
+                        <InputNumber class="input" step="0.01" @bind-Value="n.PrecoLote" />
+                    </label>
+                    <label class="check col-2">
+                        <InputCheckbox @bind-Value="n.Remanescente" />
+                        Gerar área remanescente (pode ser desmembrada depois em outra fase)
+                    </label>
+                    @if (n.Remanescente)
+                    {
+                        <label class="campo">
+                            <span>Área remanescente (m²)</span>
+                            <InputNumber class="input" step="0.01" @bind-Value="n.AreaRemanescenteM2" />
+                        </label>
+                    }
+                </div>
+                <CamposFase Form="n.Fase" />
+                <p class="pequeno mudo">
+                    Áreas e preços diferentes por lote: ajuste depois na tabela. Os lotes ficam "em regularização" até a fase ser
+                    registrada no cartório e só podem ser vendidos com matrícula própria (Lei 6.766/79, art. 37).
+                </p>
+                <div class="acoes">
+                    <button type="submit" class="btn-primary" disabled="@Ocupado">Gerar lotes</button>
+                    <button type="button" class="btn-ghost" @onclick="() => novo = null">Cancelar</button>
+                </div>
+            </EditForm>
+        }
+
+        @if (detalhe.Unidades.Count > 0)
+        {
+            <div class="tabela-container">
+                <table class="tabela tabela-lotes">
+                    <thead>
+                        <tr><th>Código</th><th>Identificação</th><th>Fase</th><th>Matrícula</th><th>Área (m²)</th><th>Preço</th><th>Situação</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in detalhe.Unidades)
+                        {
+                            var e = edicao.GetValueOrDefault(l.Id);
+                            <tr class="@(l.Encerrada ? "mudo" : "")">
+                                <td class="codigo"><a href="imoveis/@l.Id">@l.Codigo</a></td>
+                                @if (e is not null && !l.Encerrada)
+                                {
+                                    <td><input class="input" aria-label="Identificação de @l.Codigo" maxlength="60" @bind="e.Identificacao" /></td>
+                                    <td>@l.Fase<span class="pequeno mudo"> · de @l.OrigemCodigo</span></td>
+                                    <td><input class="input" aria-label="Matrícula de @l.Codigo" maxlength="40" placeholder="prevista" @bind="e.Matricula" /></td>
+                                    <td><input class="input" type="number" step="0.01" aria-label="Área de @l.Codigo" @bind="e.AreaM2" /></td>
+                                    <td>
+                                        @if (!l.Remanescente)
+                                        {
+                                            <input class="input" type="number" step="0.01" aria-label="Preço de @l.Codigo" @bind="e.Preco" />
+                                        }
+                                    </td>
+                                    <td>
+                                        <select class="input" aria-label="Situação de @l.Codigo" @bind="e.Situacao">
+                                            @foreach (var s in Situacoes)
+                                            {
+                                                <option value="@s">@Texto.Rotulo(s)</option>
+                                            }
+                                        </select>
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td>@(l.Identificacao ?? "—")</td>
+                                    <td>@l.Fase<span class="pequeno mudo"> · de @l.OrigemCodigo</span></td>
+                                    <td>@(l.Matricula ?? "prevista")</td>
+                                    <td>@(l.AreaM2 is { } a ? a.ToString("N2") : "—")</td>
+                                    <td>@(l.Remanescente ? "" : Texto.Moeda(l.Preco))</td>
+                                    <td>
+                                        <span class="badge">@(l.Encerrada ? "Desmembrada" : Texto.Rotulo(l.Situacao))</span>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (Editar)
+            {
+                <div class="acoes">
+                    <button class="btn-primary" disabled="@Ocupado" @onclick="SalvarUnidades">Salvar lotes</button>
+                </div>
+            }
+        }
+    </section>
+
+    @if (detalhe.Fases.Count > 0)
+    {
+        <section class="card">
+            <h2>Fases do desmembramento</h2>
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead>
+                        <tr><th>Fase</th><th>Matrícula dividida</th><th>Lotes</th><th>Andamento</th><th>Conferência de áreas</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in detalhe.Fases)
+                        {
+                            <tr>
+                                <td>@f.Dados.Fase</td>
+                                <td>@f.OrigemCodigo</td>
+                                <td>@f.Lotes</td>
+                                <td>
+                                    @Texto.Rotulo(f.Dados.Situacao)
+                                    @if (f.Dados.Protocolo is not null || f.Dados.DataRegistro is not null)
+                                    {
+                                        <p class="pequeno mudo">@f.Dados.Protocolo @(f.Dados.DataRegistro is { } d ? "· " + Texto.Data(d) : "")</p>
+                                    }
+                                </td>
+                                <td class="pequeno">@Conferencia(f)</td>
+                                <td class="acoes-linha">
+                                    @if (Editar)
+                                    {
+                                        <button class="btn-ghost mini" @onclick="() => EditarFase(f)">Editar</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    @if (fase is { } fe)
+    {
+        <Modal Titulo="@($"Fase {fe.Numero}")" AoFechar="() => fase = null">
+            <EditForm Model="fe.Form" OnValidSubmit="SalvarFase" class="formulario">
+                <DataAnnotationsValidator />
+                <CamposFase Form="fe.Form" />
+                <p class="pequeno mudo">Ao registrar: os lotes em regularização ficam disponíveis e a área remanescente dividida é arquivada.</p>
+                <div class="acoes">
+                    <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+                    <button type="button" class="btn-ghost" @onclick="() => fase = null">Cancelar</button>
+                </div>
+            </EditForm>
+        </Modal>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    [Parameter] public bool Editar { get; set; }
+    /// <summary>Chamado depois de gerar lotes ou salvar (a ficha do empreendimento pode mudar).</summary>
+    [Parameter] public EventCallback AoAlterar { get; set; }
+
+    private EmpreendimentoDetalhe? detalhe;
+    private Dictionary<Guid, UnidadeEdicao> edicao = [];
+    private DesmembramentoForm? novo;
+    private Guid origemId;
+    private (Guid Id, int Numero, FaseForm Form)? fase;
+
+    private static readonly SituacaoImovel[] Situacoes =
+        [SituacaoImovel.EM_REGULARIZACAO, SituacaoImovel.DISPONIVEL, SituacaoImovel.VENDIDO, SituacaoImovel.ARQUIVADO];
+
+    protected override Task OnParametersSetAsync() => Carregar();
+
+    private Task Carregar() => Executar(async () =>
+    {
+        detalhe = await Servico.DetalheAsync(Usuario, ImovelId);
+        edicao = detalhe is null || !Editar ? [] : detalhe.Unidades.Where(l => !l.Encerrada).ToDictionary(l => l.Id, UnidadeEdicao.De);
+    });
+
+    private void AbrirDesmembrar()
+    {
+        Sucesso = null;
+        origemId = detalhe!.Desmembraveis[^1].Id; // a remanescente mais recente (ou o empreendimento, na primeira vez)
+        novo = new DesmembramentoForm();
+    }
+
+    private async Task Desmembrar()
+    {
+        var qtd = novo!.Quantidade;
+        if (!await Executar(async () => await Servico.DesmembrarAsync(Usuario, origemId, novo))) return;
+        novo = null;
+        await Carregar();
+        Sucesso = $"{qtd} {(qtd == 1 ? "lote gerado" : "lotes gerados")}. Preencha matrícula, área e preço de cada um na tabela.";
+        await AoAlterar.InvokeAsync();
+    }
+
+    private async Task SalvarUnidades()
+    {
+        Sucesso = null;
+        if (!await Executar(async () => await Servico.SalvarUnidadesAsync(Usuario, ImovelId, [.. edicao.Values]))) return;
+        await Carregar();
+        Sucesso = "Lotes salvos.";
+        await AoAlterar.InvokeAsync();
+    }
+
+    private void EditarFase(FaseDetalhe f) => fase = (f.Dados.Id, f.Dados.Fase, FaseForm.De(f.Dados));
+
+    private async Task SalvarFase()
+    {
+        var (id, _, form) = fase!.Value;
+        if (!await Executar(async () => await Servico.AtualizarFaseAsync(Usuario, id, form))) return;
+        fase = null;
+        await Carregar();
+        await AoAlterar.InvokeAsync();
+    }
+
+    /// <summary>Área da matrícula dividida = lotes + remanescente + área doada.</summary>
+    private static string Conferencia(FaseDetalhe f) => f switch
+    {
+        { AreaOrigemM2: null } => "Informe a área do terreno da matrícula dividida para conferir.",
+        { UnidadesSemArea: true } => "Falta a área de algum lote.",
+        { Diferenca: 0 } => "✓ Áreas conferem",
+        { Diferenca: { } d } when d > 0 => $"Faltam {d:N2} m² (área de origem {f.AreaOrigemM2:N2} m²)",
+        { Diferenca: { } d } => $"Sobram {-d:N2} m² (área de origem {f.AreaOrigemM2:N2} m²)",
+        _ => "",
+    };
+}

@@ -91,6 +91,10 @@ else
                         <td>
                             <a class="forte" href="imoveis/@i.Id">@i.Nome</a>
                             <p class="pequeno mudo">@Texto.Rotulo(i.Tipo) · @Texto.Rotulo(i.Finalidade)</p>
+                            @if (i.Unidades is { } un)
+                            {
+                                <p class="pequeno"><a href="imoveis/@i.Id?aba=lotes">@un</a></p>
+                            }
                         </td>
                         <td>@Local(i)</td>
                         <td><span class="badge">@Texto.Rotulo(i.Situacao)</span></td>

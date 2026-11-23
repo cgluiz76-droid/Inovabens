@@ -1323,3 +1323,7 @@ fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(-
 .ficha-pessoa dd { margin: 0; overflow-wrap: anywhere; }
 .ficha-pessoa ul { margin: 0; padding-left: var(--e-4); }
 .ficha-pessoa p { margin: 0; }
+
+/* Aba Lotes do empreendimento: código sem quebra e campos da tabela com largura mínima para digitar */
+.tabela-lotes td.codigo { white-space: nowrap; }
+.tabela-lotes .input { min-width: 7rem; }

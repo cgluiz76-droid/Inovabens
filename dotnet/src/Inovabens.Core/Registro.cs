@@ -36,6 +36,7 @@ public static class Registro
         services.AddScoped<OpcoesService>();
         services.AddScoped<ImoveisService>();
         services.AddScoped<PaginasImovelService>();
+        services.AddScoped<EmpreendimentosService>();
         services.AddScoped<ContatoPaginaService>();
         services.AddSingleton<IGeradorPagina, ClaudePagina>();
         services.AddScoped<ImportacaoImobibrasilService>();

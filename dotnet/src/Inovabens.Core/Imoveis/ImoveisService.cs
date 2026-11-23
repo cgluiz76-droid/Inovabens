@@ -45,7 +45,14 @@ public sealed class ImoveisService(
             .Where(m => ids.Contains(m.ImovelId) && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
             .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
         var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.Miniatura ?? d.Url : null);
-        itens = [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id) })];
+        // empreendimento: "7 lotes · 5 disponíveis" (áreas remanescentes não contam)
+        var lotes = (await db.Imoveis.AsNoTracking()
+            .Where(i => i.EmpreendimentoId != null && ids.Contains(i.EmpreendimentoId.Value) && i.ExcluidoEm == null
+                && i.UnidadeTipo == TipoUnidade.Lote)
+            .GroupBy(i => i.EmpreendimentoId!.Value)
+            .Select(g => new { Id = g.Key, Total = g.Count(), Disponiveis = g.Count(i => i.Situacao == SituacaoImovel.DISPONIVEL) })
+            .ToListAsync()).ToDictionary(x => x.Id, x => $"{x.Total} {(x.Total == 1 ? "lote" : "lotes")} · {x.Disponiveis} {(x.Disponiveis == 1 ? "disponível" : "disponíveis")}");
+        itens = [.. itens.Select(i => i with { CapaUrl = capas.GetValueOrDefault(i.Id), Unidades = lotes.GetValueOrDefault(i.Id) })];
         return new Paginado<ImovelListaItem>(itens, total, pagina, tamanho);
     }
 
@@ -95,6 +102,8 @@ public sealed class ImoveisService(
     private static IQueryable<Imovel> Filtrados(InovabensDb db, UsuarioAtual u, FiltroImoveis f)
     {
         var q = db.Imoveis.AsNoTracking().Where(i => i.ExcluidoEm == null).VisiveisPara(u);
+        // lotes ficam na aba Lotes do empreendimento; a busca (código, matrícula) ainda os encontra
+        if (!f.IncluirUnidades && Texto.Limpo(f.Termo) is null) q = q.Where(i => i.EmpreendimentoId == null);
         if (!u.EscopoProprio && f.CorretorId is { } c) q = q.Where(i => i.CorretorResponsavelId == c);
         if (f.Situacao is { } s) q = q.Where(i => i.Situacao == s);
         if (f.Finalidade is { } fi) q = q.Where(i => i.Finalidade == fi);
@@ -302,6 +311,7 @@ public sealed class ImoveisService(
         await ExigirTipoValido(db, form.Tipo, atual: im.Tipo);
         var antes = im.Copia();
         form.AplicarEm(im);
+        EmpreendimentosService.ExigirVendaPermitida(im);
         // o código não muda na edição (nem trocando o tipo): é o mesmo do site, dos portais, do Drive e dos documentos
         im.Referencia = im.Codigo;
         im.NomeDrive = RegrasImovel.NomeDriveComCodigo(im.Codigo, im.NomeDrive);

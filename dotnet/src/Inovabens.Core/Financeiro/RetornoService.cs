@@ -82,6 +82,7 @@ public sealed class FechamentoService(IDbContextFactory<InovabensDb> fabrica, Au
         {
             var antesImovel = im.Copia();
             im.Situacao = SituacaoImovel.VENDIDO;
+            Imoveis.EmpreendimentosService.ExigirVendaPermitida(im);
             audit.Registrar(db, u.Id, "imoveis", im.Id, "ATUALIZAR", antesImovel, im);
         }
         await db.SaveChangesAsync();

@@ -23,6 +23,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<ImovelMidia> ImovelMidias => Set<ImovelMidia>();
     public DbSet<PaginaImovel> PaginasImovel => Set<PaginaImovel>();
     public DbSet<PaginaImovelEvento> PaginasImovelEventos => Set<PaginaImovelEvento>();
+    public DbSet<Desmembramento> Desmembramentos => Set<Desmembramento>();
     public DbSet<ImovelProprietario> ImovelProprietarios => Set<ImovelProprietario>();
     public DbSet<ImovelEnvolvido> ImovelEnvolvidos => Set<ImovelEnvolvido>();
     public DbSet<Regularizacao> Regularizacoes => Set<Regularizacao>();
@@ -155,6 +156,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             e.HasMany(x => x.Envolvidos).WithOne().HasForeignKey(x => x.ImovelId);
         });
         mb.Entity<ImovelMidia>().Property(x => x.MelhoriaStatus).HasConversion<string>();
+        mb.Entity<Desmembramento>().Property(x => x.Situacao).HasConversion<string>();
         mb.Entity<PostRedes>().Property(x => x.Textos).HasColumnType("jsonb");
         mb.Entity<PostRedesMidia>(e =>
         {
