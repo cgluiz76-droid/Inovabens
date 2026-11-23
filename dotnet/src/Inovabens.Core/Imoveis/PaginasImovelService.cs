@@ -137,10 +137,10 @@ public sealed record PaginaPublica(
 public sealed record PropostaIa(PaginaForm Form, IReadOnlyList<string> Faltando);
 
 /// <summary>Visitas e cliques no WhatsApp de uma origem no período.</summary>
-public sealed record LinhaDesempenho(string Origem, int Visitas, int Whatsapp);
+public sealed record LinhaDesempenho(string Origem, int Visitas, int Whatsapp, int Formularios = 0);
 
 /// <summary>Desempenho da página nos últimos <paramref name="Dias"/> dias (Linhas por origem, mais visitas primeiro).</summary>
-public sealed record DesempenhoPagina(int Dias, IReadOnlyList<LinhaDesempenho> Linhas, int TotalVisitas, int TotalWhatsapp, DateTime? UltimaVisita);
+public sealed record DesempenhoPagina(int Dias, IReadOnlyList<LinhaDesempenho> Linhas, int TotalVisitas, int TotalWhatsapp, DateTime? UltimaVisita, int TotalFormularios = 0);
 
 /* ------------------------------------------------ serviço ------------------------------------------------ */
 
@@ -277,10 +277,11 @@ public sealed class PaginasImovelService(
         var linhas = grupos.GroupBy(g => g.Origem)
             .Select(g => new LinhaDesempenho(g.Key,
                 g.Where(x => x.Tipo == PaginaImovelEvento.Visita).Sum(x => x.N),
-                g.Where(x => x.Tipo == PaginaImovelEvento.Whatsapp).Sum(x => x.N)))
+                g.Where(x => x.Tipo == PaginaImovelEvento.Whatsapp).Sum(x => x.N),
+                g.Where(x => x.Tipo == PaginaImovelEvento.Formulario).Sum(x => x.N)))
             .OrderByDescending(l => l.Visitas).ThenByDescending(l => l.Whatsapp).ToList();
         var ultima = await q.Where(e => e.Tipo == PaginaImovelEvento.Visita).MaxAsync(e => (DateTime?)e.CriadoEm);
-        return new(dias, linhas, linhas.Sum(l => l.Visitas), linhas.Sum(l => l.Whatsapp), ultima);
+        return new(dias, linhas, linhas.Sum(l => l.Visitas), linhas.Sum(l => l.Whatsapp), ultima, linhas.Sum(l => l.Formularios));
     }
 
     internal static DadosPost Dados(Imovel i, IEnumerable<ImovelCaracteristica> caracteristicas, IReadOnlyList<byte[]> fotos)

@@ -26,3 +26,6 @@ NotionToken.txt
 
 # credenciais OAuth baixadas do Google Cloud
 client_secret_*.json
+
+# chaves guardadas localmente pelo usuário (nunca vão para o Git)
+Chave*.txt

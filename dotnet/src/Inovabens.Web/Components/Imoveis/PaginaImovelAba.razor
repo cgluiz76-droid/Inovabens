@@ -61,22 +61,23 @@ else
     {
         <section class="card">
             <h3>Desempenho <small class="mudo">(últimos @dp.Dias dias)</small></h3>
-            @if (dp.TotalVisitas == 0 && dp.TotalWhatsapp == 0)
+            @if (dp.TotalVisitas == 0 && dp.TotalWhatsapp == 0 && dp.TotalFormularios == 0)
             {
                 <p class="pequeno mudo">Nenhuma visita ainda. Conta só visitantes de fora do sistema; robôs e a prévia do link no WhatsApp não contam.</p>
             }
             else
             {
                 <table class="tabela pagina-desempenho">
-                    <thead><tr><th>Origem</th><th class="num">Visitas</th><th class="num">Cliques no WhatsApp</th></tr></thead>
+                    <thead><tr><th>Origem</th><th class="num">Visitas</th><th class="num">Cliques no WhatsApp</th><th class="num">Formulários</th></tr></thead>
                     <tbody>
                         @foreach (var l in dp.Linhas)
                         {
-                            <tr><td>@NomeOrigem(l.Origem)</td><td class="num">@l.Visitas</td><td class="num">@l.Whatsapp</td></tr>
+                            <tr><td>@NomeOrigem(l.Origem)</td><td class="num">@l.Visitas</td><td class="num">@l.Whatsapp</td><td class="num">@l.Formularios</td></tr>
                         }
                     </tbody>
-                    <tfoot><tr><th>Total</th><th class="num">@dp.TotalVisitas</th><th class="num">@dp.TotalWhatsapp</th></tr></tfoot>
+                    <tfoot><tr><th>Total</th><th class="num">@dp.TotalVisitas</th><th class="num">@dp.TotalWhatsapp</th><th class="num">@dp.TotalFormularios</th></tr></tfoot>
                 </table>
+                @if (dp.TotalFormularios > 0) { <p class="pequeno mudo">Cada formulário vira lead no CRM (origem "Página do imóvel").</p> }
                 @if (dp.UltimaVisita is { } uv) { <p class="pequeno mudo">Última visita: @DatasBR.DeUtc(uv).ToString("dd/MM/yyyy HH:mm")</p> }
             }
         </section>

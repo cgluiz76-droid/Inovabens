@@ -128,6 +128,31 @@
                         </section>
                     }
 
+                    <section class="bloco" id="contato">
+                        <h2>Quero mais informações</h2>
+                        <p class="mudo">Prefere não usar o WhatsApp? Deixe seus dados e a Inova Bens retorna o contato.</p>
+                        @if (ContatoQuery == "ok")
+                        {
+                            <p class="lp-form-ok" role="status">Recebemos sua mensagem! A Inova Bens vai entrar em contato pelo telefone informado.</p>
+                        }
+                        else
+                        {
+                            <form class="lp-form" method="post" action="@(Caminho)/formulario" data-contato>
+                                <label>Nome *<input name="nome" required maxlength="120" autocomplete="name" /></label>
+                                <label>Telefone com DDD *<input name="telefone" type="tel" required maxlength="30" autocomplete="tel" inputmode="tel" placeholder="(17) 99999-9999" /></label>
+                                <label>Mensagem *<textarea name="mensagem" required maxlength="1000" rows="4" placeholder="Conte o que quer saber ou quando pode visitar."></textarea></label>
+                                <label class="lp-check"><input type="checkbox" name="consentimento" required />
+                                    <span>@ContatoPaginaService.TextoConsentimento <a href="privacidade" target="_blank" rel="noopener">Política de privacidade</a>.</span></label>
+                                @* campo-isca: escondido de pessoas; robô de spam preenche e o envio é descartado *@
+                                <div class="lp-isca" aria-hidden="true"><label>Site<input name="site" tabindex="-1" autocomplete="off" /></label></div>
+                                <input type="hidden" name="o" />
+                                <button class="btn btn-ouro" type="submit" disabled="@Dados.Previa">Enviar mensagem</button>
+                                @if (Dados.Previa) { <p class="mudo" style="font-size:.85rem">O formulário funciona quando a página estiver publicada.</p> }
+                                <p class="lp-form-msg" role="status" aria-live="polite">@(ContatoQuery == "erro" ? "Não foi possível enviar. Confira os campos ou fale conosco pelo WhatsApp." : "")</p>
+                            </form>
+                        }
+                    </section>
+
                     @if (C.Perguntas.Count > 0)
                     {
                         <section class="bloco">
@@ -160,6 +185,7 @@
                         <div><b>@(Dados.CorretorNome ?? "Equipe Inovabens")</b><div class="mudo" style="font-size:.82rem">Inova Bens · CRECI 50457-J</div></div>
                     </div>
                     <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-zap" /></svg> Conversar no WhatsApp</a>
+                    <a class="btn btn-linha" href="#contato" style="width:100%">Enviar mensagem pelo formulário</a>
                     <p class="mudo" style="font-size:.8rem">Referência @Codigo</p>
                 </aside>
             </div>
@@ -219,6 +245,31 @@
                     document.querySelectorAll('a[href^="https://wa.me/"]').forEach(a => a.addEventListener("click", () => {
                         try { navigator.sendBeacon("@(Caminho)/contato?o=" + encodeURIComponent(o)); } catch (_) { }
                     }));
+                    // formulário: envia sem sair da página; sem JavaScript, o envio normal também funciona
+                    const f = document.querySelector("[data-contato]");
+                    if (f) {
+                        f.elements.o.value = o;
+                        const msg = f.querySelector(".lp-form-msg"), btn = f.querySelector("button[type=submit]");
+                        f.addEventListener("submit", async e => {
+                            e.preventDefault();
+                            btn.disabled = true; msg.textContent = "Enviando…";
+                            try {
+                                const r = await fetch(f.action, { method: "POST", body: new FormData(f), headers: { "X-Requested-With": "fetch" } });
+                                const j = r.headers.get("content-type")?.includes("json") ? await r.json() : { erro: await r.text() };
+                                if (r.ok && j.ok) {
+                                    const ok = document.createElement("p");
+                                    ok.className = "lp-form-ok"; ok.setAttribute("role", "status");
+                                    ok.textContent = "Recebemos sua mensagem! A Inova Bens vai entrar em contato pelo telefone informado.";
+                                    f.replaceWith(ok); ok.focus?.();
+                                    return;
+                                }
+                                msg.textContent = j.erro || "Não foi possível enviar. Tente de novo ou fale conosco pelo WhatsApp.";
+                            } catch (_) {
+                                msg.textContent = "Sem conexão. Tente de novo ou fale conosco pelo WhatsApp.";
+                            }
+                            btn.disabled = false;
+                        });
+                    }
                 })();
             </script>
         }
@@ -234,6 +285,9 @@
 
 @code {
     [Parameter, EditorRequired] public PaginaPublica Dados { get; set; } = default!;
+    /// <summary>Página renderizada no servidor: lê ?contato=ok|erro da volta do formulário enviado sem JavaScript.</summary>
+    [CascadingParameter] public HttpContext? Http { get; set; }
+    private string? ContatoQuery => Http?.Request.Query["contato"].ToString() is { Length: > 0 } q ? q : null;
 
     private sealed record Paragrafo(string? Texto, IReadOnlyList<string>? Itens);
     private static readonly CultureInfo Br = Texto.PtBr;

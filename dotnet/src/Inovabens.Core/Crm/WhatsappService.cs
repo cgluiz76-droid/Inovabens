@@ -265,7 +265,7 @@ public sealed partial class WhatsappService(
     }
 
     /// <summary>Pessoa ativa cujo WhatsApp ou telefone é o mesmo número (ignorando formato, +55 e o 9 do celular).</summary>
-    private static async Task<Pessoa?> PessoaDoTelefone(InovabensDb db, string chave, CancellationToken ct)
+    internal static async Task<Pessoa?> PessoaDoTelefone(InovabensDb db, string chave, CancellationToken ct)
     {
         var final = "%" + chave[^8..];
         var candidatas = await db.Pessoas.FromSqlInterpolated($"""
@@ -312,7 +312,7 @@ public sealed partial class WhatsappService(
     private static partial Regex Palavras();
 
     /// <summary>Alerta "novo lead" para quem vê todos os leads e pode editar o CRM (o Corretor só vê os seus).</summary>
-    private static async Task AvisarGestores(InovabensDb db, Guid leadId, string mensagem, CancellationToken ct)
+    internal static async Task AvisarGestores(InovabensDb db, Guid leadId, string mensagem, CancellationToken ct)
     {
         var destinatarios = await db.Usuarios
             .Where(u => u.Ativo && u.ExcluidoEm == null && !u.Perfil!.EscopoProprio)
@@ -344,7 +344,7 @@ public sealed partial class WhatsappService(
     }
 
     /// <summary>Fila aberta: todos os corretores são avisados; o primeiro que pegar fica com o lead.</summary>
-    private static async Task AvisarCorretores(InovabensDb db, Guid leadId, string mensagem, CancellationToken ct)
+    internal static async Task AvisarCorretores(InovabensDb db, Guid leadId, string mensagem, CancellationToken ct)
     {
         foreach (var id in await Corretores(db).Select(u => u.Id).ToListAsync(ct))
             db.Alertas.Add(new Alerta { Id = Guid.NewGuid(), Tipo = TipoAlerta.NOVO_LEAD, UsuarioId = id, LeadId = leadId, Mensagem = mensagem });

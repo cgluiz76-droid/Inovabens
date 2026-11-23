@@ -294,3 +294,15 @@ button { font: inherit; color: inherit; }
   .lp-galeria { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { .lp-galeria img { transition: none; } }
+/* formulário de contato da página do imóvel */
+.lp-form { display: grid; gap: 12px; max-width: 560px; }
+.lp-form label { display: grid; gap: 4px; font-weight: 600; font-size: .9rem; color: var(--titulo); }
+.lp-form input:not([type=checkbox]), .lp-form textarea { font: inherit; font-weight: 400; color: var(--texto); background: var(--sup); border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; width: 100%; }
+.lp-form input:focus-visible, .lp-form textarea:focus-visible { outline: 3px solid var(--ouro-claro); outline-offset: 1px; }
+.lp-form .lp-check { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; color: var(--texto); font-size: .86rem; }
+.lp-form .lp-check input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+.lp-form button { justify-self: start; }
+.lp-form button:disabled { opacity: .6; cursor: default; }
+.lp-form-msg { font-size: .9rem; color: var(--ouro-txt); min-height: 1.2em; }
+.lp-form-ok { background: var(--sup-2); border-left: 4px solid var(--ok); border-radius: 10px; padding: 12px 14px; font-weight: 600; }
+.lp-isca { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }

@@ -1,5 +1,6 @@
 using Inovabens.Core;
 using Inovabens.Core.Comum;
+using Inovabens.Core.Crm;
 using Inovabens.Core.Dados;
 using Inovabens.Core.Dominio;
 using Inovabens.Core.Imoveis;
@@ -116,6 +117,13 @@ public class PaginasImovelUnidadeTests
     [InlineData(null, true)]
     [InlineData("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36", false)]
     public void Robos_nao_contam(string? ua, bool robo) => Assert.Equal(robo, PaginasImovelService.EhRobo(ua));
+
+    [Theory]
+    [InlineData("(17) 99999-1234", "5517999991234")]
+    [InlineData("+55 17 3333-1234", "551733331234")]
+    [InlineData("99999-1234", null)]
+    [InlineData("017 99999 1234", null)]
+    public void Telefone_do_formulario_exige_ddd(string tel, string? esperado) => Assert.Equal(esperado, ContatoPaginaForm.Digitos(tel));
 
     [Fact]
     public void Imagem_de_compartilhamento_1200x630_e_leve()
@@ -305,6 +313,54 @@ public class PaginasImovelTests : IAsyncLifetime
 
         var carla = await Entrar("carla@inovabens.com.br");
         await Assert.ThrowsAsync<AcessoNegadoException>(() => svc.DesempenhoAsync(carla, id));
+    }
+
+    [Fact]
+    public async Task Formulario_da_pagina_cria_lead_com_consentimento()
+    {
+        var admin = await Entrar("admin@inovabens.com.br");
+        var paginas = S<PaginasImovelService>();
+        var contato = S<ContatoPaginaService>();
+        var id = await NovoImovel(admin, "Casa contato " + Guid.NewGuid().ToString("N")[..6]);
+        var ed = await paginas.EdicaoAsync(admin, id);
+        await paginas.SalvarAsync(admin, id, ed.Form);
+        var slug = ed.Form.Slug;
+        var tel = $"(17) 9{Random.Shared.Next(1000, 9999)}-{Random.Shared.Next(1000, 9999)}";
+        ContatoPaginaForm F() => new() { Nome = " Maria Teste ", Telefone = tel, Mensagem = "Quero visitar.", Consentimento = true };
+
+        Assert.False(await contato.EnviarAsync(slug, F())); // rascunho: formulário não grava
+        await paginas.PublicarAsync(admin, id, true);
+
+        // todos os campos obrigatórios, telefone com DDD e consentimento
+        foreach (var ruim in new[]
+        {
+            new ContatoPaginaForm { Telefone = tel, Mensagem = "x", Consentimento = true },
+            new ContatoPaginaForm { Nome = "a", Telefone = "9999-1234", Mensagem = "x", Consentimento = true },
+            new ContatoPaginaForm { Nome = "a", Telefone = tel, Consentimento = true },
+            new ContatoPaginaForm { Nome = "a", Telefone = tel, Mensagem = "x" },
+        })
+            await Assert.ThrowsAsync<RegraNegocioException>(() => contato.EnviarAsync(slug, ruim));
+
+        var isca = F(); isca.Site = "http://spam";
+        Assert.True(await contato.EnviarAsync(slug, isca)); // robô: finge sucesso e não grava
+        await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+            Assert.False(await db.Leads.AnyAsync(l => l.ImovelSugeridoId == id));
+
+        Assert.True(await contato.EnviarAsync(slug, F(), "qrcode"));
+        Assert.True(await contato.EnviarAsync(slug, F(), "qrcode")); // mesma pessoa: mesmo lead, nova interação
+        await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+        {
+            var lead = await db.Leads.Include(l => l.Pessoa).SingleAsync(l => l.ImovelSugeridoId == id);
+            Assert.Equal(ContatoPaginaService.Origem, lead.Origem);
+            Assert.Equal("Maria Teste", lead.Pessoa!.NomeRazao);
+            var interacoes = await db.LeadInteracoes.Where(i => i.LeadId == lead.Id).ToListAsync();
+            Assert.Equal(2, interacoes.Count);
+            Assert.All(interacoes, i => Assert.Contains("Consentimento LGPD aceito", i.Resumo));
+            Assert.True(await db.Alertas.AnyAsync(a => a.LeadId == lead.Id && a.Tipo == TipoAlerta.NOVO_LEAD));
+        }
+        var d = await paginas.DesempenhoAsync(admin, id);
+        Assert.Equal(2, d.TotalFormularios);
+        Assert.Contains(d.Linhas, l => l.Origem == "qrcode" && l.Formularios == 2);
     }
 }
 

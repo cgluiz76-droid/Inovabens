@@ -35,7 +35,7 @@ public class PaginaImovel
 [Table("paginas_imovel_eventos")]
 public class PaginaImovelEvento
 {
-    public const string Visita = "VISITA", Whatsapp = "WHATSAPP";
+    public const string Visita = "VISITA", Whatsapp = "WHATSAPP", Formulario = "FORMULARIO";
 
     public long Id { get; set; }
     public Guid PaginaId { get; set; }

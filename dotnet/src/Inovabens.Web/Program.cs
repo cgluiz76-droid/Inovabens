@@ -87,13 +87,20 @@ var limiteLogin = int.TryParse(builder.Configuration["LOGIN_LIMITE_POR_MINUTO"],
 builder.Services.AddRateLimiter(o =>
 {
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(c =>
-        HttpMethods.IsPost(c.Request.Method) && c.Request.Path.Equals("/login", StringComparison.OrdinalIgnoreCase)
+        !HttpMethods.IsPost(c.Request.Method) ? RateLimitPartition.GetNoLimiter("")
+        : c.Request.Path.Equals("/login", StringComparison.OrdinalIgnoreCase)
             ? RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "?",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limiteLogin, Window = TimeSpan.FromMinutes(1) })
+        // formulário de contato das páginas de imóvel (público): poucos envios por endereço, contra spam
+        : c.Request.Path.StartsWithSegments("/" + PaginasImovelService.Prefixo) && c.Request.Path.Value!.EndsWith("/formulario", StringComparison.Ordinal)
+            ? RateLimitPartition.GetFixedWindowLimiter("form:" + (c.Connection.RemoteIpAddress?.ToString() ?? "?"),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) })
             : RateLimitPartition.GetNoLimiter(""));
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.OnRejected = (ctx, ct) => new ValueTask(ctx.HttpContext.Response.WriteAsync(
-        "Muitas tentativas de login a partir deste endereço. Aguarde um minuto e tente de novo.", ct));
+        ctx.HttpContext.Request.Path.Value?.EndsWith("/formulario") == true
+            ? "Muitos envios a partir deste endereço. Aguarde alguns minutos ou fale conosco pelo WhatsApp."
+            : "Muitas tentativas de login a partir deste endereço. Aguarde um minuto e tente de novo.", ct));
 });
 
 var app = builder.Build();
@@ -411,6 +418,30 @@ paginaImovel.MapPost("{slug}/contato", async (string slug, string? o, HttpContex
     if (c.User.Identity?.IsAuthenticated != true && !PaginasImovelService.EhRobo(c.Request.Headers.UserAgent))
         await s.RegistrarEventoAsync(slug, PaginaImovelEvento.Whatsapp, PaginasImovelService.Origem(o, null), c.RequestAborted);
     return Results.NoContent();
+}).DisableAntiforgery();
+// formulário de contato da página: vira lead no CRM. Com JavaScript responde JSON (mensagem na própria página);
+// sem JavaScript, volta para a página com ?contato=ok|erro. Formulário público: sem antiforgery, com limite por IP.
+paginaImovel.MapPost("{slug}/formulario", async (string slug, HttpContext c, ContatoPaginaService s) =>
+{
+    var f = await c.Request.ReadFormAsync(c.RequestAborted);
+    var form = new ContatoPaginaForm
+    {
+        Nome = f["nome"].ToString(), Telefone = f["telefone"].ToString(), Mensagem = f["mensagem"].ToString(),
+        Consentimento = f["consentimento"].ToString() is "on" or "true", Site = f["site"].ToString(),
+    };
+    var porScript = c.Request.Headers["X-Requested-With"] == "fetch";
+    string? erro = null;
+    try
+    {
+        if (!await s.EnviarAsync(slug, form, PaginasImovelService.Origem(f["o"].ToString(), null), c.RequestAborted))
+            return Results.NotFound();
+    }
+    catch (Exception ex) when (ex is RegraNegocioException or ServicoIndisponivelException)
+    {
+        erro = ex.Message;
+    }
+    if (porScript) return erro is null ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, erro });
+    return Results.Redirect($"/{PaginasImovelService.Caminho(slug)}?contato={(erro is null ? "ok" : "erro")}#contato");
 }).DisableAntiforgery();
 paginaImovel.MapGet("{slug}/compartilhar.jpg", async (string slug, HttpContext c, PaginasImovelService s) =>
 {
