@@ -13,7 +13,7 @@
         </label>
         <label class="campo">
             <span>Conta</span>
-            <select class="input" @bind="conta">
+            <select @key="contas" class="input" @bind="conta">
                 <option value="">Selecione…</option>
                 @foreach (var c in contas) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
             </select>

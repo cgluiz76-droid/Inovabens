@@ -45,7 +45,7 @@ else
                 <div class="grade-4">
                     <label class="campo col-2">
                         <span>Matrícula a dividir</span>
-                        <select class="input" @bind="origemId">
+                        <select @key="detalhe.Desmembraveis" class="input" @bind="origemId">
                             @foreach (var o in detalhe.Desmembraveis)
                             {
                                 <option value="@o.Id">@o.Codigo@(o.Id == detalhe.Id ? " (matrícula de origem)" : " (área remanescente)")@(o.AreaM2 is { } a ? $" · {a:N2} m²" : "")</option>

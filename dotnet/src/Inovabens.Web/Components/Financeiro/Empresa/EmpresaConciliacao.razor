@@ -10,7 +10,7 @@
     <div class="linha-form">
         <label class="campo-inline">
             <span>Conta</span>
-            <select class="input" @bind="ContaEscolhida" @bind:after="Carregar">
+            <select @key='("ContaEscolhida", contas)' class="input" @bind="ContaEscolhida" @bind:after="Carregar">
                 <option value="">Selecione…</option>
                 @foreach (var c in contas) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
             </select>
@@ -157,7 +157,7 @@ else if (contas.Count == 0 && carregou)
             <div class="fin-parte">
                 <label class="campo">
                     <span>Categoria @(criar.Partes.Count > 1 ? i + 1 : "")</span>
-                    <select class="input" value="@parte.CategoriaId" @onchange="e => parte.CategoriaId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                    <select @key="categorias" class="input" value="@parte.CategoriaId" @onchange="e => parte.CategoriaId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
                         <option value="">Selecione…</option>
                         @foreach (var g in categorias.Where(c => c.Ativa && c.Tipo == (criando.Valor > 0 ? TipoCategoriaEmpresa.ENTRADA : TipoCategoriaEmpresa.SAIDA)).GroupBy(c => c.Grupo))
                         {
@@ -239,7 +239,7 @@ else if (contas.Count == 0 && carregou)
         <p class="pequeno mudo">@Texto.Data(transferindo.Data) · @transferindo.Descricao · <b>@Texto.Moeda(transferindo.Valor)</b></p>
         <label class="campo">
             <span>@(transferindo.Valor < 0 ? "O dinheiro foi para" : "O dinheiro veio de")</span>
-            <select class="input" @bind="outraConta">
+            <select @key='("outraConta", contas)' class="input" @bind="outraConta">
                 <option value="">Selecione…</option>
                 @foreach (var c in contas.Where(c => c.Conta.Id != contaId)) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
             </select>

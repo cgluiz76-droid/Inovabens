@@ -138,7 +138,7 @@ else
                     <option value="@s">@Texto.Rotulo(s)</option>
                 }
             </select>
-            <select class="input filtro" aria-label="Tipo" @bind="tipo" @bind:after="Filtrar">
+            <select @key="tipos" class="input filtro" aria-label="Tipo" @bind="tipo" @bind:after="Filtrar">
                 <option value="">Todos os tipos</option>
                 @foreach (var t in tipos)
                 {
@@ -155,7 +155,7 @@ else
             </select>
             @if (!Usuario.EscopoProprio)
             {
-                <select class="input filtro" aria-label="Corretor" @bind="corretor" @bind:after="Filtrar">
+                <select @key="corretores" class="input filtro" aria-label="Corretor" @bind="corretor" @bind:after="Filtrar">
                     <option value="">Todos os corretores</option>
                     @foreach (var c in corretores)
                     {

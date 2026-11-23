@@ -25,7 +25,7 @@
                     <label for="tipo-regularizacao">Tipo de regularização *</label>
                     @* lista do cadastro (Administração → Cadastros); se o tipo não estiver lá, "+ Novo" cadastra num pop-up *@
                     <div class="com-novo">
-                        <InputSelect id="tipo-regularizacao" class="input" @bind-Value="form.Tipo">
+                        <InputSelect @key="tipos" id="tipo-regularizacao" class="input" @bind-Value="form.Tipo">
                             <option value="">Selecione…</option>
                             @foreach (var t in tipos)
                             {
@@ -52,7 +52,7 @@
                 <div class="campo">
                     <label for="profissional-regularizacao">Profissional</label>
                     <div class="com-novo">
-                        <select id="profissional-regularizacao" class="input" @bind="ProfissionalSelecionado">
+                        <select @key="pessoas" id="profissional-regularizacao" class="input" @bind="ProfissionalSelecionado">
                             <option value="">(nenhum)</option>
                             @foreach (var p in pessoas)
                             {

@@ -244,7 +244,7 @@ else
                 {
                     <label class="campo col-2">
                         <span>Pessoa *</span>
-                        <InputSelect class="input" @bind-Value="novo.PessoaId">
+                        <InputSelect @key="pessoas" class="input" @bind-Value="novo.PessoaId">
                             <option value="">Selecione…</option>
                             @foreach (var p in pessoas)
                             {

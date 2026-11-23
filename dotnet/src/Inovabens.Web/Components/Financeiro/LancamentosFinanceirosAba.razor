@@ -56,7 +56,7 @@
         </label>
         <label class="campo-inline">
             <span>Conta</span>
-            <select class="input" @bind="ContaFiltro">
+            <select @key='("ContaFiltro", contas)' class="input" @bind="ContaFiltro">
                 <option value="">Todas</option>
                 @foreach (var c in contas)
                 {
@@ -306,7 +306,7 @@
                 <label class="campo col-2">
                     <span>Conta orçamentária</span>
                     <div class="com-novo">
-                        <select class="input" @bind="ContaForm">
+                        <select @key='("ContaForm", contas)' class="input" @bind="ContaForm">
                             <option value="">Selecione…</option>
                             @foreach (var c in contas.Where(c => c.Tipo == form.Tipo && (c.Ativo || c.Id == form.ContaId)))
                             {
@@ -334,7 +334,7 @@
                     @* opcional: quando a imobiliária paga/recebe pelo banco dela, o lançamento entra no saldo e na conciliação da conta *@
                     <label class="campo col-2">
                         <span>Conta bancária da imobiliária (opcional)</span>
-                        <select class="input" @bind="ContaBancariaForm">
+                        <select @key='("ContaBancariaForm", contasBancarias)' class="input" @bind="ContaBancariaForm">
                             <option value="">Não passou pela conta da imobiliária</option>
                             @foreach (var c in contasBancarias.Where(c => c.Conta.Ativa || c.Conta.Id == form.ContaBancariaId))
                             {
@@ -468,7 +468,7 @@
                     {
                         <label class="campo">
                             <span>Conta bancária da imobiliária</span>
-                            <select class="input" @bind="ContaBancariaConfirmacao">
+                            <select @key='("ContaBancariaConfirmacao", contasBancarias)' class="input" @bind="ContaBancariaConfirmacao">
                                 <option value="">Sem alteração</option>
                                 @foreach (var c in contasBancarias.Where(c => c.Conta.Ativa)) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
                             </select>

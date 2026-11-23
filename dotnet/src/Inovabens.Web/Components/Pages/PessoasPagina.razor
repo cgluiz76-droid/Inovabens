@@ -28,7 +28,7 @@
 <div class="filtros">
     <input class="input busca" placeholder="Buscar por nome, CPF/CNPJ, e-mail ou telefone…"
            @bind="termo" @bind:event="oninput" @bind:after="AoDigitar" />
-    <select class="input filtro" aria-label="Papel" @bind="papel" @bind:after="Filtrar">
+    <select @key="perfis" class="input filtro" aria-label="Papel" @bind="papel" @bind:after="Filtrar">
         <option value="">Todos os perfis</option>
         @foreach (var p in perfis)
         {

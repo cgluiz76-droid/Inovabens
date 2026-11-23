@@ -91,7 +91,7 @@
                 <div class="campo">
                     <label for="comprador-investimento">Comprador</label>
                     <div class="com-novo">
-                        <select id="comprador-investimento" class="input" @bind="Comprador">
+                        <select @key="pessoas" id="comprador-investimento" class="input" @bind="Comprador">
                             <option value="">—</option>
                             @foreach (var p in pessoas)
                             {

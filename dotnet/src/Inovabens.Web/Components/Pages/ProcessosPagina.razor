@@ -31,7 +31,7 @@
     <div class="filtros-crm">
         <label class="filtro-imovel">
             <span class="pequeno mudo">Responsável</span>
-            <select class="input" value="@responsavelFiltro" @onchange="FiltrarResponsavel" aria-label="Filtrar por responsável">
+            <select @key='("responsavelFiltro", responsaveis)' class="input" value="@responsavelFiltro" @onchange="FiltrarResponsavel" aria-label="Filtrar por responsável">
                 <option value="">Todos</option>
                 <option value="eu">Só os meus</option>
                 <option value="sem">Sem responsável</option>
@@ -136,7 +136,7 @@ else
                                         <summary class="btn-icone" title="Mais ações" aria-label="Mais ações">⋯</summary>
                                         <div class="menu-cartao-itens">
                                             <label class="pequeno">Mover para</label>
-                                            <select class="input mini" value="@col.Estagio.Id" @onchange="e => MoverPara(c, e.Value?.ToString())" aria-label="Mover para">
+                                            <select @key="colunas" class="input mini" value="@col.Estagio.Id" @onchange="e => MoverPara(c, e.Value?.ToString())" aria-label="Mover para">
                                                 @foreach (var e in colunas)
                                                 {
                                                     <option value="@e.Estagio.Id">→ @e.Estagio.Nome</option>
@@ -189,7 +189,7 @@ else
                 {
                     <label class="campo">
                         <span>Responsável</span>
-                        <InputSelect class="input" @bind-Value="form.ResponsavelId">
+                        <InputSelect @key='("formResponsavelId", responsaveis)' class="input" @bind-Value="form.ResponsavelId">
                             <option value="">Sem responsável</option>
                             @foreach (var r in responsaveis)
                             {

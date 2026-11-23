@@ -62,7 +62,7 @@
             <DataAnnotationsValidator />
             <label class="campo">
                 <span>Usuário *</span>
-                <InputSelect class="input" @bind-Value="form.UsuarioId" disabled="@(editando is not null)">
+                <InputSelect @key="usuarios" class="input" @bind-Value="form.UsuarioId" disabled="@(editando is not null)">
                     <option value="">Selecione…</option>
                     @foreach (var u in usuarios)
                     {

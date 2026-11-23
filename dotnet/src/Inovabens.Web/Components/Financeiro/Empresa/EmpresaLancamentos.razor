@@ -26,14 +26,14 @@
         </label>
         <label class="campo-inline">
             <span>Conta</span>
-            <select class="input" @bind="ContaFiltro" @bind:after="Carregar">
+            <select @key="contas" class="input" @bind="ContaFiltro" @bind:after="Carregar">
                 <option value="">Todas</option>
                 @foreach (var c in contas) { <option value="@c.Conta.Id">@c.Conta.Nome</option> }
             </select>
         </label>
         <label class="campo-inline">
             <span>Categoria</span>
-            <select class="input" @bind="CategoriaFiltro" @bind:after="Carregar">
+            <select @key="categorias" class="input" @bind="CategoriaFiltro" @bind:after="Carregar">
                 <option value="">Todas</option>
                 @foreach (var g in categorias.GroupBy(c => c.Grupo))
                 {

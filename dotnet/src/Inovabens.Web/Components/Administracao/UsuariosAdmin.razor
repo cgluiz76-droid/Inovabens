@@ -63,7 +63,7 @@
             </label>
             <label class="campo">
                 <span>Perfil *</span>
-                <InputSelect class="input" @bind-Value="form.PerfilId" disabled="@(editandoId == Usuario.Id)">
+                <InputSelect @key="perfis" class="input" @bind-Value="form.PerfilId" disabled="@(editandoId == Usuario.Id)">
                     <option value="">Selecione…</option>
                     @foreach (var p in perfis)
                     {

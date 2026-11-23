@@ -11,7 +11,7 @@
     @foreach (var it in itens)
     {
         <div class="linha-itens">
-            <select class="input w-pessoa" aria-label="Proprietário" disabled="@(!Editar)" value="@(it.PessoaId?.ToString() ?? "")"
+            <select @key="pessoas" class="input w-pessoa" aria-label="Proprietário" disabled="@(!Editar)" value="@(it.PessoaId?.ToString() ?? "")"
                     @onchange="e => it.PessoaId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
                 <option value="">Selecione…</option>
                 @foreach (var p in pessoas)

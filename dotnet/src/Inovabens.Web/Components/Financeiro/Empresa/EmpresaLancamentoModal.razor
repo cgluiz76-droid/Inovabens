@@ -21,7 +21,7 @@
         <div class="grade-2">
             <label class="campo col-2">
                 <span>Categoria *</span>
-                <select class="input" @bind="Categoria">
+                <select @key='("Categoria", categorias)' class="input" @bind="Categoria">
                     <option value="">Selecione…</option>
                     @foreach (var g in categorias.Where(c => c.Tipo == Form.Tipo && (c.Ativa || c.Id == Form.CategoriaId)).GroupBy(c => c.Grupo))
                     {
@@ -53,7 +53,7 @@
             </label>
             <label class="campo">
                 <span>Conta / cartão</span>
-                <select class="input" @bind="Conta" @bind:after="AoMudarConta">
+                <select @key="contas" class="input" @bind="Conta" @bind:after="AoMudarConta">
                     <option value="">@(Form.Pago ? "Selecione…" : "Definir ao pagar")</option>
                     @foreach (var c in contas.Where(c => c.Conta.Ativa || c.Conta.Id == Form.ContaId))
                     {
@@ -95,7 +95,7 @@
                         </label>
                         <label class="campo">
                             <span>Categoria da taxa</span>
-                            <select class="input" @bind="CategoriaTaxa">
+                            <select @key='("CategoriaTaxa", categorias)' class="input" @bind="CategoriaTaxa">
                                 <option value="">Selecione…</option>
                                 @foreach (var c in categorias.Where(c => c.Ativa && c.Tipo == TipoCategoriaEmpresa.ENTRADA && c.Grupo == GrupoCategoriaEmpresa.RECEITA))
                                 {
