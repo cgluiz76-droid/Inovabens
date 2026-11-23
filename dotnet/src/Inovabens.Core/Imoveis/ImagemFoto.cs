@@ -88,6 +88,47 @@ public static class ImagemFoto
         return versoes;
     }
 
+    /// <summary>Tamanho da imagem de prévia dos links (Open Graph): 1200×630 é o padrão de WhatsApp, Facebook e LinkedIn.</summary>
+    public const int CompartilhamentoLargura = 1200, CompartilhamentoAltura = 630;
+    /// <summary>O WhatsApp descarta a prévia de imagens grandes (relatos de ~300 KB): fica abaixo com folga.</summary>
+    public const int CompartilhamentoMaxBytes = 280 * 1024;
+
+    /// <summary>
+    /// Imagem da prévia do link: a foto recortada no centro em 1200×630, em JPEG (o WhatsApp não mostra WebP em todos os
+    /// aparelhos), baixando a qualidade até caber no limite. Null se a foto não decodificar.
+    /// </summary>
+    public static byte[]? Compartilhamento(byte[] dados)
+    {
+        using var codec = SKCodec.Create(new SKMemoryStream(dados));
+        if (codec is null) return null;
+        using var decodificada = SKBitmap.Decode(codec);
+        if (decodificada is null) return null;
+        using var orientada = Orientar(decodificada, codec.EncodedOrigin);
+        var b = orientada ?? decodificada;
+
+        const double proporcao = CompartilhamentoLargura / (double)CompartilhamentoAltura;
+        var (w, h) = b.Width / (double)b.Height > proporcao
+            ? ((int)Math.Round(b.Height * proporcao), b.Height)
+            : (b.Width, (int)Math.Round(b.Width / proporcao));
+        var origem = SKRectI.Create((b.Width - w) / 2, (b.Height - h) / 2, w, h);
+        using var saida = new SKBitmap(CompartilhamentoLargura, CompartilhamentoAltura);
+        using (var c = new SKCanvas(saida))
+        {
+            c.Clear(SKColors.White);
+            using var imagem = SKImage.FromBitmap(b);
+            c.DrawImage(imagem, origem, SKRect.Create(CompartilhamentoLargura, CompartilhamentoAltura), new SKSamplingOptions(SKCubicResampler.Mitchell));
+        }
+        using var final = SKImage.FromBitmap(saida);
+        byte[]? jpeg = null;
+        for (var q = 82; q >= 40; q -= 8)
+        {
+            using var d = final.Encode(SKEncodedImageFormat.Jpeg, q);
+            jpeg = d?.ToArray();
+            if (jpeg is null || jpeg.Length <= CompartilhamentoMaxBytes) break;
+        }
+        return jpeg;
+    }
+
     private static byte[]? Converter(byte[] dados, int? ladoMaximo, int qualidade, SKEncodedImageFormat formato = SKEncodedImageFormat.Jpeg)
     {
         using var codec = SKCodec.Create(new SKMemoryStream(dados));

@@ -1,0 +1,326 @@
+@* Página exclusiva do imóvel (landing page) em /imovel/{slug}: o link que se manda a clientes e investidores.
+   Abre sem login quando publicada; mostra só o que é público no cadastro (fotos e características públicas, endereço
+   exato só se for público). Conteúdo dos blocos editado na aba "Página" do imóvel. *@
+@using System.Globalization
+@inject InovabensOpcoes Op
+
+<SiteMoldura Avulsa Titulo="@TituloAba" Descricao="@Descricao" Canonico="@Caminho" Imagem="@ImagemPrevia"
+             DadosEstruturados="@Estruturados" Indexavel="@(Op.SitePublicoUrl is not null && !Dados.Previa)"
+             MensagemWhatsapp="@MensagemWhatsapp" Faixa="@(Dados.Previa ? FaixaRascunho : null)">
+    <ChildContent>
+        <main class="lp">
+            <section class="lp-hero">
+                @if (Capa is { } capa)
+                {
+                    <img class="lp-hero-foto" src="@capa.Src" srcset="@Srcset(capa)" sizes="100vw" alt="@(capa.Legenda ?? Pg.Titulo)"
+                         fetchpriority="high" decoding="sync" />
+                }
+                <div class="miolo lp-hero-miolo">
+                    <span class="rotulo">@TipoRotulo @(Locacao ? "para alugar" : "à venda")@(Onde.Length > 0 ? " · " + Onde : "")</span>
+                    <h1>@Pg.Titulo</h1>
+                    @if (Pg.Chamada is { } chamada) { <p class="lp-chamada">@chamada</p> }
+                    <div class="hero-atalhos">
+                        <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener"><svg class="ico"><use href="#i-zap" /></svg> Falar no WhatsApp</a>
+                        @if (Dados.Fotos.Count > 0)
+                        {
+                            <button type="button" class="btn btn-claro" data-luz="0"><svg class="ico"><use href="#i-fotos" /></svg> Ver as @Dados.Fotos.Count fotos</button>
+                        }
+                    </div>
+                </div>
+            </section>
+
+            @if (C.Destaques.Count > 0)
+            {
+                <div class="miolo">
+                    <ul class="lp-destaques" aria-label="Destaques">
+                        @foreach (var d in C.Destaques)
+                        {
+                            <li><b class="num">@d.Valor</b><span>@d.Rotulo</span></li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <div class="miolo imovel-grade lp-grade">
+                <div style="min-width:0">
+                    @foreach (var s in C.Secoes)
+                    {
+                        <section class="bloco">
+                            @if (s.Titulo.Length > 0) { <h2>@s.Titulo</h2> }
+                            <div class="descricao">
+                                @foreach (var p in Paragrafos(s.Texto))
+                                {
+                                    if (p.Itens is { } itens)
+                                    {
+                                        <ul class="carac">@foreach (var it in itens) { <li><svg class="ico"><use href="#i-ok" /></svg>@it</li> }</ul>
+                                    }
+                                    else { <p>@p.Texto</p> }
+                                }
+                            </div>
+                        </section>
+                    }
+
+                    @if (C.Diferenciais.Count > 0)
+                    {
+                        <section class="bloco">
+                            <h2>Diferenciais</h2>
+                            <ul class="carac lp-diferenciais">
+                                @foreach (var d in C.Diferenciais) { <li><svg class="ico"><use href="#i-ok" /></svg>@d</li> }
+                            </ul>
+                        </section>
+                    }
+
+                    @if (Dados.Fotos.Count > 1)
+                    {
+                        <section class="bloco">
+                            <h2>Fotos</h2>
+                            <div class="lp-galeria">
+                                @foreach (var (f, k) in Dados.Fotos.Take(9).Select((f, k) => (f, k)))
+                                {
+                                    <button type="button" data-luz="@k" aria-label="Ampliar foto @(k + 1) de @Dados.Fotos.Count">
+                                        <img src="@f.Pequena" srcset="@Srcset(f)" sizes="(max-width: 760px) 50vw, 260px" alt="@(f.Legenda ?? Pg.Titulo)"
+                                             loading="lazy" decoding="async" width="400" height="300" />
+                                    </button>
+                                }
+                            </div>
+                            @if (Dados.Fotos.Count > 9)
+                            {
+                                <button type="button" class="btn btn-linha" data-luz="9"><svg class="ico"><use href="#i-fotos" /></svg> Ver todas as @Dados.Fotos.Count fotos</button>
+                            }
+                        </section>
+                    }
+
+                    @if (YoutubeId is not null)
+                    {
+                        <section class="bloco">
+                            <h2>Vídeo</h2>
+                            <div class="video-quadro">
+                                <iframe src="https://www.youtube-nocookie.com/embed/@YoutubeId" title="Vídeo do imóvel" loading="lazy"
+                                        allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen></iframe>
+                            </div>
+                        </section>
+                    }
+
+                    @if (C.MostrarFicha && Ficha.Count > 0)
+                    {
+                        <section class="bloco">
+                            <h2>Ficha técnica</h2>
+                            <dl class="ficha-dados">
+                                @foreach (var (rotulo, valor) in Ficha) { <div><dt>@rotulo</dt><dd>@valor</dd></div> }
+                            </dl>
+                        </section>
+                    }
+
+                    @if (C.MostrarMapa && ConsultaMapa is not null)
+                    {
+                        <section class="bloco">
+                            <h2>Localização</h2>
+                            <div class="mapa-quadro">
+                                @* fachada: o mapa do Google só carrega quando o visitante pede (web.dev/articles/third-party-facades) *@
+                                <button type="button" class="mapa-fachada" data-mapa="https://www.google.com/maps?q=@ConsultaMapa&t=k&z=@(Im.EnderecoPublico ? 17 : 13)&output=embed">
+                                    <svg class="ico"><use href="#i-mapa" /></svg> Ver no mapa
+                                </button>
+                            </div>
+                            @if (!Im.EnderecoPublico)
+                            {
+                                <p class="mudo" style="font-size:.85rem">Mostramos a região aproximada. O endereço exato é informado no atendimento.</p>
+                            }
+                        </section>
+                    }
+
+                    @if (C.Perguntas.Count > 0)
+                    {
+                        <section class="bloco">
+                            <h2>Perguntas frequentes</h2>
+                            <div class="lp-perguntas">
+                                @foreach (var p in C.Perguntas)
+                                {
+                                    <details><summary>@p.Pergunta</summary><p>@p.Resposta</p></details>
+                                }
+                            </div>
+                        </section>
+                    }
+                </div>
+
+                <aside class="contato" aria-label="Fale com a Inovabens">
+                    @if (C.MostrarPreco)
+                    {
+                        <div>
+                            <span class="mudo" style="font-size:.82rem">@(Locacao ? "Aluguel" : "Valor")</span>
+                            <div class="preco num">@PrecoTexto</div>
+                            @if (Custos.Count > 0) { <div class="mudo num" style="font-size:.84rem">@string.Join(" · ", Custos)</div> }
+                        </div>
+                    }
+                    @if (C.Condicoes is { } cond)
+                    {
+                        <div class="lp-condicoes"><b>Condições</b><p>@cond</p></div>
+                    }
+                    <div class="corretor">
+                        <span class="avatar">@Iniciais</span>
+                        <div><b>@(Dados.CorretorNome ?? "Equipe Inovabens")</b><div class="mudo" style="font-size:.82rem">Inova Bens · CRECI 50457-J</div></div>
+                    </div>
+                    <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-zap" /></svg> Conversar no WhatsApp</a>
+                    <p class="mudo" style="font-size:.8rem">Referência @Codigo</p>
+                </aside>
+            </div>
+
+            <section class="lp-cta">
+                <div class="miolo">
+                    <h2>Quer conhecer pessoalmente?</h2>
+                    <p>Fale com a Inova Bens e agende uma visita ao @Codigo.</p>
+                    <a class="btn btn-ouro" href="@LinkWhatsapp" target="_blank" rel="noopener"><svg class="ico"><use href="#i-zap" /></svg> Agendar pelo WhatsApp</a>
+                </div>
+            </section>
+        </main>
+    </ChildContent>
+    <Scripts>
+        @if (Dados.Fotos.Count > 0)
+        {
+            <dialog class="luz" id="luz" aria-label="Fotos do imóvel">
+                <div class="luz-topo"><span class="num" id="luzConta"></span><button type="button" class="btn-ico" id="luzFechar" aria-label="Fechar">✕</button></div>
+                <div class="luz-palco">
+                    <button type="button" class="luz-nav ant" id="luzAnt" aria-label="Foto anterior">‹</button>
+                    <img id="luzFoto" alt="" />
+                    <button type="button" class="luz-nav prox" id="luzProx" aria-label="Próxima foto">›</button>
+                </div>
+                <div class="luz-legenda" id="luzLegenda"></div>
+            </dialog>
+            <script id="fotos-dados" type="application/json">@((MarkupString)FotosJson)</script>
+            <script>
+                (() => {
+                    const fotos = JSON.parse(document.getElementById("fotos-dados").textContent);
+                    const luz = document.getElementById("luz"), img = document.getElementById("luzFoto");
+                    let atual = 0;
+                    const mostrar = k => {
+                        atual = (k + fotos.length) % fotos.length;
+                        img.src = fotos[atual].src;
+                        img.alt = fotos[atual].legenda || "";
+                        document.getElementById("luzLegenda").textContent = fotos[atual].legenda || "";
+                        document.getElementById("luzConta").textContent = `${atual + 1} / ${fotos.length}`;
+                        new Image().src = fotos[(atual + 1) % fotos.length].src;
+                    };
+                    document.querySelectorAll("[data-luz]").forEach(b => b.addEventListener("click", () => { mostrar(+b.dataset.luz); luz.showModal(); }));
+                    document.getElementById("luzAnt").onclick = () => mostrar(atual - 1);
+                    document.getElementById("luzProx").onclick = () => mostrar(atual + 1);
+                    document.getElementById("luzFechar").onclick = () => luz.close();
+                    luz.addEventListener("keydown", e => { if (e.key === "ArrowLeft") mostrar(atual - 1); if (e.key === "ArrowRight") mostrar(atual + 1); });
+                    let x0 = null;
+                    luz.addEventListener("touchstart", e => x0 = e.touches[0].clientX, { passive: true });
+                    luz.addEventListener("touchend", e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 50) mostrar(atual + (dx < 0 ? 1 : -1)); x0 = null; });
+                })();
+            </script>
+        }
+        <script>
+            document.querySelectorAll("[data-mapa]").forEach(b => b.addEventListener("click", () => {
+                const f = document.createElement("iframe");
+                f.src = b.dataset.mapa; f.title = "Mapa da localização"; f.referrerPolicy = "no-referrer-when-downgrade";
+                b.replaceWith(f); f.focus();
+            }, { once: true }));
+        </script>
+    </Scripts>
+</SiteMoldura>
+
+@code {
+    [Parameter, EditorRequired] public PaginaPublica Dados { get; set; } = default!;
+
+    private sealed record Paragrafo(string? Texto, IReadOnlyList<string>? Itens);
+    private static readonly CultureInfo Br = Texto.PtBr;
+
+    private PaginaImovel Pg => Dados.Pagina;
+    private ConteudoPagina C => Dados.Conteudo;
+    private Imovel Im => Dados.Imovel;
+    private bool Locacao => Im.Finalidade == FinalidadeImovel.LOCACAO;
+    private string Codigo => Im.Referencia ?? Im.Codigo;
+    private string TipoRotulo => Im.Subtipo ?? Texto.Rotulo(Im.Tipo);
+    private FotoPagina? Capa => Dados.Fotos.Count > 0 ? Dados.Fotos[0] : null;
+    private string Caminho => PaginasImovelService.Caminho(Pg.Slug);
+    private string Onde => string.Join(" - ", new[] { string.Join(", ", new[] { Im.Bairro, Im.Cidade }.Where(x => !string.IsNullOrWhiteSpace(x))), Im.Uf }
+        .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+    private string TituloAba => Pg.TituloSeo ?? $"{Pg.Titulo} · Inovabens";
+    private string Descricao => Pg.DescricaoSeo ?? DadosSite.Resumo(string.Join(". ", new[] { Pg.Chamada?.TrimEnd('.', ' '), Pg.Titulo }.Where(x => !string.IsNullOrEmpty(x))));
+    /// <summary>Prévia do link (WhatsApp, e-mail): JPEG 1200×630 gerado da foto de abertura; ?v= muda quando a foto muda.</summary>
+    private string? ImagemPrevia => Capa is null ? null : $"{Caminho}/compartilhar.jpg?v={PaginasImovelService.VersaoImagem(Dados)}";
+
+    private IReadOnlyList<string> Estruturados =>
+    [
+        DadosSite.Imobiliaria(Op),
+        DadosSite.Trilha(Op, ("Imóveis", "site"), (Pg.Titulo, Caminho)),
+    ];
+
+    private string MensagemWhatsapp => $"Olá! Vi a página do imóvel {Codigo} ({Pg.Titulo}) e gostaria de mais informações.";
+    private string LinkWhatsapp => $"https://wa.me/{SiteMoldura.Whatsapp}?text=" + Uri.EscapeDataString(MensagemWhatsapp);
+
+    private decimal? Preco => Locacao ? Im.PrecoLocacao : Im.PrecoVenda ?? Im.PrecoLocacao;
+    private string PrecoTexto => Preco is { } p ? p.ToString("C0", Br) + (Locacao ? "/mês" : "") : "Consulte";
+    private List<string> Custos => [.. new[]
+    {
+        Im.ValorCondominio is { } c ? $"Condomínio {c.ToString("C0", Br)}" : null,
+        Im.ValorIptu is { } i ? $"IPTU {i.ToString("C0", Br)}" : null,
+    }.OfType<string>()];
+
+    private string Iniciais => Dados.CorretorNome is { } n
+        ? string.Concat(n.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(p => char.ToUpperInvariant(p[0])))
+        : "IB";
+
+    private string? YoutubeId => RegrasImovel.IdYoutube(Im.VideoUrl);
+
+    private string? EnderecoCompleto => RegrasImovel.EnderecoParaMapa(Im.Logradouro, Im.Numero, Im.Bairro, Im.Cidade, Im.Uf, null)?.Replace(", Brasil", "");
+    /// <summary>Endereço não público: só bairro e cidade, nunca o ponto exato (mesma regra da ficha do site).</summary>
+    private string? ConsultaMapa => Im.EnderecoPublico
+        ? RegrasImovel.ConsultaMapa(Im.Latitude, Im.Longitude, EnderecoCompleto)
+        : RegrasImovel.ConsultaMapa(null, null, RegrasImovel.EnderecoParaMapa(null, null, Im.Bairro, Im.Cidade, Im.Uf, null));
+
+    private string FotosJson => System.Text.Json.JsonSerializer.Serialize(Dados.Fotos.Select(f => new { src = f.Src, legenda = f.Legenda }))
+        .Replace("<", "\\u003c"); // dentro de <script>: nunca fecha a tag
+
+    private static string Srcset(FotoPagina f) => f.Media is null ? $"{f.Pequena} 400w, {f.Src} 1200w" : $"{f.Pequena} 400w, {f.Media} 800w, {f.Src} 1200w";
+
+    private List<(string, string)> Ficha
+    {
+        get
+        {
+            var r = new List<(string, string)>();
+            void D(string rotulo, string? valor) { if (!string.IsNullOrWhiteSpace(valor)) r.Add((rotulo, valor)); }
+            D("Referência", Codigo);
+            D("Tipo", TipoRotulo);
+            D("Área total", M2(Im.AreaTotalM2));
+            D("Área construída", M2(Im.AreaConstruidaM2));
+            D("Área útil", M2(Im.AreaUtilM2));
+            D("Área do terreno", M2(Im.AreaTerrenoM2));
+            D("Frente", Metros(Im.TerrenoFrenteM));
+            D("Fundo", Metros(Im.TerrenoFundoM));
+            D("Quartos", Im.Quartos is > 0 ? Im.Quartos.ToString() : null);
+            D("Suítes", Im.Suites is > 0 ? Im.Suites.ToString() : null);
+            D("Banheiros", Im.Banheiros is > 0 ? Im.Banheiros.ToString() : null);
+            D("Vagas", Im.Vagas is > 0 ? Im.Vagas.ToString() : null);
+            D("Ano de construção", Im.AnoConstrucao?.ToString());
+            if (Im.EnderecoPublico) D("Endereço", EnderecoCompleto);
+            return r;
+        }
+    }
+
+    private static string? M2(decimal? v) => v is { } m2
+        ? m2 >= 10_000 ? $"{m2.ToString("N0", Br)} m² · {(m2 / 10_000).ToString("0.##", Br)} ha" : $"{m2.ToString(m2 % 1 == 0 ? "N0" : "N2", Br)} m²"
+        : null;
+    private static string? Metros(decimal? v) => v is { } x ? $"{x.ToString(x % 1 == 0 ? "N0" : "N2", Br)} m" : null;
+
+    /// <summary>Parágrafos do texto; linhas com "- " ou "• " viram lista.</summary>
+    private static List<Paragrafo> Paragrafos(string texto)
+    {
+        var r = new List<Paragrafo>();
+        List<string>? lista = null;
+        foreach (var linha in texto.Split('\n').Select(l => l.Trim()))
+        {
+            if (linha.StartsWith("- ", StringComparison.Ordinal) || linha.StartsWith('•')) { (lista ??= []).Add(linha.TrimStart('-', '•', ' ').Trim()); continue; }
+            if (lista is not null) { r.Add(new(null, lista)); lista = null; }
+            if (linha.Length > 0) r.Add(new(linha, null));
+        }
+        if (lista is not null) r.Add(new(null, lista));
+        return r;
+    }
+
+    private RenderFragment FaixaRascunho => @<span>
+        <span class="alerta">Rascunho: só usuários do sistema veem esta página.</span> Publique na aba "Página" do imóvel para o link abrir para clientes.
+    </span>;
+}

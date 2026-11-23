@@ -391,6 +391,53 @@ site.MapGet("imoveis", async (string? finalidade, string? tipo, string? cidade, 
         new { Itens = itens, Todos = todos, Locacao = locacao, Tipo = tipo, Cidade = cidade, Ordem = ordem is "menor" or "maior" ? ordem : null });
 });
 
+// Página exclusiva do imóvel (landing page): /imovel/{slug}, aberta sem login quando publicada (rascunho: só usuários
+// do sistema com acesso ao imóvel). Imagem da prévia do link (WhatsApp, e-mail) e fotos públicas também sem login.
+var paginaImovel = app.MapGroup("/" + PaginasImovelService.Prefixo).AllowAnonymous();
+paginaImovel.MapGet("{slug}", async (string slug, HttpContext c, PaginasImovelService s) =>
+{
+    var pg = await s.PublicaAsync(slug, UsuarioAtual.De(c.User), c.RequestAborted);
+    if (pg is null) return Results.NotFound();
+    c.Response.Headers.CacheControl = pg.Previa ? "private, no-store" : "public, max-age=300";
+    return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.LandingImovel>(new { Dados = pg });
+});
+paginaImovel.MapGet("{slug}/compartilhar.jpg", async (string slug, HttpContext c, PaginasImovelService s) =>
+{
+    var u = UsuarioAtual.De(c.User);
+    if (await s.ImagemCompartilhamentoAsync(slug, u, c.RequestAborted) is not { } img) return Results.NotFound();
+    // o endereço leva a versão da foto (?v=): trocou a foto, muda o endereço; por isso o cache pode ser longo
+    c.Response.Headers.CacheControl = u is null ? "public, max-age=86400" : "private, max-age=300";
+    return Results.File(img.Jpeg, "image/jpeg");
+});
+paginaImovel.MapGet("{slug}/foto/{midiaId:guid}/{arquivo}", async (string slug, Guid midiaId, string arquivo, int? l, HttpContext c,
+    PaginasImovelService s, FotosReduzidas reduzidas) =>
+{
+    var u = UsuarioAtual.De(c.User);
+    var largura = l is { } x && ImoveisService.LarguraValida(x) ? x : ImoveisService.LarguraTela;
+    // a versão reduzida já em memória só é entregue depois de conferir que a foto é pública e a página pode ser vista
+    if (await s.FotoAsync(slug, midiaId, arquivo, u, c.RequestAborted) is not { } original) return Results.NotFound();
+    c.Response.Headers.CacheControl = u is null ? "public, max-age=2592000, immutable" : "private, max-age=86400";
+    return FotosReduzidas.Reduzivel(original.Tipo) && reduzidas.Obter(arquivo, largura, () => original.Dados) is { } webp
+        ? Results.File(webp, "image/webp")
+        : Results.File(original.Dados, original.Tipo);
+});
+// QR code da página (para placa, panfleto, cartão): PNG que abre o link com a origem "qrcode" para a medição.
+imovel.MapGet("pagina/qr.png", async (Guid id, HttpContext c, PaginasImovelService s, InovabensOpcoes op) =>
+{
+    try
+    {
+        var e = await s.EdicaoAsync(UsuarioAtual.De(c.User)!, id);
+        if (e.Pagina is null) return Results.NotFound();
+        var link = Inovabens.Web.Components.Imoveis.PaginaImovelAba.Link(op, e.Pagina.Slug, e.Codigo, "qrcode");
+        using var dados = new QRCoder.QRCodeGenerator().CreateQrCode(link, QRCoder.QRCodeGenerator.ECCLevel.M);
+        var png = new QRCoder.PngByteQRCode(dados).GetGraphic(20);
+        c.Response.Headers.CacheControl = "private, no-store";
+        return Results.File(png, "image/png", $"qrcode-{e.Pagina.Slug}.png");
+    }
+    catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
+    catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
+}).RequireAuthorization(Permissoes.ImoveisVer);
+
 // Fotos e documentos: o Drive é privado, então o sistema confere o acesso ao imóvel e repassa o arquivo.
 // O id do arquivo no Drive vai na URL e muda quando a foto é trocada, por isso o navegador pode guardar em cache.
 // ?l=160|400|800|1200: foto reduzida em WebP (ícone da lista, cartões, galeria) em vez do original de vários MB.

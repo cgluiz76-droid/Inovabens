@@ -1,0 +1,7 @@
+@* Contador de caracteres ao lado do rótulo ("42/155"); passa do ideal → fica em alerta. *@
+<small class="contador @((Texto?.Length ?? 0) > Max ? "alerta" : "mudo")" aria-hidden="true">@(Texto?.Length ?? 0)/@Max</small>
+
+@code {
+    [Parameter] public string? Texto { get; set; }
+    [Parameter] public int Max { get; set; }
+}

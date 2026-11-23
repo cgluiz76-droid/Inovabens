@@ -21,6 +21,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<Imovel> Imoveis => Set<Imovel>();
     public DbSet<ImovelCaracteristica> ImovelCaracteristicas => Set<ImovelCaracteristica>();
     public DbSet<ImovelMidia> ImovelMidias => Set<ImovelMidia>();
+    public DbSet<PaginaImovel> PaginasImovel => Set<PaginaImovel>();
     public DbSet<ImovelProprietario> ImovelProprietarios => Set<ImovelProprietario>();
     public DbSet<ImovelEnvolvido> ImovelEnvolvidos => Set<ImovelEnvolvido>();
     public DbSet<Regularizacao> Regularizacoes => Set<Regularizacao>();
@@ -142,6 +143,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     {
         mb.HasDbFunction(typeof(FuncoesBusca).GetMethod(nameof(FuncoesBusca.Normalizar))!).HasName("busca_normalizar");
         mb.HasDbFunction(typeof(FuncoesBusca).GetMethod(nameof(FuncoesBusca.Digitos))!).HasName("busca_digitos");
+        mb.Entity<PaginaImovel>().Property(x => x.Conteudo).HasColumnType("jsonb");
         mb.Entity<Imovel>(e =>
         {
             e.Property(x => x.Atributos).HasColumnType("jsonb");

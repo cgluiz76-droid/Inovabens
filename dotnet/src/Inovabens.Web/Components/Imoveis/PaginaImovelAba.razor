@@ -1,0 +1,281 @@
+@inherits ComponenteBase
+@inject PaginasImovelService Servico
+@inject InovabensOpcoes Op
+
+@* Aba "Página" do imóvel: edita a página exclusiva (landing page) em /imovel/{endereço}, põe no ar e gera os links de
+   compartilhamento (copiar, WhatsApp, e-mail, QR code), cada um com sua origem (utm) para saber de onde veio a visita.
+   Sem página gravada, a tela já abre com uma sugestão montada do cadastro (nada é gravado até clicar em Salvar). *@
+
+<div class="titulo-secao">
+    <div>
+        <h2>Página do imóvel</h2>
+        <p class="pequeno mudo">Uma página só deste imóvel, com endereço próprio, para mandar a clientes e investidores. Mostra só fotos e dados públicos.</p>
+    </div>
+    @if (dados?.Pagina is { } pg)
+    {
+        <div class="acoes-topo">
+            <span class="pagina-estado @(pg.Publicada ? "no-ar" : "")">@(pg.Publicada ? "No ar" : "Rascunho")</span>
+            <a class="btn-ghost" href="@($"{PaginasImovelService.Caminho(pg.Slug)}?previa=1")" target="_blank" rel="noopener"
+               title="Abre a página numa nova aba, como o cliente vai ver">↗ Ver página</a>
+            @if (Editar)
+            {
+                <button class="@(pg.Publicada ? "btn-ghost" : "btn-primary")" disabled="@Ocupado" @onclick="() => Publicar(!pg.Publicada)">
+                    @(pg.Publicada ? "Tirar do ar" : "Publicar")
+                </button>
+            }
+        </div>
+    }
+</div>
+
+<MensagemErro Texto="@Erro" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@if (dados is null)
+{
+    <p class="mudo">Carregando…</p>
+}
+else
+{
+    @if (dados.Pagina is { Publicada: true } no)
+    {
+        var link = Link(Op, no.Slug, dados.Codigo, "link");
+        <section class="card pagina-compartilhar">
+            <h3>Compartilhar</h3>
+            <div class="pagina-link"><code>@Seo.Base(Op)/@PaginasImovelService.Caminho(no.Slug)</code></div>
+            <div class="acoes">
+                <button type="button" class="btn-ghost" data-copiar="@link" @onclick='() => Sucesso = "Link copiado."'>⧉ Copiar link</button>
+                <a class="btn-ghost" target="_blank" rel="noopener"
+                   href="@("https://wa.me/?text=" + Uri.EscapeDataString($"{no.Titulo}\n{Link(Op, no.Slug, dados.Codigo, "whatsapp")}"))">WhatsApp</a>
+                <a class="btn-ghost"
+                   href="@($"mailto:?subject={Uri.EscapeDataString(no.Titulo)}&body={Uri.EscapeDataString($"{no.Chamada ?? no.Titulo}\n\n{Link(Op, no.Slug, dados.Codigo, "email")}")}")">E-mail</a>
+                <a class="btn-ghost" href="imoveis/@ImovelId/pagina/qr.png" download
+                   title="QR code para placa, folder ou cartão (abre a página com origem qrcode)">QR code</a>
+            </div>
+            @if (Op.SitePublicoUrl is null)
+            {
+                <p class="pequeno mudo">Endereço provisório do sistema. Quando o domínio da Inova Bens for apontado para cá, os links novos passam a usar o domínio e os antigos são redirecionados.</p>
+            }
+        </section>
+    }
+    else if (dados.Pagina is not null)
+    {
+        <p class="pequeno mudo">Em rascunho: o link só abre para usuários do sistema. Clique em <b>Publicar</b> para liberar aos clientes.</p>
+    }
+
+    <EditForm Model="form" OnValidSubmit="Salvar" class="formulario">
+        <DataAnnotationsValidator />
+        <fieldset disabled="@(!Editar)" style="border:0;padding:0;margin:0;min-width:0">
+            <section class="card">
+                <div class="titulo-secao">
+                    <h3>Abertura</h3>
+                    @if (Editar)
+                    {
+                        <button type="button" class="btn-ghost" disabled="@Ocupado" @onclick="Restaurar"
+                                title="Troca os textos pela sugestão montada do cadastro (só grava ao clicar em Salvar)">↺ Sugestão do cadastro</button>
+                    }
+                </div>
+                <label class="campo">
+                    <span>Título * <Contador Texto="@form!.Titulo" Max="120" /></span>
+                    <InputText class="input" @bind-Value="form.Titulo" maxlength="120" />
+                    <ValidationMessage For="() => form.Titulo" />
+                </label>
+                <label class="campo">
+                    <span>Chamada <Contador Texto="@form.Chamada" Max="300" /></span>
+                    <InputTextArea class="input" rows="2" @bind-Value="form.Chamada" maxlength="300" placeholder="Uma ou duas frases que convidam a ler o resto" />
+                </label>
+                <div class="grade-2">
+                    <label class="campo">
+                        <span>Endereço da página *</span>
+                        <div class="pagina-slug"><span class="mudo">/imovel/</span><InputText class="input" @bind-Value="form.Slug" maxlength="100" disabled="@(dados.Pagina?.Publicada == true)" /></div>
+                        <ValidationMessage For="() => form.Slug" />
+                        @if (dados.Pagina?.Publicada == true) { <small class="mudo">Para mudar o endereço, tire a página do ar antes.</small> }
+                    </label>
+                    <label class="campo">
+                        <span>Foto de abertura</span>
+                        <InputSelect class="input" @bind-Value="form.FotoCapaId">
+                            <option value="">Capa do imóvel</option>
+                            @foreach (var (f, k) in dados.Fotos.Select((f, k) => (f, k)))
+                            {
+                                <option value="@f.Id">Foto @(k + 1)@(f.CapaDoImovel ? " (capa)" : "")@(f.Legenda is { } l ? " · " + l : "")</option>
+                            }
+                        </InputSelect>
+                    </label>
+                </div>
+                @if (dados.Fotos.Count == 0)
+                {
+                    <p class="pequeno alerta">O imóvel não tem fotos públicas: a página fica sem fotos e o link sai sem imagem no WhatsApp.</p>
+                }
+                else if (FotoEscolhida is { } fe)
+                {
+                    <img class="pagina-capa" src="@fe.Miniatura" alt="Foto de abertura escolhida" />
+                }
+            </section>
+
+            <section class="card">
+                <h3>Números em destaque <small class="mudo">(até @PaginaForm.MaxDestaques)</small></h3>
+                @foreach (var d in C.Destaques)
+                {
+                    <div class="pagina-linha">
+                        <InputText class="input w-curto" @bind-Value="d.Valor" maxlength="30" placeholder="3.000 m²" />
+                        <InputText class="input" @bind-Value="d.Rotulo" maxlength="40" placeholder="de terreno" />
+                        <button type="button" class="btn-ico" aria-label="Remover destaque" @onclick="() => C.Destaques.Remove(d)">✕</button>
+                    </div>
+                }
+                @if (C.Destaques.Count < PaginaForm.MaxDestaques)
+                {
+                    <button type="button" class="btn-ghost" @onclick="() => C.Destaques.Add(new())">+ Número</button>
+                }
+            </section>
+
+            <section class="card">
+                <h3>Seções de texto <small class="mudo">(linhas começando com "- " viram lista)</small></h3>
+                @foreach (var (s, k) in C.Secoes.Select((s, k) => (s, k)).ToList())
+                {
+                    <div class="pagina-bloco">
+                        <div class="pagina-linha">
+                            <InputText class="input" @bind-Value="s.Titulo" maxlength="100" placeholder="Título da seção" />
+                            <button type="button" class="btn-ico" aria-label="Subir seção" disabled="@(k == 0)" @onclick="() => Mover(C.Secoes, k, -1)">↑</button>
+                            <button type="button" class="btn-ico" aria-label="Descer seção" disabled="@(k == C.Secoes.Count - 1)" @onclick="() => Mover(C.Secoes, k, 1)">↓</button>
+                            <button type="button" class="btn-ico" aria-label="Remover seção" @onclick="() => C.Secoes.Remove(s)">✕</button>
+                        </div>
+                        <InputTextArea class="input" rows="5" @bind-Value="s.Texto" maxlength="4000" />
+                    </div>
+                }
+                @if (C.Secoes.Count < PaginaForm.MaxSecoes)
+                {
+                    <button type="button" class="btn-ghost" @onclick="() => C.Secoes.Add(new())">+ Seção</button>
+                }
+            </section>
+
+            <section class="card">
+                <h3>Diferenciais <small class="mudo">(um por linha, até @PaginaForm.MaxDiferenciais)</small></h3>
+                <textarea class="input" rows="6" @bind="diferenciais" placeholder="Portaria 24 horas&#10;Área de lazer completa"></textarea>
+            </section>
+
+            <section class="card">
+                <h3>Condições e contato</h3>
+                <label class="campo">
+                    <span>Condições comerciais <Contador Texto="@C.Condicoes" Max="1000" /></span>
+                    <InputTextArea class="input" rows="3" @bind-Value="C.Condicoes" maxlength="1000" placeholder="Ex.: aceita permuta; entrada + parcelas direto com o proprietário" />
+                </label>
+                <div class="pagina-opcoes">
+                    <label class="check"><InputCheckbox @bind-Value="C.MostrarPreco" /> Mostrar o preço</label>
+                    <label class="check"><InputCheckbox @bind-Value="C.MostrarFicha" /> Mostrar a ficha técnica</label>
+                    <label class="check"><InputCheckbox @bind-Value="C.MostrarMapa" /> Mostrar o mapa (exato só se o endereço for público)</label>
+                </div>
+            </section>
+
+            <section class="card">
+                <h3>Perguntas frequentes <small class="mudo">(até @PaginaForm.MaxPerguntas)</small></h3>
+                @foreach (var p in C.Perguntas)
+                {
+                    <div class="pagina-bloco">
+                        <div class="pagina-linha">
+                            <InputText class="input" @bind-Value="p.Pergunta" maxlength="200" placeholder="Pergunta" />
+                            <button type="button" class="btn-ico" aria-label="Remover pergunta" @onclick="() => C.Perguntas.Remove(p)">✕</button>
+                        </div>
+                        <InputTextArea class="input" rows="2" @bind-Value="p.Resposta" maxlength="1500" placeholder="Resposta" />
+                    </div>
+                }
+                @if (C.Perguntas.Count < PaginaForm.MaxPerguntas)
+                {
+                    <button type="button" class="btn-ghost" @onclick="() => C.Perguntas.Add(new())">+ Pergunta</button>
+                }
+            </section>
+
+            <section class="card">
+                <h3>Google e prévia do link</h3>
+                <label class="campo">
+                    <span>Título no Google <Contador Texto="@form.TituloSeo" Max="60" /></span>
+                    <InputText class="input" @bind-Value="form.TituloSeo" maxlength="70" placeholder="@form.Titulo" />
+                    <ValidationMessage For="() => form.TituloSeo" />
+                </label>
+                <label class="campo">
+                    <span>Resumo no Google e no WhatsApp <Contador Texto="@form.DescricaoSeo" Max="155" /></span>
+                    <InputTextArea class="input" rows="2" @bind-Value="form.DescricaoSeo" maxlength="170" />
+                    <ValidationMessage For="() => form.DescricaoSeo" />
+                </label>
+            </section>
+        </fieldset>
+        <ValidationSummary />
+        @if (Editar)
+        {
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">@(dados.Pagina is null ? "Criar página" : "Salvar")</button>
+            </div>
+        }
+    </EditForm>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+
+    private PaginaEdicao? dados;
+    private PaginaForm? form;
+    private string diferenciais = "";
+
+    private bool Editar => Usuario.Pode(Permissoes.ImoveisEditar);
+    private ConteudoPagina C => form!.Conteudo;
+    private FotoOpcaoPagina? FotoEscolhida => dados?.Fotos.FirstOrDefault(f => f.Id == form?.FotoCapaId)
+        ?? dados?.Fotos.FirstOrDefault(f => f.CapaDoImovel) ?? dados?.Fotos.FirstOrDefault();
+
+    /// <summary>Link para mandar ao cliente; utm_source diz por onde chegou (link, whatsapp, email, qrcode).</summary>
+    public static string Link(InovabensOpcoes op, string slug, string codigo, string origem) =>
+        $"{Seo.Base(op)}/{PaginasImovelService.Caminho(slug)}?utm_source={origem}&utm_medium=compartilhamento&utm_campaign={Uri.EscapeDataString(codigo)}";
+
+    protected override Task OnParametersSetAsync() => Carregar();
+
+    private async Task Carregar()
+    {
+        await Executar(async () =>
+        {
+            dados = await Servico.EdicaoAsync(Usuario, ImovelId);
+            Usar(dados.Form);
+        });
+    }
+
+    private void Usar(PaginaForm f)
+    {
+        form = f;
+        diferenciais = string.Join("\n", f.Conteudo.Diferenciais);
+    }
+
+    private async Task Restaurar()
+    {
+        var slug = form!.Slug;
+        await Executar(async () =>
+        {
+            var s = await Servico.SugestaoAsync(Usuario, ImovelId);
+            if (dados?.Pagina is not null) s.Slug = slug; // página já gravada: mantém o endereço
+            s.FotoCapaId = form.FotoCapaId;
+            Usar(s);
+            Sucesso = "Sugestão do cadastro aplicada. Revise e clique em Salvar.";
+        });
+    }
+
+    private async Task Salvar()
+    {
+        C.Diferenciais = [.. diferenciais.Split('\n')];
+        if (await Executar(() => Servico.SalvarAsync(Usuario, ImovelId, form!)))
+        {
+            await Carregar();
+            Sucesso = "Página salva.";
+        }
+    }
+
+    private async Task Publicar(bool publicar)
+    {
+        if (await Executar(() => Servico.PublicarAsync(Usuario, ImovelId, publicar)))
+        {
+            await Carregar();
+            Sucesso = publicar ? "Página no ar: o link já abre para clientes." : "Página fora do ar: o link só abre para usuários do sistema.";
+        }
+    }
+
+    private static void Mover<T>(List<T> lista, int k, int passo)
+    {
+        var j = k + passo;
+        if (j < 0 || j >= lista.Count) return;
+        (lista[k], lista[j]) = (lista[j], lista[k]);
+    }
+}

@@ -324,7 +324,8 @@ public sealed class ImoveisService(
             throw new RegraNegocioException(nameof(ImovelForm.Tipo), "Selecione um tipo de imóvel cadastrado.");
     }
 
-    private static readonly string[] ComposicaoImovel = ["imovel_caracteristicas", "imovel_midias"];
+    // vão junto com o imóvel (a página exclusiva sai do ar: só abre para imóvel não excluído)
+    private static readonly string[] ComposicaoImovel = ["imovel_caracteristicas", "imovel_midias", "paginas_imovel"];
 
     /// <summary>Tela de confirmação da exclusão: o que vai junto e os vínculos que impedem.</summary>
     public async Task<PreviaExclusao> PreviaExclusaoAsync(UsuarioAtual u, Guid id)

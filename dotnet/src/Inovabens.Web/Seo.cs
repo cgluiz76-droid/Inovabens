@@ -17,10 +17,12 @@ namespace Inovabens.Web;
 public static class Seo
 {
     public const string PrefixoSite = "/site";
+    /// <summary>Páginas exclusivas dos imóveis (landing pages): /imovel/{slug}.</summary>
+    public const string PrefixoPaginas = "/imovel";
 
-    /// <summary>Página do site que pode ir para o índice (com o site público ligado).</summary>
+    /// <summary>Página do site que pode ir para o índice (com o site público ligado). Rascunho de página leva noindex na própria página.</summary>
     public static bool Indexavel(InovabensOpcoes op, PathString caminho) =>
-        op.SitePublicoUrl is not null && caminho.StartsWithSegments(PrefixoSite);
+        op.SitePublicoUrl is not null && (caminho.StartsWithSegments(PrefixoSite) || caminho.StartsWithSegments(PrefixoPaginas));
 
     /// <summary>Endereço absoluto usado em canônicas, Open Graph e sitemap: o domínio do site, ou o do sistema na prévia.</summary>
     public static string Base(InovabensOpcoes op) => op.SitePublicoUrl ?? op.WebUrl;
@@ -33,8 +35,18 @@ public static class Seo
     public static void UseIndexacao(this WebApplication app)
     {
         var op = app.Services.GetRequiredService<InovabensOpcoes>();
+        // com o domínio próprio ligado, a página do imóvel aberta pelo endereço do sistema (link antigo, enviado antes
+        // da troca do DNS) vai para o domínio: um só endereço por página para o Google e nenhum link perdido.
+        // ?previa=1 (botão "Ver página" do sistema) fica no sistema: o rascunho precisa da sessão, que é deste endereço.
+        var dominio = op.SitePublicoUrl is { } u && Uri.TryCreate(u, UriKind.Absolute, out var d) ? d : null;
         app.Use(async (c, next) =>
         {
+            if (dominio is not null && HttpMethods.IsGet(c.Request.Method) && c.Request.Path.StartsWithSegments(PrefixoPaginas)
+                && !c.Request.Query.ContainsKey("previa") && !string.Equals(c.Request.Host.Host, dominio.Host, StringComparison.OrdinalIgnoreCase))
+            {
+                c.Response.Redirect(op.SitePublicoUrl + c.Request.Path + c.Request.QueryString, permanent: true);
+                return;
+            }
             if (!Indexavel(op, c.Request.Path)) c.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
             await next();
         });
@@ -65,6 +77,11 @@ public static class Seo
                 ("site/imoveis?finalidade=locacao", null),
             };
             paginas.AddRange(imoveis.Select(i => ($"site/imovel/{i.Id}", (DateTime?)i.AtualizadoEm)));
+            // páginas exclusivas publicadas (o imóvel não precisa estar marcado para o site: a página é um anúncio à parte)
+            var exclusivas = await db.PaginasImovel.AsNoTracking()
+                .Where(p => p.Publicada && db.Imoveis.Any(i => i.Id == p.ImovelId && i.ExcluidoEm == null))
+                .OrderByDescending(p => p.AtualizadoEm).Select(p => new { p.Slug, p.AtualizadoEm }).ToListAsync(ct);
+            paginas.AddRange(exclusivas.Select(p => (Inovabens.Core.Imoveis.PaginasImovelService.Caminho(p.Slug), (DateTime?)p.AtualizadoEm)));
             return Results.Text(SitemapXml(op, paginas), "application/xml; charset=utf-8");
         }).AllowAnonymous();
     }

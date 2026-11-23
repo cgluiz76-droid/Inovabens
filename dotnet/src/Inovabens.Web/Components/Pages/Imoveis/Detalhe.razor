@@ -76,6 +76,7 @@ else
             <button class="aba @(aba == Aba.Chaves ? "ativa" : "")" @onclick="() => aba = Aba.Chaves">Chaves</button>
         }
         <button class="aba @(aba == Aba.Redes ? "ativa" : "")" @onclick="() => aba = Aba.Redes">Redes sociais</button>
+        <button class="aba @(aba == Aba.Pagina ? "ativa" : "")" @onclick="() => aba = Aba.Pagina">Página</button>
     </div>
 
     @if (aba == Aba.Ficha)
@@ -126,6 +127,10 @@ else
     {
         <RedesSociaisAba Detalhe="detalhe" />
     }
+    else if (aba == Aba.Pagina)
+    {
+        <PaginaImovelAba ImovelId="Id" />
+    }
     else
     {
         <RegularizacoesAba ImovelId="Id" Editar="Editar" />
@@ -139,7 +144,7 @@ else
 }
 
 @code {
-    private enum Aba { Ficha, Financeiro, Investimento, Regularizacao, Memorandos, Agenda, Interessados, Chaves, Redes }
+    private enum Aba { Ficha, Financeiro, Investimento, Regularizacao, Memorandos, Agenda, Interessados, Chaves, Redes, Pagina }
 
     [Parameter] public Guid Id { get; set; }
     /// <summary>?aba=lancamentos abre direto nos Lançamentos Financeiros (link da tela de títulos em atraso).</summary>
@@ -159,6 +164,7 @@ else
     {
         if (AbaInicial == "lancamentos" && Usuario.Pode(Permissoes.FinanceiroVer)) aba = Aba.Financeiro;
         if (AbaInicial == "chaves" && Usuario.Pode(Permissoes.ChavesVer)) aba = Aba.Chaves;
+        if (AbaInicial == "pagina") aba = Aba.Pagina;
     }
 
     protected override Task OnParametersSetAsync() => Recarregar();

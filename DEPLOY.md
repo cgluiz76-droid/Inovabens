@@ -96,3 +96,28 @@ Tudo em uma VM gratuita: PostgreSQL em contêiner, a aplicação e o Caddy (HTTP
 6. **Backup**: `infra/oracle/backup.sh` grava `pg_dump` em `infra/oracle/backups/` (14 dias). Copie os arquivos para fora da VM com frequência.
 7. **Fotos/documentos** (Google Drive): copie a chave JSON da conta de serviço para `infra/oracle/google-drive.json` na VM (ex.: `scp`), coloque `GOOGLE_DRIVE_ID=...` no `.env` e rode `sudo docker compose up -d` em `infra/oracle/`. Esse arquivo nunca vai para o Git.
 8. A Oracle pode recuperar VMs Always Free ociosas. Converter a conta para *Pay As You Go* evita isso e continua sem custo dentro dos limites grátis.
+
+## 8. Domínio próprio do site e das páginas de imóvel (Fly.io)
+
+Hoje o site público (`/site`) e as páginas exclusivas de imóvel (`/imovel/{endereço}`) rodam no endereço do Fly
+(`https://inovabens.fly.dev`) e saem com `noindex` (o Google não indexa enquanto é teste). Tudo já está pronto para a
+troca; ela depende só de DNS e de uma variável:
+
+1. **Certificado no Fly** (a partir de `dotnet/`): `~/.fly/bin/flyctl certs add www.inovabens.com.br` (repita para
+   `inovabens.com.br` se quiser o domínio sem www). O comando mostra os registros a criar.
+2. **DNS** (no provedor do domínio): `CNAME www → inovabens.fly.dev` (ou os `A`/`AAAA` que o `certs add` indicar para o
+   domínio raiz). Confira com `~/.fly/bin/flyctl certs show www.inovabens.com.br` até aparecer *Issued*.
+3. **Ligar o domínio no sistema**: `~/.fly/bin/flyctl secrets set SITE_PUBLICO_URL=https://www.inovabens.com.br`
+   (reinicia a aplicação). A partir daí:
+   - canonical, `og:url`, `og:image`, sitemap e `robots.txt` passam a usar o domínio, e as páginas publicadas deixam de
+     ter `noindex`;
+   - links antigos em `inovabens.fly.dev/site/...` e `/imovel/...` respondem **301** para o domínio (quem recebeu o link
+     pelo WhatsApp continua chegando); `?previa=1` não redireciona (usado pela equipe para ver rascunhos);
+   - os botões de compartilhar da aba **Página** do imóvel passam a gerar links com o domínio.
+4. **Google Search Console**: adicionar a propriedade do domínio, validar pelo DNS (TXT) e enviar
+   `https://www.inovabens.com.br/sitemap.xml`.
+5. **Enquanto o site novo não substitui o da Imobibrasil**: a raiz do domínio cai no login do sistema. Antes de apontar o
+   domínio principal, mapear os endereços antigos da Imobibrasil (`/imovel/{id}/{texto}`) para as fichas novas pelo
+   código importado (`ImobibrasilId`), para não perder os links que já estão no Google.
+
+Voltar atrás: `flyctl secrets unset SITE_PUBLICO_URL` (volta ao `noindex` e para de redirecionar).
