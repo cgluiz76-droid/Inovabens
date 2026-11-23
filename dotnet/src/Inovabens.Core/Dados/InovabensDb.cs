@@ -39,6 +39,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<ContaOrcamentaria> ContasOrcamentarias => Set<ContaOrcamentaria>();
     public DbSet<LancamentoFinanceiro> LancamentosFinanceiros => Set<LancamentoFinanceiro>();
     public DbSet<FechamentoInvestimento> FechamentosInvestimento => Set<FechamentoInvestimento>();
+    public DbSet<FechamentoRecebimento> FechamentoRecebimentos => Set<FechamentoRecebimento>();
     public DbSet<ComprovanteFinanceiro> ComprovantesFinanceiros => Set<ComprovanteFinanceiro>();
     public DbSet<IndiceSerie> IndicesSerie => Set<IndiceSerie>();
     public DbSet<TaxaFinanciamento> TaxasFinanciamento => Set<TaxaFinanciamento>();
@@ -157,6 +158,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         });
         mb.Entity<ImovelMidia>().Property(x => x.MelhoriaStatus).HasConversion<string>();
         mb.Entity<Desmembramento>().Property(x => x.Situacao).HasConversion<string>();
+        mb.Entity<FechamentoRecebimento>().Property(x => x.Tipo).HasConversion<string>();
         mb.Entity<PostRedes>().Property(x => x.Textos).HasColumnType("jsonb");
         mb.Entity<PostRedesMidia>(e =>
         {

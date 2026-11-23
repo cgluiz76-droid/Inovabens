@@ -1327,3 +1327,12 @@ fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(-
 /* Aba Lotes do empreendimento: código sem quebra e campos da tabela com largura mínima para digitar */
 .tabela-lotes td.codigo { white-space: nowrap; }
 .tabela-lotes .input { min-width: 7rem; }
+.tabela-recebimentos td { vertical-align: top; }
+.tabela-recebimentos .input { min-width: 8rem; }
+/* forma de recebimento: campos lado a lado (parcelas + vencimento; imóvel + valor) */
+.linha-campos { display: flex; flex-wrap: wrap; gap: var(--e-3); }
+.linha-campos .campo { margin: 0; flex: 1 1 12rem; }
+.linha-campos .campo.mini { flex: 0 1 9rem; }
+fieldset.recebimentos { margin-top: var(--e-4); }
+/* envolve as abas da ficha do imóvel só para recriá-las ao trocar de imóvel: não muda o layout */
+.conteudo-abas { display: contents; }

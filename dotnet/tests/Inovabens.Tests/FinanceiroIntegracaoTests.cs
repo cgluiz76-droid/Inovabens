@@ -161,10 +161,12 @@ public class FinanceiroIntegracaoTests
     {
         var servicos = new ServiceCollection();
         foreach (var t in new[] { typeof(AquisicaoService), typeof(LancamentosFinanceirosService), typeof(FechamentoService), typeof(IndicesService),
-                     typeof(RetornoService), typeof(ComprovantesService), typeof(BpoService), typeof(OpcoesService), typeof(FinanceiroEmpresaService) })
+                     typeof(RetornoService), typeof(ComprovantesService), typeof(BpoService), typeof(OpcoesService), typeof(FinanceiroEmpresaService),
+                     typeof(Inovabens.Core.Admin.CadastrosService) })
             servicos.AddSingleton(t, sp.GetRequiredService(t));
         servicos.AddSingleton(sp.GetRequiredService<ILoggerFactory>());
         servicos.AddSingleton<IJSRuntime, SemJs>();
+        servicos.AddSingleton<NavigationManager, SemNavegacao>();
         await using var provedor = servicos.BuildServiceProvider();
         await using var renderer = new HtmlRenderer(provedor, provedor.GetRequiredService<ILoggerFactory>());
         return await renderer.Dispatcher.InvokeAsync(async () =>
@@ -183,6 +185,13 @@ public class FinanceiroIntegracaoTests
             await raiz.QuiescenceTask;
             return raiz.ToHtmlString();
         });
+    }
+
+    /// <summary>A aba Investimento navega até o imóvel recebido em permuta; no render estático não há navegação.</summary>
+    private sealed class SemNavegacao : NavigationManager
+    {
+        public SemNavegacao() => Initialize("http://localhost/", "http://localhost/");
+        protected override void NavigateToCore(string uri, NavigationOptions options) { }
     }
 
     private sealed class SemJs : IJSRuntime

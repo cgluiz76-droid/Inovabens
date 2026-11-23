@@ -125,6 +125,36 @@ public class FechamentoInvestimento
     public FechamentoInvestimento Copia() => (FechamentoInvestimento)MemberwiseClone();
 }
 
+/// <summary>Como a venda foi paga: em dinheiro, parcelado, com um imóvel (permuta) ou com outro bem.</summary>
+public enum TipoRecebimento { DINHEIRO, PARCELADO, PERMUTA_IMOVEL, OUTRO_BEM }
+
+/// <summary>
+/// Forma de recebimento do fechamento. A soma de <see cref="Valor"/> é o valor da venda. Na permuta, <see cref="Valor"/> é
+/// quanto o imóvel recebido paga desta venda e <see cref="ValorBem"/> o valor combinado dele: se o imóvel vale mais, a
+/// diferença é a torna paga pela imobiliária, que entra no custo do imóvel recebido (não no lucro desta venda).
+/// </summary>
+[Table("fechamento_recebimentos")]
+public class FechamentoRecebimento
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ImovelId { get; set; }
+    public int Ordem { get; set; }
+    public TipoRecebimento Tipo { get; set; }
+    public decimal Valor { get; set; }
+    public decimal? ValorBem { get; set; }
+    public string? Descricao { get; set; }
+    public int? Parcelas { get; set; }
+    public DateOnly? PrimeiroVencimento { get; set; }
+    /// <summary>Imóvel recebido em permuta, depois de cadastrado (código novo, com a aquisição já criada).</summary>
+    public Guid? ImovelRecebidoId { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Torna paga pela imobiliária (imóvel recebido vale mais do que a parte dele nesta venda).</summary>
+    [NotMapped] public decimal TornaPaga => Tipo == TipoRecebimento.PERMUTA_IMOVEL && ValorBem > Valor ? ValorBem.Value - Valor : 0;
+
+    public FechamentoRecebimento Copia() => (FechamentoRecebimento)MemberwiseClone();
+}
+
 /// <summary>
 /// Comprovante (nota, recibo, boleto pago) de um lançamento financeiro. O arquivo fica no Google Drive,
 /// em "&lt;pasta do imóvel&gt;/07 - Financeiro/&lt;ano&gt;".

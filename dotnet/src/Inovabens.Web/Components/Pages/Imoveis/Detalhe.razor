@@ -94,6 +94,8 @@ else
         <button class="aba @(aba == Aba.Pagina ? "ativa" : "")" @onclick="() => aba = Aba.Pagina">Página</button>
     </div>
 
+    @* @key: ao ir de um imóvel para outro (link de lote, imóvel recebido em permuta) as abas são recriadas e recarregam *@
+    <div class="conteudo-abas" @key="Id">
     @if (aba == Aba.Ficha)
     {
         <section class="card">
@@ -155,6 +157,7 @@ else
         <RegularizacoesAba ImovelId="Id" Editar="Editar" />
         <EnvioDrive ImovelId="Id" PastaPadrao="SubpastasDrive.Protocolos" AoEnviar="Recarregar" />
     }
+    </div>
 }
 
 @if (previaExclusao is { } previa)
@@ -180,15 +183,28 @@ else
         ? RegrasImovel.LinkGoogleMaps(d.Latitude, d.Longitude, RegrasImovel.EnderecoParaMapa(d.Logradouro, d.Numero, d.Bairro, d.Cidade, d.Uf, d.Cep))
         : null;
 
-    protected override void OnInitialized()
+    private Guid idAberto;
+
+    /// <summary>Aba pedida na URL (?aba=...), aplicada a cada imóvel aberto; sem pedido, abre a Ficha.</summary>
+    private void AplicarAbaInicial()
     {
+        aba = Aba.Ficha;
         if (AbaInicial == "lancamentos" && Usuario.Pode(Permissoes.FinanceiroVer)) aba = Aba.Financeiro;
         if (AbaInicial == "chaves" && Usuario.Pode(Permissoes.ChavesVer)) aba = Aba.Chaves;
         if (AbaInicial == "pagina") aba = Aba.Pagina;
         if (AbaInicial == "lotes") aba = Aba.Lotes;
+        if (AbaInicial == "investimento" && Usuario.Pode(Permissoes.FinanceiroInvestimento)) aba = Aba.Investimento;
     }
 
-    protected override Task OnParametersSetAsync() => Recarregar();
+    protected override Task OnParametersSetAsync()
+    {
+        if (Id != idAberto)
+        {
+            idAberto = Id;
+            AplicarAbaInicial();
+        }
+        return Recarregar();
+    }
 
     private Task Recarregar() => Executar(async () =>
     {

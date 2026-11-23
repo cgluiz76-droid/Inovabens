@@ -222,19 +222,45 @@ public sealed class FechamentoForm : IValidatableObject
     public Guid? CompradorId { get; set; }
     public string? Observacao { get; set; }
 
+    /// <summary>Como a venda foi paga. Vazio = tudo em dinheiro; preenchido, a soma tem que dar o valor da venda.</summary>
+    public List<RecebimentoForm> Recebimentos { get; set; } = [];
+
     public decimal Liquido => (ValorVenda ?? 0) - Comissao - Impostos - OutrosCustos;
+    public decimal SomaRecebimentos => Recebimentos.Sum(r => r.Valor ?? 0);
 
     public IEnumerable<ValidationResult> Validate(ValidationContext _)
     {
         foreach (var r in Dinheiro.Validar((nameof(ValorVenda), ValorVenda), (nameof(Comissao), Comissao), (nameof(Impostos), Impostos),
                      (nameof(OutrosCustos), OutrosCustos))) yield return r;
         if (ValorVenda is <= 0) yield return new ValidationResult("O valor da venda deve ser maior que zero.", [nameof(ValorVenda)]);
+        foreach (var (r, i) in Recebimentos.Select((r, i) => (r, i)))
+        {
+            var n = $"Forma de recebimento {i + 1}";
+            if (r.Valor is not > 0) yield return new ValidationResult($"{n}: informe um valor maior que zero.", [nameof(Recebimentos)]);
+            foreach (var e in Dinheiro.Validar((nameof(Recebimentos), r.Valor), (nameof(Recebimentos), r.ValorBem)))
+                yield return new ValidationResult($"{n}: {e.ErrorMessage}", [nameof(Recebimentos)]);
+            if (r.Tipo == TipoRecebimento.PARCELADO && r.Parcelas is not > 0)
+                yield return new ValidationResult($"{n}: informe em quantas parcelas.", [nameof(Recebimentos)]);
+            if (r.Tipo == TipoRecebimento.PERMUTA_IMOVEL && r.ValorBem is { } bem && bem < (r.Valor ?? 0))
+                yield return new ValidationResult(
+                    $"{n}: o imóvel recebido vale menos do que a parte dele na venda. Use o valor do imóvel aqui e lance a diferença como dinheiro (torna recebida).",
+                    [nameof(Recebimentos)]);
+            if (r.Tipo is TipoRecebimento.PERMUTA_IMOVEL or TipoRecebimento.OUTRO_BEM && string.IsNullOrWhiteSpace(r.Descricao))
+                yield return new ValidationResult($"{n}: descreva o bem recebido.", [nameof(Recebimentos)]);
+            if (r.Descricao?.Length > 200) yield return new ValidationResult($"{n}: descrição com no máximo 200 caracteres.", [nameof(Recebimentos)]);
+        }
+        if (Recebimentos.Count > 0 && ValorVenda is > 0 && SomaRecebimentos != ValorVenda)
+            yield return new ValidationResult(
+                $"As formas de recebimento somam {Texto.Moeda(SomaRecebimentos)}, mas a venda é de {Texto.Moeda(ValorVenda.Value)}.", [nameof(Recebimentos)]);
     }
 
-    public static FechamentoForm De(FechamentoInvestimento f) => new()
+    public static FechamentoForm De(FechamentoInvestimento f, IEnumerable<FechamentoRecebimento>? recebimentos = null,
+        IReadOnlyDictionary<Guid, string>? codigos = null) => new()
     {
         Data = f.Data, ValorVenda = f.ValorVenda, Comissao = f.Comissao, Impostos = f.Impostos, OutrosCustos = f.OutrosCustos,
         IncluirLancamentos = f.IncluirLancamentos, CompradorId = f.CompradorId, Observacao = f.Observacao,
+        Recebimentos = (recebimentos ?? []).OrderBy(r => r.Ordem).Select(r => RecebimentoForm.De(r,
+            r.ImovelRecebidoId is { } x ? codigos?.GetValueOrDefault(x) : null)).ToList(),
     };
 
     internal void AplicarEm(FechamentoInvestimento f)
@@ -248,6 +274,53 @@ public sealed class FechamentoForm : IValidatableObject
         f.CompradorId = CompradorId;
         f.Observacao = Texto.Limpo(Observacao);
     }
+}
+
+/// <summary>Uma forma de recebimento no fechamento.</summary>
+public sealed class RecebimentoForm
+{
+    /// <summary>Linha já gravada (null = nova).</summary>
+    public Guid? Id { get; set; }
+    public TipoRecebimento Tipo { get; set; } = TipoRecebimento.DINHEIRO;
+    public decimal? Valor { get; set; }
+    /// <summary>Permuta: valor combinado do imóvel recebido (vazio = igual ao valor).</summary>
+    public decimal? ValorBem { get; set; }
+    public string? Descricao { get; set; }
+    public int? Parcelas { get; set; }
+    public DateOnly? PrimeiroVencimento { get; set; }
+    /// <summary>Só leitura: imóvel recebido já cadastrado.</summary>
+    public Guid? ImovelRecebidoId { get; set; }
+    public string? ImovelRecebidoCodigo { get; set; }
+
+    public decimal TornaPaga => Tipo == TipoRecebimento.PERMUTA_IMOVEL && ValorBem > Valor ? ValorBem.Value - (Valor ?? 0) : 0;
+
+    public static RecebimentoForm De(FechamentoRecebimento r, string? codigoRecebido) => new()
+    {
+        Id = r.Id, Tipo = r.Tipo, Valor = r.Valor, ValorBem = r.ValorBem, Descricao = r.Descricao, Parcelas = r.Parcelas,
+        PrimeiroVencimento = r.PrimeiroVencimento, ImovelRecebidoId = r.ImovelRecebidoId, ImovelRecebidoCodigo = codigoRecebido,
+    };
+
+    internal void AplicarEm(FechamentoRecebimento r)
+    {
+        r.Tipo = Tipo;
+        r.Valor = Valor!.Value;
+        r.ValorBem = Tipo == TipoRecebimento.PERMUTA_IMOVEL ? ValorBem ?? Valor : null;
+        r.Descricao = Texto.Limpo(Descricao);
+        r.Parcelas = Tipo == TipoRecebimento.PARCELADO ? Parcelas : null;
+        r.PrimeiroVencimento = Tipo == TipoRecebimento.PARCELADO ? PrimeiroVencimento : null;
+    }
+}
+
+/// <summary>Cadastro rápido do imóvel recebido em permuta (o resto da ficha se completa depois).</summary>
+public sealed class ImovelRecebidoForm
+{
+    [Required(ErrorMessage = "Informe o nome do imóvel.")]
+    [StringLength(150, ErrorMessage = "Até 150 caracteres.")]
+    public string Nome { get; set; } = "";
+    [Required(ErrorMessage = "Informe o tipo.")]
+    public string Tipo { get; set; } = "casa";
+    [StringLength(100)] public string? Cidade { get; set; }
+    [StringLength(2)] public string? Uf { get; set; }
 }
 
 public sealed class ContaForm

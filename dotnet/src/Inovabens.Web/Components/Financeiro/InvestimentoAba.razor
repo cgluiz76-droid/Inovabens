@@ -2,10 +2,33 @@
 @inject LancamentosFinanceirosService Lancamentos
 @inject FechamentoService Fechamentos
 @inject OpcoesService Opcoes
+@inject RetornoService Retorno
+@inject CadastrosService Cadastros
+@inject NavigationManager Nav
 
 @* Aba "Investimento" (só quem tem financeiro:investimento — por padrão, o Administrador): aquisição (CAPEX), resumo dos
    Lançamentos Financeiros (OPEX), fechamento da operação com o interruptor "incluir o saldo dos lançamentos" e o retorno
-   nos dois cenários. *@
+   nos dois cenários. Empreendimento: o lote recebe o rateio do custo por área; o empreendimento mostra o consolidado. *@
+
+@if (papel is { } p)
+{
+    <p class="aviso-passivo">
+        @if (p.Desmembrado)
+        {
+            <text>@(p.Raiz ? "Empreendimento desmembrado" : "Área remanescente desmembrada"): os custos lançados aqui são rateados por área entre os lotes,
+            e o retorno abaixo é o consolidado (custos de todas as matrículas e vendas dos lotes). A venda é registrada em cada lote.</text>
+        }
+        else
+        {
+            <text>Unidade do empreendimento @p.EmpreendimentoCodigo: o retorno abaixo inclui a parte desta unidade no custo do empreendimento
+            (rateio por área), congelada na data da venda.</text>
+        }
+    </p>
+}
+@if (papel is { Raiz: true, Desmembrado: true })
+{
+    <EmpreendimentoPainel @ref="painel" ImovelId="ImovelId" />
+}
 
 <AquisicaoSecao ImovelId="ImovelId" Editar="true" AoAlterar="AtualizarRetorno" />
 
@@ -54,7 +77,11 @@
     </div>
     <MensagemErro Texto="@Erro" />
     <MensagemErro Texto="@Sucesso" Sucesso />
-    @if (form is null)
+    @if (papel is { Desmembrado: true })
+    {
+        <p class="pequeno mudo">Este imóvel foi desmembrado: a venda é registrada na aba Investimento de cada lote.</p>
+    }
+    else if (form is null)
     {
         <p class="carregando">Carregando…</p>
     }
@@ -110,6 +137,89 @@
                 </div>
             </div>
 
+            <fieldset class="campo recebimentos">
+                <legend>Formas de recebimento</legend>
+                @if (form.Recebimentos.Count == 0)
+                {
+                    <p class="pequeno mudo">Sem formas cadastradas, a venda conta como recebida em dinheiro. Use para parcelado ou permuta.</p>
+                }
+                else
+                {
+                    <div class="tabela-container">
+                        <table class="tabela tabela-recebimentos">
+                            <thead><tr><th>Forma</th><th class="num">Valor na venda (R$)</th><th>Detalhes</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var r in form.Recebimentos)
+                                {
+                                    <tr>
+                                        <td>
+                                            <select class="input" @bind="r.Tipo" disabled="@(r.ImovelRecebidoId is not null)" aria-label="Forma de recebimento">
+                                                @foreach (var t in Enum.GetValues<TipoRecebimento>())
+                                                {
+                                                    <option value="@t">@RotuloRecebimento(t)</option>
+                                                }
+                                            </select>
+                                        </td>
+                                        <td class="num"><InputNumber class="input" step="0.01" @bind-Value="r.Valor" aria-label="Valor na venda" /></td>
+                                        <td>
+                                            @switch (r.Tipo)
+                                            {
+                                                case TipoRecebimento.PARCELADO:
+                                                    <div class="linha-campos">
+                                                        <label class="campo mini"><span>Parcelas</span><InputNumber class="input" @bind-Value="r.Parcelas" /></label>
+                                                        <label class="campo mini"><span>1º vencimento</span><InputDate class="input" @bind-Value="r.PrimeiroVencimento" /></label>
+                                                    </div>
+                                                    break;
+                                                case TipoRecebimento.PERMUTA_IMOVEL:
+                                                    <div class="linha-campos">
+                                                        <label class="campo"><span>Imóvel recebido</span><InputText class="input" @bind-Value="r.Descricao" placeholder="Casa na Rua X, 120" /></label>
+                                                        <label class="campo mini" title="Valor combinado do imóvel recebido. Se for maior que a parte dele na venda, a diferença é torna paga pela imobiliária.">
+                                                            <span>Valor do imóvel (R$)</span><InputNumber class="input" step="0.01" @bind-Value="r.ValorBem" />
+                                                        </label>
+                                                    </div>
+                                                    @if (r.TornaPaga > 0)
+                                                    {
+                                                        <p class="pequeno">Torna paga pela imobiliária: <b>@Texto.Moeda(r.TornaPaga)</b> (entra no custo do imóvel recebido).</p>
+                                                    }
+                                                    @if (r.ImovelRecebidoId is { } rid)
+                                                    {
+                                                        <p class="pequeno">Cadastrado como <a href="imoveis/@rid?aba=investimento">@r.ImovelRecebidoCodigo</a>.</p>
+                                                    }
+                                                    else if (r.Id is { } recId && fechado && Usuario.Pode(Permissoes.ImoveisCriar))
+                                                    {
+                                                        <button type="button" class="btn-ghost mini" @onclick="() => AbrirRecebido(recId, r.Descricao)">Cadastrar imóvel recebido</button>
+                                                    }
+                                                    break;
+                                                case TipoRecebimento.OUTRO_BEM:
+                                                    <InputText class="input" @bind-Value="r.Descricao" placeholder="Veículo, máquina…" aria-label="Bem recebido" />
+                                                    break;
+                                                default:
+                                                    <InputText class="input" @bind-Value="r.Descricao" placeholder="Observação (opcional)" aria-label="Observação" />
+                                                    break;
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (r.ImovelRecebidoId is null)
+                                            {
+                                                <button type="button" class="btn-ghost mini" title="Retirar esta forma" @onclick="() => form.Recebimentos.Remove(r)"><Icone Nome="lixeira" /></button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td><b>Soma</b></td>
+                                    <td class="num @(form.SomaRecebimentos == form.ValorVenda ? "texto-ok" : "texto-erro")"><b>@Texto.Moeda(form.SomaRecebimentos)</b></td>
+                                    <td colspan="2" class="pequeno mudo">tem que dar o valor da venda (@Texto.Moeda(form.ValorVenda))</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                }
+                <button type="button" class="btn-ghost mini" @onclick="NovaForma">+ Forma de recebimento</button>
+            </fieldset>
+
             <fieldset class="interruptor-saldo">
                 <legend>Incluir o saldo dos Lançamentos Financeiros na apuração do lucro?</legend>
                 <label class="check"><input type="radio" name="incluir" checked="@(form.IncluirLancamentos == true)" @onchange="() => form.IncluirLancamentos = true" /> Sim, incluir</label>
@@ -136,6 +246,34 @@
 @if (novoComprador)
 {
     <NovaPessoa Titulo="Novo comprador" AoCriar="CompradorCriado" AoFechar="() => novoComprador = false" />
+}
+
+@if (recebido is { } rf)
+{
+    <Modal Titulo="Imóvel recebido em permuta" AoFechar="() => recebido = null">
+        <EditForm Model="rf" OnValidSubmit="CadastrarRecebido" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <label class="campo"><span>Nome do imóvel</span><InputText class="input" @bind-Value="rf.Nome" /><ValidationMessage For="() => rf.Nome" /></label>
+            <div class="grade-3">
+                <label class="campo">
+                    <span>Tipo</span>
+                    <InputSelect @key="tipos" class="input" @bind-Value="rf.Tipo">
+                        @foreach (var t in tipos)
+                        {
+                            <option value="@t">@Texto.Rotulo(t)</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label class="campo"><span>Cidade</span><InputText class="input" @bind-Value="rf.Cidade" /></label>
+                <label class="campo"><span>UF</span><InputText class="input" maxlength="2" @bind-Value="rf.Uf" /></label>
+            </div>
+            <p class="pequeno mudo">Cria o imóvel com código próprio e a aquisição pelo valor combinado (permuta + torna paga). O resto da ficha você completa depois.</p>
+            <div class="acoes">
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Cadastrar</button>
+            </div>
+        </EditForm>
+    </Modal>
 }
 
 <RetornoSecao @ref="retorno" ImovelId="ImovelId" />
@@ -171,10 +309,25 @@
         set { if (form is not null) form.CompradorId = Guid.TryParse(value, out var g) ? g : null; }
     }
 
+    private PapelNoEmpreendimento? papel;
+    private EmpreendimentoPainel? painel;
+    private ImovelRecebidoForm? recebido;
+    private Guid recebimentoId;
+    private IReadOnlyList<string> tipos = [];
+
+    private static string RotuloRecebimento(TipoRecebimento t) => t switch
+    {
+        TipoRecebimento.DINHEIRO => "Dinheiro à vista",
+        TipoRecebimento.PARCELADO => "Parcelado",
+        TipoRecebimento.PERMUTA_IMOVEL => "Imóvel (permuta)",
+        _ => "Outro bem",
+    };
+
     protected override async Task OnInitializedAsync()
     {
         await Executar(async () =>
         {
+            papel = await Retorno.PapelAsync(Usuario, ImovelId);
             contas = await Lancamentos.ResumoPorContaAsync(Usuario, ImovelId);
             pessoas = await Opcoes.PessoasAsync(Usuario);
         });
@@ -183,14 +336,40 @@
 
     private Task CarregarFechamento() => Executar(async () =>
     {
-        var f = await Fechamentos.ObterAsync(Usuario, ImovelId);
+        var f = await Fechamentos.FormAsync(Usuario, ImovelId);
         fechado = f is not null;
-        form = f is null ? new FechamentoForm { Data = DatasBR.Hoje() } : FechamentoForm.De(f);
+        form = f ?? new FechamentoForm { Data = DatasBR.Hoje() };
     });
 
     private async Task AtualizarRetorno()
     {
         if (retorno is not null) await retorno.RecarregarAsync();
+        if (painel is not null) await painel.RecarregarAsync();
+    }
+
+    /// <summary>Nova forma já com o que falta para fechar o valor da venda.</summary>
+    private void NovaForma()
+    {
+        var falta = (form!.ValorVenda ?? 0) - form.SomaRecebimentos;
+        form.Recebimentos.Add(new RecebimentoForm { Valor = falta > 0 ? falta : null });
+    }
+
+    private async Task AbrirRecebido(Guid id, string? descricao)
+    {
+
+        if (tipos.Count == 0) await Executar(async () => tipos = [.. (await Cadastros.TiposImovelAsync()).Select(t => t.Nome)]);
+        recebimentoId = id;
+        recebido = new ImovelRecebidoForm { Nome = descricao ?? "", Tipo = tipos.Contains("casa") ? "casa" : tipos.FirstOrDefault() ?? "casa" };
+    }
+
+    private async Task CadastrarRecebido()
+    {
+        Guid novo = default;
+        if (!await Executar(async () => novo = await Fechamentos.RegistrarImovelRecebidoAsync(Usuario, ImovelId, recebimentoId, recebido!))) return;
+        recebido = null;
+        await CarregarFechamento();
+        Sucesso = "Imóvel recebido cadastrado, com a aquisição pelo valor combinado.";
+        Nav.NavigateTo($"imoveis/{novo}?aba=investimento");
     }
 
     private async Task SalvarFechamento()

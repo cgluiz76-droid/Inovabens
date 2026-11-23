@@ -22,7 +22,16 @@ public sealed record DadosRetorno(
     Guid ImovelId, CodigoIndice Indice, DateOnly Ate,
     Aquisicao? Aquisicao, IReadOnlyList<AquisicaoItem> Itens,
     IReadOnlyList<LancamentoRetorno> Lancamentos, FechamentoInvestimento? Fechamento, FatoresIndice Fatores,
-    bool IncluirLancamentos = true);
+    bool IncluirLancamentos = true)
+{
+    /// <summary>
+    /// Empreendimento: rateio recebido das matrículas acima, custos das matrículas abaixo e vendas dos lotes (visão
+    /// consolidada). Os de origem Lançamento seguem o interruptor <see cref="IncluirLancamentos"/>.
+    /// </summary>
+    public IReadOnlyList<MovimentoAdicional> Adicionais { get; init; } = [];
+    /// <summary>Data final da correção quando não é a do próprio fechamento (consolidado: a última venda, se tudo foi vendido).</summary>
+    public DateOnly? DataFinal { get; init; }
+}
 
 /// <summary>
 /// Fator acumulado F(mês) = Π(1 + v/100) até o mês. A correção de um valor da data tᵢ até t é F(t)/F(tᵢ).
@@ -81,22 +90,13 @@ public static class CalculoRetorno
         var indice = d.Indice.ToString();
 
         var aq = d.Aquisicao;
-        if (aq is null) avisos.Add("Aquisição não cadastrada: o custo de aquisição está zerado.");
-        else if (aq.DataAquisicao <= d.Ate)
-        {
-            movs.Add(new Mov(aq.DataAquisicao, TipoMovimento.SAIDA, "Valor pago na aquisição", Centavos(aq.ValorPago), true));
-            long detalhado = 0;
-            foreach (var it in d.Itens.OrderBy(i => i.CriadoEm))
-            {
-                var c = Centavos(it.Valor);
-                detalhado += c;
-                var tipo = it.Tipo switch { TipoItemAquisicao.IMPOSTO => "Imposto", TipoItemAquisicao.TAXA => "Taxa", _ => "Despesa" };
-                movs.Add(new Mov(it.DataPagamento ?? aq.DataAquisicao, TipoMovimento.SAIDA, $"{tipo} de aquisição: {it.Descricao}", c, true));
-            }
-            var residual = Centavos(aq.Impostos) + Centavos(aq.Taxas) + Centavos(aq.DespesasDiversas) - detalhado;
-            if (residual > 0)
-                movs.Add(new Mov(aq.DataAquisicao, TipoMovimento.SAIDA, "Impostos/taxas/despesas de aquisição (sem detalhamento)", residual, true));
-        }
+        var adicionais = d.Adicionais.Where(m => m.Data <= d.Ate && (d.IncluirLancamentos || m.Origem != OrigemMovimento.Lancamento)).ToList();
+        if (aq is null && !adicionais.Any(m => m.Origem == OrigemMovimento.Aquisicao))
+            avisos.Add("Aquisição não cadastrada: o custo de aquisição está zerado.");
+        else if (aq is not null && aq.DataAquisicao <= d.Ate)
+            movs.AddRange(MovimentosAquisicao(aq, d.Itens).Select(m => new Mov(m.Data, m.Tipo, m.Descricao, Centavos(m.Valor), true)));
+        foreach (var m in adicionais)
+            movs.Add(new Mov(m.Data, m.Tipo, m.Descricao, Centavos(m.Valor), m.Origem == OrigemMovimento.Aquisicao));
 
         long pendente = 0;
         var realizados = d.Lancamentos.Where(l => l.Situacao == SituacaoLancamento.LIQUIDADO && l.Data <= d.Ate).ToList();
@@ -125,7 +125,7 @@ public static class CalculoRetorno
         var custoAquisicao = saidas.Where(m => m.Aquisicao).Sum(m => m.Centavos);
 
         // Data final da correção: a venda (se houver), senão a data de corte.
-        var dataFinal = venda ?? d.Ate;
+        var dataFinal = venda ?? d.DataFinal ?? d.Ate;
 
         long? corrigido = null;
         var corrigidos = new long?[movs.Count];
@@ -171,6 +171,22 @@ public static class CalculoRetorno
             avisos,
             movs.Select((m, i) => new MovimentoFluxo(m.Data, m.Tipo, m.Descricao, Reais(m.Centavos), corrigidos[i] is { } c ? Reais(c) : null)).ToList(),
             d.IncluirLancamentos, Reais(saldoLancamentos), vendaLiquida is { } v ? Reais(v) : null);
+    }
+
+    /// <summary>Saídas da aquisição: valor pago, itens detalhados e o resíduo de impostos/taxas/despesas sem detalhamento.</summary>
+    public static IEnumerable<MovimentoAdicional> MovimentosAquisicao(Aquisicao aq, IEnumerable<AquisicaoItem> itens)
+    {
+        yield return new(aq.DataAquisicao, TipoMovimento.SAIDA, "Valor pago na aquisição", aq.ValorPago, OrigemMovimento.Aquisicao);
+        long detalhado = 0;
+        foreach (var it in itens.OrderBy(i => i.CriadoEm))
+        {
+            detalhado += Centavos(it.Valor);
+            var tipo = it.Tipo switch { TipoItemAquisicao.IMPOSTO => "Imposto", TipoItemAquisicao.TAXA => "Taxa", _ => "Despesa" };
+            yield return new(it.DataPagamento ?? aq.DataAquisicao, TipoMovimento.SAIDA, $"{tipo} de aquisição: {it.Descricao}", it.Valor, OrigemMovimento.Aquisicao);
+        }
+        var residual = Centavos(aq.Impostos) + Centavos(aq.Taxas) + Centavos(aq.DespesasDiversas) - detalhado;
+        if (residual > 0)
+            yield return new(aq.DataAquisicao, TipoMovimento.SAIDA, "Impostos/taxas/despesas de aquisição (sem detalhamento)", Reais(residual), OrigemMovimento.Aquisicao);
     }
 
     /// <summary>Taxa interna de retorno anualizada (XIRR) por bissecção; null se não há saída e entrada.</summary>

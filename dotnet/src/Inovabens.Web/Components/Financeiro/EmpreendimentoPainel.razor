@@ -1,0 +1,118 @@
+@* Painel do empreendimento na aba Investimento: VGV, vendido, custo (rateado por área), lucro e como as vendas foram
+   recebidas, por fase e no total. Cada lote vendido tem o custo congelado na data do fechamento. *@
+@inherits ComponenteBase
+@inject RetornoService Retorno
+
+<section class="card">
+    <div class="titulo-secao">
+        <h2>Resultado do empreendimento</h2>
+    </div>
+    <MensagemErro Texto="@Erro" />
+    @if (painel is null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        var t = painel.Total;
+        <div class="kpis">
+            <div class="kpi"><p class="rotulo-kpi">VGV</p><p class="valor-kpi">@Texto.Moeda(t.Vgv)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Vendido (@t.Vendidas de @t.Unidades.Count)</p><p class="valor-kpi">@Texto.Moeda(t.Vendido)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Custo total</p><p class="valor-kpi">@Texto.Moeda(t.CustoTotal)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Lucro realizado</p><p class="valor-kpi">@Texto.Moeda(t.Resultado)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">ROI das vendidas</p><p class="valor-kpi">@Texto.Percentual(t.Roi)</p></div>
+        </div>
+
+        <h3>Por fase</h3>
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead>
+                    <tr>
+                        <th></th><th class="num">Unidades</th><th class="num">Vendidas</th><th class="num">VGV</th><th class="num">Vendido</th>
+                        <th class="num">Custo das vendidas</th><th class="num">Custo em estoque</th><th class="num">Lucro</th><th class="num">ROI</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in painel.Fases)
+                    {
+                        <tr>
+                            <td>@f.Titulo</td><td class="num">@f.Unidades.Count</td><td class="num">@f.Vendidas</td>
+                            <td class="num">@Texto.Moeda(f.Vgv)</td><td class="num">@Texto.Moeda(f.Vendido)</td>
+                            <td class="num">@Texto.Moeda(f.CustoVendidas)</td><td class="num">@Texto.Moeda(f.CustoEstoque)</td>
+                            <td class="num">@Texto.Moeda(f.Resultado)</td><td class="num">@Texto.Percentual(f.Roi)</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td><b>Total</b></td><td class="num">@t.Unidades.Count</td><td class="num">@t.Vendidas</td>
+                        <td class="num">@Texto.Moeda(t.Vgv)</td><td class="num">@Texto.Moeda(t.Vendido)</td>
+                        <td class="num">@Texto.Moeda(t.CustoVendidas)</td><td class="num">@Texto.Moeda(t.CustoEstoque)</td>
+                        <td class="num"><b>@Texto.Moeda(t.Resultado)</b></td><td class="num">@Texto.Percentual(t.Roi)</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <h3>Econômico × caixa</h3>
+        <p class="pequeno mudo">O lucro conta o imóvel recebido em permuta pelo valor combinado; o caixa mostra só o dinheiro que entrou ou saiu.</p>
+        <div class="kpis">
+            <div class="kpi"><p class="rotulo-kpi">Recebido em dinheiro</p><p class="valor-kpi">@Texto.Moeda(t.EmDinheiro)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">A receber (parcelado)</p><p class="valor-kpi">@Texto.Moeda(t.AReceber)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Recebido em bens</p><p class="valor-kpi">@Texto.Moeda(t.EmBens)</p></div>
+            <div class="kpi"><p class="rotulo-kpi">Torna paga em permutas</p><p class="valor-kpi">@Texto.Moeda(t.TornaPaga)</p></div>
+        </div>
+
+        <h3>Unidades</h3>
+        <div class="tabela-container">
+            <table class="tabela tabela-lotes">
+                <thead>
+                    <tr>
+                        <th>Código</th><th class="num">Fase</th><th class="num">Área (m²)</th><th class="num">Custo (próprio + rateio)</th>
+                        <th class="num">Preço / venda</th><th class="num">Lucro</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in t.Unidades)
+                    {
+                        <tr>
+                            <td class="codigo"><a href="imoveis/@u.Id?aba=investimento">@u.Codigo</a></td>
+                            <td class="num">@u.Fase</td>
+                            <td class="num">@(u.AreaM2?.ToString("N2", PtBr) ?? "—")</td>
+                            <td class="num">@Texto.Moeda(u.Custo)</td>
+                            <td class="num">
+                                @if (u.Vendida)
+                                {
+                                    <span class="badge badge-ok">vendido</span> @Texto.Moeda(u.Venda!.ValorVenda)
+                                }
+                                else
+                                {
+                                    @Texto.Moeda(u.Preco)
+                                }
+                            </td>
+                            <td class="num">@(u.Resultado is { } r ? Texto.Moeda(r) : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @foreach (var a in painel.Avisos)
+        {
+            <p class="aviso-passivo">@a</p>
+        }
+        <p class="pequeno mudo">
+            Rateio: o custo lançado numa matrícula se divide, pela área, entre as matrículas que saíram dela e ainda não estavam
+            vendidas na data do custo. O lucro inclui o saldo dos lançamentos financeiros.
+        </p>
+    }
+</section>
+
+@code {
+    private static readonly System.Globalization.CultureInfo PtBr = new("pt-BR");
+    [Parameter, EditorRequired] public Guid ImovelId { get; set; }
+    private PainelEmpreendimento? painel;
+
+    protected override Task OnInitializedAsync() => RecarregarAsync();
+
+    public Task RecarregarAsync() => Executar(async () => painel = await Retorno.PainelAsync(Usuario, ImovelId));
+}
