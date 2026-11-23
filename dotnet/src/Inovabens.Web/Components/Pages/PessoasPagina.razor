@@ -59,7 +59,8 @@ else
                 {
                     <tr>
                         <td>
-                            <span class="forte">@p.NomeRazao</span>
+                            @* clique no nome: ficha só de leitura, sem precisar abrir a edição *@
+                            <button type="button" class="link-atividade forte" title="Ver os dados da pessoa" @onclick="() => Ver(p)">@p.NomeRazao</button>
                             <p class="pequeno mudo">@(p.Tipo == TipoPessoa.PF ? "Pessoa física" : "Pessoa jurídica")@(p.Cidade is null ? "" : $" · {p.Cidade}/{p.Uf}")</p>
                         </td>
                         <td>@Formatos.Documento(p.CpfCnpj)</td>
@@ -94,6 +95,81 @@ else
         </table>
     </div>
     <Paginacao Pagina="pagina" Total="resultado.Total" TamanhoPagina="resultado.TamanhoPagina" AoMudar="IrPara" />
+}
+
+@if (ficha is { } f)
+{
+    var x = f.Pessoa;
+    <Modal Titulo="@x.NomeRazao" Largo AoFechar="() => ficha = null">
+        <div class="ficha-pessoa">
+            <section>
+                <h3>Dados e contato</h3>
+                <dl>
+                    <dt>Tipo</dt><dd>@(x.Tipo == TipoPessoa.PF ? "Pessoa física" : "Pessoa jurídica")</dd>
+                    <dt>@(x.Tipo == TipoPessoa.PF ? "CPF" : "CNPJ")</dt><dd>@(Formatos.Documento(x.CpfCnpj) ?? "—")</dd>
+                    @if (x.Tipo == TipoPessoa.PF)
+                    {
+                        <dt>RG</dt><dd>@(x.Rg ?? "—")</dd>
+                    }
+                    <dt>E-mail</dt>
+                    <dd>@if (x.Email is not null) { <a href="mailto:@x.Email">@x.Email</a> } else { <text>—</text> }</dd>
+                    <dt>Telefone</dt>
+                    <dd>@if (x.Telefone is not null) { <a href="tel:+55@(Formatos.TelefoneDigitos(x.Telefone))">@x.Telefone</a> } else { <text>—</text> }</dd>
+                    <dt>WhatsApp</dt>
+                    <dd>@if (x.Whatsapp is not null) { <a href="https://wa.me/55@(Formatos.TelefoneDigitos(x.Whatsapp))" target="_blank" rel="noopener">@x.Whatsapp</a> } else { <text>—</text> }</dd>
+                </dl>
+            </section>
+            <section>
+                <h3>Endereço</h3>
+                <p>@(Endereco(x) ?? "—")</p>
+            </section>
+            <section>
+                <h3>Perfis</h3>
+                @if (x.Papeis.Count == 0)
+                {
+                    <p class="mudo">—</p>
+                }
+                @foreach (var papelX in x.Papeis)
+                {
+                    <span class="badge">@NomePerfil(papelX.Papel)@(papelX.Especialidade is null ? "" : $" · {papelX.Especialidade}")</span>
+                }
+            </section>
+            <section>
+                <h3>Imóveis vinculados (@f.Imoveis.Count)</h3>
+                @if (f.Imoveis.Count == 0)
+                {
+                    <p class="mudo">Nenhum.</p>
+                }
+                else
+                {
+                    <ul>
+                        @foreach (var im in f.Imoveis)
+                        {
+                            <li><a href="imoveis/@im.Id">@im.NomeComSituacao</a></li>
+                        }
+                    </ul>
+                }
+            </section>
+            @if (Texto.Limpo(x.Observacoes) is { } obs)
+            {
+                <section>
+                    <h3>Observações</h3>
+                    <p class="texto-livre">@obs</p>
+                </section>
+            }
+            <p class="pequeno mudo">
+                Consentimento LGPD: @(x.LgpdConsentimentoEm is { } l ? Texto.DataHora(l) : "não registrado")
+                · Cadastrada em @Texto.DataHora(x.CriadoEm) · Atualizada em @Texto.DataHora(x.AtualizadoEm)
+            </p>
+        </div>
+        <div class="acoes">
+            @if (PodeEditar)
+            {
+                <button type="button" class="btn-primary" @onclick="() => EditarDaFicha(x)">Editar</button>
+            }
+            <button type="button" class="btn-ghost" @onclick="() => ficha = null">Fechar</button>
+        </div>
+    </Modal>
 }
 
 @if (form is not null)
@@ -304,7 +380,7 @@ else
         if (AbrirId is not { } id || id == abertaPelaUrl) return;
         abertaPelaUrl = id;
         Pessoa? p = null;
-        if (await Executar(async () => p = await Servico.ObterAsync(Usuario, id)) && p is not null) await Editar(p);
+        if (await Executar(async () => p = await Servico.ObterAsync(Usuario, id)) && p is not null) await Ver(p);
     }
 
     protected override async Task OnInitializedAsync()
@@ -349,6 +425,30 @@ else
         editandoId = null;
         filtroImovel = "";
         form = new PessoaForm { Imoveis = [] };
+    }
+
+    /// <summary>Ficha aberta pelo nome: os dados da pessoa e os imóveis vinculados, sem os campos de edição.</summary>
+    private (Pessoa Pessoa, List<OpcaoImovel> Imoveis)? ficha;
+
+    private async Task Ver(Pessoa p)
+    {
+        List<Guid> ids = [];
+        if (!await Executar(async () => ids = await Servico.ImoveisDaPessoaAsync(Usuario, p.Id))) return;
+        ficha = (p, [.. imoveis.Where(i => ids.Contains(i.Id))]);
+    }
+
+    private async Task EditarDaFicha(Pessoa p)
+    {
+        ficha = null;
+        await Editar(p);
+    }
+
+    private static string? Endereco(Pessoa p)
+    {
+        var rua = string.Join(", ", new[] { p.Logradouro, p.Numero, p.Complemento }.Where(v => !string.IsNullOrWhiteSpace(v)));
+        var cidade = p.Cidade is null ? null : p.Uf is null ? p.Cidade : $"{p.Cidade}/{p.Uf}";
+        var partes = new[] { rua, p.Bairro, cidade, p.Cep is null ? null : "CEP " + p.Cep }.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+        return partes.Count == 0 ? null : string.Join(" · ", partes);
     }
 
     private async Task Editar(Pessoa p)

@@ -1305,3 +1305,12 @@ fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(-
 .pagina-desempenho .num { text-align: right; }
 .pagina-faltando { border: 1px solid var(--borda); border-left: 4px solid var(--alerta); border-radius: var(--raio-p); padding: var(--e-3); margin-bottom: var(--e-3); font-size: var(--t-sm); }
 .pagina-faltando ul { margin: var(--e-1) 0 0; padding-left: var(--e-5); }
+
+/* Pessoas: ficha só de leitura aberta pelo nome (ver os dados sem entrar na edição) */
+.ficha-pessoa { display: grid; gap: var(--e-4); }
+.ficha-pessoa h3 { font-size: var(--t-sm); color: var(--texto-2); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 var(--e-2); }
+.ficha-pessoa dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--e-1) var(--e-4); margin: 0; }
+.ficha-pessoa dt { color: var(--texto-2); }
+.ficha-pessoa dd { margin: 0; overflow-wrap: anywhere; }
+.ficha-pessoa ul { margin: 0; padding-left: var(--e-4); }
+.ficha-pessoa p { margin: 0; }
