@@ -416,7 +416,8 @@ public sealed partial class ImportacaoNotionService(
     private Pessoa Pessoa(Contexto c, Pagina pg, DadosPessoa d)
     {
         var marcador = $"[Notion {pg.Id}]";
-        var telDig = Formatos.TelefoneDigitos(d.Telefone);
+        // no Notion há celulares antigos sem o 9 (ex.: Gervasio, "67 8116-2162"); sem isso o número ia só para as observações
+        var telDig = Formatos.ComNonoDigito(Formatos.TelefoneDigitos(d.Telefone));
         var telOk = Formatos.TelefoneValido(telDig);
         var email = d.Email is { } em && em.Contains('@') && em.Length <= 200 ? em.Trim() : null;
 

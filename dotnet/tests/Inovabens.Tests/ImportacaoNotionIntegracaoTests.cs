@@ -53,6 +53,7 @@ public class ImportacaoNotionIntegracaoTests
         // o mapeamento projeto → imóvel usa o código (AR0008...), que também é a referência dos portais
         var referencia = (await imoveis.DetalheAsync(admin, imovelId)).Dados.Codigo;
         var celular = "1799" + Random.Shared.Next(1000000, 9999999);
+        var antigo = Random.Shared.Next(1000000, 9999999).ToString(); // celular de 8 dígitos, sem o 9 (formato antigo)
         var pessoaExistente = Guid.NewGuid();
         await using (var db = await fabrica.CreateDbContextAsync())
         {
@@ -68,7 +69,7 @@ public class ImportacaoNotionIntegracaoTests
             [$"databases/{N.BaseEnvolvidos}/query"] = Lista(
                 Pagina(fulano, "Fulano", Sel("Atributos profissionais", "Engenheiro") + Sel("Divisão", "Engenharia") + Fone("Chame no Whatsapp", "+55 " + celular) + Rel("PROJETOS", projeto)),
                 Pagina(beltrano, "Beltrano " + referencia, Sel("Atributos profissionais", "Topógrafo") + Sel("Divisão", "Terceiros") + Sel("Vínculo", "Terceirizado")
-                    + Texto("Documentos", "CPF 529.982.247-25") + Rel("PROJETOS", projeto))),
+                    + Texto("Documentos", "CPF 529.982.247-25") + Fone("Chame no Whatsapp", "67 8" + antigo) + Rel("PROJETOS", projeto))),
             [$"databases/{N.BaseClientes}/query"] = Lista(Pagina(cliente, "ACME " + referencia + " LTDA", Sel("Origem", "Indicação"))),
             [$"databases/{N.BaseProjetos}/query"] = Lista(Pagina(projeto, nomeProjeto, Status("Status", "Em andamento") + Sel("Etapa da Estratégia", "Análise externa")
                 + Data("Previsão de Entrega", "2026-12-20") + Rel("Cliente ", cliente) + Rel("Equipe", fulano))),
@@ -111,6 +112,7 @@ public class ImportacaoNotionIntegracaoTests
 
             var bel = await db.Pessoas.Include(p => p.Papeis).SingleAsync(p => p.NomeRazao == "Beltrano " + referencia);
             Assert.Equal("PRESTADOR", Assert.Single(bel.Papeis).Papel);
+            Assert.Equal($"(67) 98{antigo[..3]}-{antigo[3..]}", bel.Whatsapp);    // ganha o 9 em vez de ir só para as observações
             var acme = await db.Pessoas.Include(p => p.Papeis).SingleAsync(p => p.NomeRazao == "ACME " + referencia + " LTDA");
             Assert.Equal((TipoPessoa.PJ, "PROPRIETARIO"), (acme.Tipo, Assert.Single(acme.Papeis).Papel));
 

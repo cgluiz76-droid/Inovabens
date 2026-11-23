@@ -76,6 +76,13 @@ public static partial class Formatos
 
     public static bool TelefoneValido(string? digitos) => digitos is not null && Telefone().IsMatch(digitos);
 
+    /// <summary>
+    /// Celular no formato antigo, de 8 dígitos (ex.: 67 8116-2162), ganha o 9 na frente, como é desde 2016 em todo o Brasil.
+    /// Fixo (começa com 2-5) e outros tamanhos voltam como estão.
+    /// </summary>
+    public static string? ComNonoDigito(string? digitos) =>
+        digitos is { Length: 10 } d && d[2] is >= '6' and <= '9' ? d[..2] + "9" + d[2..] : digitos;
+
     /// <summary>(11) 3456-7890 ou (11) 98765-4321, com ou sem máscara na entrada; outro tamanho volta como está.</summary>
     public static string? TelefoneFormatado(string? s) => TelefoneDigitos(s) switch
     {

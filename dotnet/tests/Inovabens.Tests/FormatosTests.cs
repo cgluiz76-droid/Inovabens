@@ -39,6 +39,13 @@ public class FormatosTests
     }
 
     [Theory]
+    [InlineData("6781162162", "67981162162")]   // celular antigo ganha o 9
+    [InlineData("6735741169", "6735741169")]    // fixo fica como está
+    [InlineData("67981162162", "67981162162")]  // já tem o 9
+    [InlineData("81162162", "81162162")]        // sem DDD: não adivinha
+    public void Celular_antigo_ganha_o_nono_digito(string entrada, string esperado) => Assert.Equal(esperado, Formatos.ComNonoDigito(entrada));
+
+    [Theory]
     [InlineData("987654321")]    // sem DDD
     [InlineData("01987654321")]  // DDD com zero
     [InlineData("1187654321")]   // fixo não começa com 8
