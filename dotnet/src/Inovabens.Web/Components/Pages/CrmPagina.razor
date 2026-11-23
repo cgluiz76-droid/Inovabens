@@ -285,14 +285,16 @@ else
         {
             <div id="@(comIds ? $"col-{col.Estagio.Id}" : null)" class="coluna @(arrastando is not null && colunaAlvo == col.Estagio.Id ? "alvo" : "")" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")"
                  @ondragenter="() => colunaAlvo = col.Estagio.Id" @ondragover:preventDefault @ondrop="() => Soltar(col.Estagio, null)">
-                <div class="coluna-topo">
-                    <strong>@col.Estagio.Nome</strong>
-                    <span class="badge">@col.Leads.Count</span>
+                <div class="coluna-cabeca">
+                    <div class="coluna-topo">
+                        <strong>@col.Estagio.Nome</strong>
+                        <span class="badge">@col.Leads.Count</span>
+                    </div>
+                    @if (col.ValorTotal > 0)
+                    {
+                        <p class="coluna-valor" title="Soma do valor das propostas (ou do anunciado, sem proposta)">@Texto.MoedaCompacta(col.ValorTotal)</p>
+                    }
                 </div>
-                @if (col.ValorTotal > 0)
-                {
-                    <p class="coluna-valor" title="Soma do valor das propostas (ou do anunciado, sem proposta)">@Texto.MoedaCompacta(col.ValorTotal)</p>
-                }
                 @{ var exibidos = Exibidos(col); }
                 @foreach (var l in exibidos)
                 {

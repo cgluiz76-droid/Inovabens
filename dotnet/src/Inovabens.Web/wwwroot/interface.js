@@ -207,6 +207,24 @@
         if (!no || no.nodeType !== 1) return false;
         return !!(no.closest("table") || no.querySelector("table"));
     }
+    // Quadro (CRM, Processos): altura = o que sobra da tela abaixo dele, para a barra horizontal ficar
+    // sempre no rodapé visível. Se sobra pouco (celular, muitos filtros acima), o quadro ocupa a tela inteira
+    // abaixo do topo fixo: a página rola os filtros para fora e o quadro preenche a tela.
+    function ajustarQuadros() {
+        var quadros = document.querySelectorAll(".kanban");
+        if (!quadros.length) return;
+        var barraTopo = document.querySelector(".topo"), fixo = barraTopo ? barraTopo.offsetHeight : 0;
+        for (var i = 0; i < quadros.length; i++) {
+            var q = quadros[i], conteudo = q.closest(".conteudo");
+            var baixo = conteudo ? parseFloat(getComputedStyle(conteudo).paddingBottom) || 0 : 0;
+            var topo = q.getBoundingClientRect().top + window.scrollY;
+            var sobra = window.innerHeight - topo - baixo;
+            var alt = Math.floor(sobra >= 320 ? sobra : Math.max(320, window.innerHeight - fixo - baixo)) + "px";
+            if (q.style.getPropertyValue("--kanban-altura") !== alt) q.style.setProperty("--kanban-altura", alt);
+        }
+    }
+    window.addEventListener("resize", function () { requestAnimationFrame(ajustarQuadros); });
+
     function aoMudar(registros) {
         if (!tabelasMudaram && registros) {
             for (var i = 0; i < registros.length && !tabelasMudaram; i++) {
@@ -218,7 +236,7 @@
         if (agendado) return;
         agendado = true;
         requestAnimationFrame(function () {
-            agendado = false; sincronizar(); entregarBusca(); marcarEtapa();
+            agendado = false; sincronizar(); entregarBusca(); marcarEtapa(); ajustarQuadros();
             if (tabelasMudaram) { tabelasMudaram = false; rotularTabelas(); }
         });
     }

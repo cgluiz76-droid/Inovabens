@@ -622,9 +622,16 @@ tr.cancelado td { color: var(--mudo); text-decoration: line-through; }
 .google { border-left: 4px solid #4285f4; }
 
 /* ================= CRM (kanban) ================= */
-.kanban { display: flex; gap: var(--e-4); overflow-x: auto; padding-bottom: var(--e-3); align-items: flex-start; scrollbar-width: thin; }
-.coluna { flex: 0 0 17.5rem; background: var(--superficie-3); border-radius: var(--raio); border-top: 4px solid #64748b; padding: var(--e-3); transition: background-color var(--dur) var(--curva); }
-.coluna-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--e-3); padding: 0 2px; }
+/* o quadro rola sozinho e cabe na tela (altura em --kanban-altura, calculada no interface.js):
+   a barra horizontal fica sempre no rodapé visível e o cabeçalho de cada coluna fica preso no topo;
+   grade (não flex): a linha tem a altura da coluna mais alta e todas esticam até ela, então o cabeçalho
+   de etapa curta (ou vazia) também segue visível */
+.kanban { display: grid; grid-auto-flow: column; grid-auto-columns: 17.5rem; gap: var(--e-4); overflow: auto; max-height: var(--kanban-altura, none); padding-bottom: var(--e-3); scrollbar-width: thin; }
+/* a faixa colorida da etapa (border-top-color inline) é desenhada pelo cabeçalho, para seguir junto ao rolar */
+.coluna { background: var(--superficie-3); border-radius: var(--raio); border-top: 0 solid #64748b; padding: 0 var(--e-3) var(--e-3); transition: background-color var(--dur) var(--curva); }
+.coluna-cabeca { position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--e-3)) var(--e-3); padding: var(--e-3) var(--e-3) var(--e-2);
+    background: inherit; border-top: 4px solid; border-top-color: inherit; border-radius: var(--raio) var(--raio) 0 0; box-shadow: 0 1px 0 var(--borda); }
+.coluna-topo { display: flex; justify-content: space-between; align-items: center; padding: 0 2px; }
 .coluna-topo strong { font-size: var(--t-sm); font-weight: 600; color: var(--titulo); }
 /* hover só na borda: sem animar sombra (caro com muitos cartões) */
 .cartao-lead { background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio-p); padding: var(--e-3); margin-bottom: var(--e-2); box-shadow: var(--sombra-1); transition: border-color var(--dur) var(--curva); }
@@ -704,7 +711,7 @@ select.input.mini { padding-right: 1.6rem; background-position: right .45rem cen
     color: var(--texto-2); background: var(--superficie); border: 1px solid var(--borda); border-left: 4px solid var(--cor-etapa); border-radius: var(--raio-p); cursor: pointer; }
 .chip-etapa b { font-variant-numeric: tabular-nums; color: var(--mudo); }
 .chip-etapa[aria-current="true"] { color: var(--titulo); border-color: var(--acento); border-left-color: var(--cor-etapa); background: var(--acento-suave); font-weight: 600; }
-.coluna-valor { margin: calc(-1 * var(--e-2)) 2px var(--e-3); font-size: var(--t-xs); font-weight: var(--p-medio); color: var(--titulo); font-variant-numeric: tabular-nums; }
+.coluna-valor { margin: var(--e-1) 2px 0; font-size: var(--t-xs); font-weight: var(--p-medio); color: var(--titulo); font-variant-numeric: tabular-nums; }
 .cartao-topo { display: flex; justify-content: space-between; align-items: center; gap: var(--e-2); margin-bottom: 2px; }
 .cartao-rodape { display: flex; justify-content: space-between; align-items: center; gap: var(--e-2); margin-top: var(--e-2); }
 .cartao-botoes { display: inline-flex; gap: var(--e-1); align-items: center; flex-shrink: 0; }
@@ -1097,7 +1104,8 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
     .card > .formulario > .barra-acoes-form { margin: var(--e-6) calc(-1 * var(--e-5)) calc(-1 * var(--e-5)); padding: var(--e-3) var(--e-5); border-radius: 0; }
     .barra-acoes-form .btn-primary { flex: 1; }
     .grade-2 { grid-template-columns: 1fr; }
-    .conteudo { padding: var(--e-4); }
+    /* mantém a folga de baixo para a barra inferior fixa não cobrir o fim da página */
+    .conteudo { padding: var(--e-4) var(--e-4) calc(5.5rem + env(safe-area-inset-bottom)); }
     .card { padding: var(--e-5); margin-bottom: var(--e-5); }
     .login-fundo { grid-template-columns: 1fr; }
     .login-vitrine { display: none; }
@@ -1124,7 +1132,8 @@ body:has(.mapa-tela-cheia) { overflow: hidden; }
     /* CRM: uma etapa por vez, com rolagem por encaixe */
     .seletor-etapas { display: flex; }
     .kanban { scroll-snap-type: x mandatory; gap: var(--e-3); margin: 0 calc(-1 * var(--e-4)); padding: 0 var(--e-4) var(--e-3); scroll-padding: 0 var(--e-4); }
-    .coluna { flex-basis: calc(100vw - 2 * var(--e-4) - var(--e-5)); scroll-snap-align: start; }
+    .kanban { grid-auto-columns: calc(100vw - 2 * var(--e-4) - var(--e-5)); }
+    .coluna { scroll-snap-align: start; }
     /* formulário em uma coluna no celular */
     .grade-4, .grade-3 { grid-template-columns: 1fr; }
     .col-2, .col-3 { grid-column: auto; }

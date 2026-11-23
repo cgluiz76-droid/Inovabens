@@ -85,9 +85,11 @@ else
             var aberto = col.Estagio.Tipo == TipoEstagio.ABERTO;
             <div class="coluna @(arrastando is not null && colunaAlvo == col.Estagio.Id ? "alvo" : "")" style="border-top-color:@(col.Estagio.Cor ?? "#64748b")"
                  @ondragenter="() => colunaAlvo = col.Estagio.Id" @ondragover:preventDefault @ondrop="() => Soltar(col.Estagio, null)">
-                <div class="coluna-topo">
-                    <strong>@col.Estagio.Nome</strong>
-                    <span class="badge">@col.Cartoes.Count</span>
+                <div class="coluna-cabeca">
+                    <div class="coluna-topo">
+                        <strong>@col.Estagio.Nome</strong>
+                        <span class="badge">@col.Cartoes.Count</span>
+                    </div>
                 </div>
                 @foreach (var c in col.Cartoes.Where(c => (!soVencidos || (aberto && c.PrazoVencido)) && (!soForaDoPrazo || col.Estagio.Estourou(c.DiasNaFase))))
                 {
