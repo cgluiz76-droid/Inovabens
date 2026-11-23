@@ -101,6 +101,11 @@
                         </section>
                     }
 
+                    @if (Dados.Lotes is { } quadro)
+                    {
+                        <QuadroLotesSite Quadro="quadro" />
+                    }
+
                     @if (C.MostrarFicha && Ficha.Count > 0)
                     {
                         <section class="bloco">
@@ -171,7 +176,7 @@
                     @if (C.MostrarPreco)
                     {
                         <div>
-                            <span class="mudo" style="font-size:.82rem">@(Locacao ? "Aluguel" : "Valor")</span>
+                            <span class="mudo" style="font-size:.82rem">@(Locacao ? "Aluguel" : APartir ? "Lotes a partir de" : "Valor")</span>
                             <div class="preco num">@PrecoTexto</div>
                             @if (Custos.Count > 0) { <div class="mudo num" style="font-size:.84rem">@string.Join(" · ", Custos)</div> }
                         </div>
@@ -317,8 +322,9 @@
     private string MensagemWhatsapp => $"Olá! Vi a página do imóvel {Codigo} ({Pg.Titulo}) e gostaria de mais informações.";
     private string LinkWhatsapp => $"https://wa.me/{SiteMoldura.Whatsapp}?text=" + Uri.EscapeDataString(MensagemWhatsapp);
 
-    private decimal? Preco => Locacao ? Im.PrecoLocacao : Im.PrecoVenda ?? Im.PrecoLocacao;
-    private string PrecoTexto => Preco is { } p ? p.ToString("C0", Br) + (Locacao ? "/mês" : "") : "Consulte";
+    private bool APartir => !Locacao && Dados.Lotes?.APartirDe is not null;
+    private decimal? Preco => Locacao ? Im.PrecoLocacao : Dados.Lotes?.APartirDe ?? Im.PrecoVenda ?? Im.PrecoLocacao;
+    private string PrecoTexto => Preco is { } p ? (APartir ? "A partir de " : "") + p.ToString("C0", Br) + (Locacao ? "/mês" : "") : "Consulte";
     private List<string> Custos => [.. new[]
     {
         Im.ValorCondominio is { } c ? $"Condomínio {c.ToString("C0", Br)}" : null,

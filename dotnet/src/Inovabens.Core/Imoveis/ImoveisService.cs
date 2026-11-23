@@ -171,10 +171,12 @@ public sealed class ImoveisService(
             .Where(m => ids.Contains(m.ImovelId) && m.Publica && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
             .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
         var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.Miniatura ?? d.Url : null);
+        // empreendimento em lotes: o preço do cartão é o do lote disponível mais barato ("a partir de")
+        var aPartir = await QuadroEmpreendimento.APartirDeAsync(db, ids);
 
         return [.. imoveis.Select(i => new VitrineItem(i.Id, i.Referencia ?? i.Codigo, i.Titulo, i.Subtipo ?? i.Tipo, i.Finalidade,
-            i.Cidade, i.Bairro, i.Uf, i.PrecoVenda, i.PrecoLocacao, i.Quartos, i.Suites, i.Vagas,
-            i.AreaConstruidaM2 ?? i.AreaTerrenoM2 ?? i.AreaTotalM2 ?? i.AreaUtilM2, capas.GetValueOrDefault(i.Id)))];
+            i.Cidade, i.Bairro, i.Uf, aPartir.TryGetValue(i.Id, out var min) ? min : i.PrecoVenda, i.PrecoLocacao, i.Quartos, i.Suites, i.Vagas,
+            i.AreaConstruidaM2 ?? i.AreaTerrenoM2 ?? i.AreaTotalM2 ?? i.AreaUtilM2, capas.GetValueOrDefault(i.Id), aPartir.ContainsKey(i.Id)))];
     }
 
     public async Task<ImovelDetalhe> DetalheAsync(UsuarioAtual u, Guid id)

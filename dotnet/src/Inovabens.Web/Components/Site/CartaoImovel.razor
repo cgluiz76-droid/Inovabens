@@ -41,6 +41,6 @@
     private string Onde => string.Join(", ", new[] { Item.Bairro, Item.Cidade }.Where(x => !string.IsNullOrWhiteSpace(x)));
     private string Preco => Locacao
         ? Item.PrecoLocacao is { } l ? l.ToString("C0", Br) + "/mês" : "Consulte"
-        : Item.PrecoVenda is { } p ? p.ToString("C0", Br) : "Consulte";
+        : Item.PrecoVenda is { } p ? (Item.APartirDe ? "A partir de " : "") + p.ToString("C0", Br) : "Consulte";
     private static string Area(decimal m2) => m2 >= 10_000 ? $"{(m2 / 10_000).ToString("0.##", Br)} ha" : $"{m2.ToString("N0", Br)} m²";
 }

@@ -343,15 +343,17 @@ app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, 
 
 // Pré-visualização do site público (páginas próprias, abertas em outra aba pelo botão "Ver no site"):
 // /site (início), /site/imoveis?finalidade=venda|locacao (busca) e /site/imovel/{id} (ficha). Logo e menu ligam as três.
-Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s) => PaginaImovelSite(id, c, s, null);
-async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, TaxasFinanciamentoService? taxas)
+Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp) => PaginaImovelSite(id, c, s, emp, null);
+async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService? taxas)
 {
     try
     {
-        var d = await s.DetalheAsync(UsuarioAtual.De(c.User)!, id);
+        var u = UsuarioAtual.De(c.User)!;
+        var d = await s.DetalheAsync(u, id);
+        var quadro = await emp.QuadroAsync(u, id);
         var linkAtual = d.Dados.ImobibrasilId is { } ib ? $"https://www.inovabens.com.br/imovel/{ib}" : null;
         return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
-            new { Detalhe = d, LinkImobibrasil = linkAtual, SoSimulador = taxas is not null, Taxas = taxas is null ? null : await taxas.AtuaisAsync(c.RequestAborted) });
+            new { Detalhe = d, LinkImobibrasil = linkAtual, Quadro = quadro, SoSimulador = taxas is not null, Taxas = taxas is null ? null : await taxas.AtuaisAsync(c.RequestAborted) });
     }
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
@@ -376,7 +378,7 @@ app.MapGet("/admin/modelos/{id:guid}/arquivo", (Guid id, HttpContext c, Document
 
 var site = app.MapGroup("/site").RequireAuthorization(Permissoes.ImoveisVer);
 site.MapGet("imovel/{id:guid}", FichaSite);
-site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s, TaxasFinanciamentoService t) => PaginaImovelSite(id, c, s, t));
+site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService t) => PaginaImovelSite(id, c, s, emp, t));
 site.MapGet("", async (HttpContext c, ImoveisService s) =>
 {
     var u = UsuarioAtual.De(c.User)!;

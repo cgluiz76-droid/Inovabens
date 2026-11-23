@@ -323,7 +323,8 @@ public sealed class RegularizacaoForm : IValidatableObject
 /// <summary>Cartão de imóvel na vitrine do site (início e lista de busca).</summary>
 public sealed record VitrineItem(
     Guid Id, string Codigo, string Titulo, string Tipo, FinalidadeImovel Finalidade, string? Cidade, string? Bairro, string? Uf,
-    decimal? PrecoVenda, decimal? PrecoLocacao, int? Quartos, int? Suites, int? Vagas, decimal? Area, string? Capa);
+    decimal? PrecoVenda, decimal? PrecoLocacao, int? Quartos, int? Suites, int? Vagas, decimal? Area, string? Capa,
+    bool APartirDe = false);
 
 /// <summary>Busca da vitrine: "venda" inclui imóveis de venda e locação ao mesmo tempo (AMBOS); idem "locacao".</summary>
 public sealed record FiltroVitrine(FinalidadeImovel? Finalidade = null, string? Tipo = null, string? Cidade = null, int Maximo = 60);

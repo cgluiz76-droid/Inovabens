@@ -1,0 +1,47 @@
+@* Quadro de lotes do empreendimento no site e na página do imóvel: situação de cada lote e o preço dos que estão à venda.
+   Lote ainda sem registro aparece como "Em breve", sem preço (Lei 6.766/79, art. 37). *@
+@using System.Globalization
+
+<section class="bloco" id="lotes">
+    <h2>Lotes</h2>
+    <p class="mudo">
+        @Quadro.Disponiveis @(Quadro.Disponiveis == 1 ? "lote disponível" : "lotes disponíveis")
+        @if (Quadro.EmBreve > 0) { <span> · @Quadro.EmBreve em breve</span> }
+        @if (Quadro.Vendidos > 0) { <span> · @Quadro.Vendidos @(Quadro.Vendidos == 1 ? "vendido" : "vendidos")</span> }
+    </p>
+    <div class="lotes-quadro">
+        <table class="lotes-tabela">
+            <thead><tr><th>Lote</th>@if (VariasFases) { <th class="num">Fase</th> }<th class="num">Área</th><th class="num">Valor</th></tr></thead>
+            <tbody>
+                @foreach (var l in Quadro.Lotes)
+                {
+                    <tr class="lote-@l.Situacao.ToString().ToLowerInvariant()">
+                        <td>
+                            @if (Links && l.TemPagina) { <a href="site/imovel/@l.Id">@l.Nome</a> } else { @l.Nome }
+                        </td>
+                        @if (VariasFases) { <td class="num">@l.Fase</td> }
+                        <td class="num">@(l.AreaM2 is { } a ? a.ToString("N0", Br) + " m²" : "—")</td>
+                        <td class="num">@Valor(l)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public QuadroLotes Quadro { get; set; } = default!;
+    /// <summary>Liga o nome do lote à ficha própria dele (só na prévia do site, onde o lote divulgado tem ficha).</summary>
+    [Parameter] public bool Links { get; set; }
+
+    private static readonly CultureInfo Br = Texto.PtBr;
+    private bool VariasFases => Quadro.Lotes.Select(l => l.Fase).Distinct().Count() > 1;
+
+    private static string Valor(LoteSite l) => l.Situacao switch
+    {
+        SituacaoLoteSite.Disponivel => l.Preco is { } p ? p.ToString("C0", Br) : "Consulte",
+        SituacaoLoteSite.EmBreve => "Em breve",
+        SituacaoLoteSite.Vendido => "Vendido",
+        _ => "Indisponível",
+    };
+}

@@ -131,7 +131,7 @@ public sealed record FotoPagina(Guid Id, string Src, string Pequena, string? Med
 /// <summary>Tudo o que a página pública mostra. <paramref name="Previa"/>: rascunho visto por um usuário do sistema.</summary>
 public sealed record PaginaPublica(
     PaginaImovel Pagina, ConteudoPagina Conteudo, Imovel Imovel, IReadOnlyList<ImovelCaracteristica> Caracteristicas,
-    IReadOnlyList<FotoPagina> Fotos, string? CorretorNome, bool Previa);
+    IReadOnlyList<FotoPagina> Fotos, string? CorretorNome, bool Previa, QuadroLotes? Lotes = null);
 
 /// <summary>Proposta da IA: o formulário preenchido e o que falta no cadastro para a página convencer.</summary>
 public sealed record PropostaIa(PaginaForm Form, IReadOnlyList<string> Faltando);
@@ -391,7 +391,9 @@ public sealed class PaginasImovelService(
         var corretor = im.CorretorResponsavelId is { } cid
             ? await db.Usuarios.Where(x => x.Id == cid).Select(x => x.Nome).FirstOrDefaultAsync(ct)
             : null;
-        return new(p, ConteudoPagina.De(p.Conteudo), im, carac, fotos, corretor, Previa: !p.Publicada);
+        // empreendimento em lotes: quadro dos lotes e preço "a partir de"
+        var lotes = im.EmpreendimentoId is null ? await QuadroEmpreendimento.CarregarAsync(db, im.Id, ct) : null;
+        return new(p, ConteudoPagina.De(p.Conteudo), im, carac, fotos, corretor, Previa: !p.Publicada, lotes);
     }
 
     /// <summary>Foto pública do imóvel da página (original do Drive), para quem pode ver a página. Null = não pode.</summary>

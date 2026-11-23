@@ -229,6 +229,11 @@
                         </div>
                     }
 
+                    @if (Quadro is not null)
+                    {
+                        <QuadroLotesSite Quadro="Quadro" Links="true" />
+                    }
+
                     @if (Dados.Count > 0)
                     {
                         <div class="bloco">
@@ -298,7 +303,7 @@
 
                 <aside class="contato" aria-label="Fale com a Inovabens">
                     <div>
-                        <span class="mudo" style="font-size:.82rem">@(Locacao ? "Aluguel" : "Valor de venda")</span>
+                        <span class="mudo" style="font-size:.82rem">@(Locacao ? "Aluguel" : APartir ? "Lotes a partir de" : "Valor de venda")</span>
                         <div class="preco num">@PrecoTexto</div>
                         @if (Custos.Count > 0)
                         {
@@ -381,6 +386,8 @@
     [Parameter] public bool SoSimulador { get; set; }
     /// <summary>Taxas dos bancos do comparativo (só na página do simulador).</summary>
     [Parameter] public IReadOnlyList<TaxaBanco>? Taxas { get; set; }
+    /// <summary>Empreendimento em lotes: quadro dos lotes e preço "a partir de" (o lote disponível mais barato).</summary>
+    [Parameter] public QuadroLotes? Quadro { get; set; }
 
     /// <param name="Src">Foto para exibir grande (1200 px).</param>
     /// <param name="Pequena">Versão reduzida (400 px): fundos desfocados, miniaturas e telas pequenas.</param>
@@ -427,8 +434,9 @@
 
     private string? YoutubeId => RegrasImovel.IdYoutube(Im.VideoUrl);
 
-    private decimal? Preco => Locacao ? Im.PrecoLocacao : Im.PrecoVenda ?? Im.PrecoLocacao;
-    private string PrecoTexto => Preco is { } p ? p.ToString("C0", Br) + (Locacao ? "/mês" : "") : "Consulte";
+    private bool APartir => !Locacao && Quadro?.APartirDe is not null;
+    private decimal? Preco => Locacao ? Im.PrecoLocacao : Quadro?.APartirDe ?? Im.PrecoVenda ?? Im.PrecoLocacao;
+    private string PrecoTexto => Preco is { } p ? (APartir ? "A partir de " : "") + p.ToString("C0", Br) + (Locacao ? "/mês" : "") : "Consulte";
 
     private string Iniciais => CorretorNome is { } n
         ? string.Concat(n.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(p => char.ToUpperInvariant(p[0])))

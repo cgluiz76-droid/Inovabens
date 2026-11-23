@@ -148,6 +148,15 @@ public sealed class EmpreendimentosService(IDbContextFactory<InovabensDb> fabric
             im.UnidadeIdentificacao);
     }
 
+    /// <summary>Quadro público de lotes (site e página do imóvel); null se o imóvel não é empreendimento com lotes.</summary>
+    public async Task<QuadroLotes?> QuadroAsync(UsuarioAtual u, Guid imovelId)
+    {
+        u.Exigir(P.ImoveisVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        var im = await Acesso.ImovelComAcesso(db, u, imovelId, rastrear: false);
+        return im.EmpreendimentoId is null ? await QuadroEmpreendimento.CarregarAsync(db, im.Id) : null;
+    }
+
     /// <summary>Aba Lotes do empreendimento (também de um imóvel comum, que ainda pode ser desmembrado). Null para lote ou remanescente.</summary>
     public async Task<EmpreendimentoDetalhe?> DetalheAsync(UsuarioAtual u, Guid imovelId)
     {
