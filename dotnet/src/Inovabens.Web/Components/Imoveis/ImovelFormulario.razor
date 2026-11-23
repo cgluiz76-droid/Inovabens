@@ -26,7 +26,9 @@
         <div class="campo">
             <label for="tipo-imovel">Tipo</label>
             <div class="com-novo">
-                <InputSelect id="tipo-imovel" class="input" @bind-Value="Form.Tipo">
+                @* @key: recria o select quando a lista chega (carga assíncrona); senão o navegador mantém marcado o
+                   <option> reaproveitado e mostra o 1º tipo da lista em vez do tipo gravado *@
+                <InputSelect @key="tipos.Count" id="tipo-imovel" class="input" @bind-Value="Form.Tipo">
                     <option value="">Selecione…</option>
                     @foreach (var t in TiposDisponiveis)
                     {
@@ -44,7 +46,7 @@
         </label>
         <label class="campo col-2">
             <span>Corretor responsável</span>
-            <select class="input" @bind="CorretorSelecionado" disabled="@Usuario.EscopoProprio">
+            <select @key="corretores.Count" class="input" @bind="CorretorSelecionado" disabled="@Usuario.EscopoProprio">
                 <option value="">(eu / automático)</option>
                 @foreach (var c in corretores)
                 {
