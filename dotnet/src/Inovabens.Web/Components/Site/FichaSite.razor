@@ -270,17 +270,25 @@
                         <div class="bloco">
                             <h2>Localização</h2>
                             <div class="mapa-quadro">
-                                @* fachada: o mapa do Google (~330 KB de scripts de terceiros) só carrega quando o visitante pede
-                                   (web.dev/articles/third-party-facades) *@
+                                @* fachada: o mapa do Google (~330 KB de scripts de terceiros) só carrega quando a seção chega perto
+                                   da tela ou no clique (web.dev/articles/third-party-facades) *@
                                 <button type="button" class="mapa-fachada" data-mapa="https://www.google.com/maps?q=@ConsultaMapa&t=k&z=@(Im.EnderecoPublico ? 17 : 13)&output=embed">
                                     <svg class="ico"><use href="#i-mapa" /></svg> Ver no mapa
                                 </button>
                                 <script>
-                                    document.querySelectorAll("[data-mapa]").forEach(b => b.addEventListener("click", () => {
-                                        const f = document.createElement("iframe");
-                                        f.src = b.dataset.mapa; f.title = "Mapa da localização"; f.referrerPolicy = "no-referrer-when-downgrade";
-                                        b.replaceWith(f); f.focus();
-                                    }, { once: true }));
+                                    // carrega sozinho quando a seção chega perto da tela; o clique continua valendo
+                                    document.querySelectorAll("[data-mapa]").forEach(b => {
+                                        const abrir = foco => {
+                                            if (!b.isConnected) return;
+                                            const f = document.createElement("iframe");
+                                            f.src = b.dataset.mapa; f.title = "Mapa da localização"; f.referrerPolicy = "no-referrer-when-downgrade";
+                                            b.replaceWith(f); if (foco) f.focus();
+                                        };
+                                        b.addEventListener("click", () => abrir(true), { once: true });
+                                        if ("IntersectionObserver" in window)
+                                            new IntersectionObserver((es, o) => { if (es.some(e => e.isIntersecting)) { o.disconnect(); abrir(false); } },
+                                                { rootMargin: "300px" }).observe(b);
+                                    });
                                 </script>
                             </div>
                             @if (Im.EnderecoPublico)
