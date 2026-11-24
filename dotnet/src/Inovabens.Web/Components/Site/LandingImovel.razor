@@ -6,7 +6,7 @@
 
 <SiteMoldura Avulsa Titulo="@TituloAba" Descricao="@Descricao" Canonico="@Caminho" Imagem="@ImagemPrevia"
              DadosEstruturados="@Estruturados" Indexavel="@(Op.SitePublicoUrl is not null && !Dados.Previa)"
-             MensagemWhatsapp="@MensagemWhatsapp" Faixa="@(Dados.Previa ? FaixaRascunho : null)">
+             MensagemWhatsapp="@MensagemWhatsapp" ComTema="@(!Pg.Personalizada)" Faixa="@(Dados.Previa ? FaixaRascunho : null)">
     <ChildContent>
         @if (Pg.Personalizada)
         {

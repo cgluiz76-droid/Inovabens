@@ -11,7 +11,10 @@
     <meta name="robots" content="@(Indexar ? "index, follow, max-image-preview:large" : "noindex, nofollow")" />
     <meta name="theme-color" content="#03075f" />
     @* tema escolhido no botão (o mesmo do sistema) aplicado antes da primeira pintura, sem piscar claro → escuro *@
-    <script>try { if (localStorage.getItem("tema") === "escuro") document.documentElement.setAttribute("data-tema", "escuro"); } catch (e) { }</script>
+    @if (ComTema)
+    {
+        <script>try { if (localStorage.getItem("tema") === "escuro") document.documentElement.setAttribute("data-tema", "escuro"); } catch (e) { }</script>
+    }
     <title>@Titulo@(Avulsa ? "" : " · Inovabens")</title>
     @if (Descricao is not null)
     {
@@ -100,9 +103,8 @@
                 <a href="site#sobre">Sobre</a>
             </nav>
             }
-            @if (!Avulsa)
+            @if (ComTema)
             {
-                @* a página avulsa (página exclusiva do imóvel) tem visual próprio, só claro *@
                 <button type="button" class="btn-tema" data-alternar-tema aria-pressed="false" aria-label="Modo escuro" title="Modo claro/escuro">
                     <svg class="ico lua" aria-hidden="true"><use href="#i-lua" /></svg><svg class="ico sol" aria-hidden="true"><use href="#i-sol" /></svg>
                 </button>
@@ -136,7 +138,7 @@
         </div>
     </footer>
 
-    @if (!Avulsa)
+    @if (ComTema)
     {
         <script>
             // botão claro/escuro do topo: a escolha fica no navegador (mesma chave "tema" do sistema)
@@ -183,6 +185,9 @@
     /// A marca e os atalhos levam ao site atual da Inovabens.
     /// </summary>
     [Parameter] public bool Avulsa { get; set; }
+    /// <summary>Botão de modo claro/escuro no topo. Padrão: sim. A página personalizada (GeradorPaginas) desliga:
+    /// o CSS dela tem cores próprias, só claras.</summary>
+    [Parameter] public bool ComTema { get; set; } = true;
     /// <summary>Vai para o índice do Google? Padrão: só com o site público ligado. A página avulsa decide (rascunho nunca).</summary>
     [Parameter] public bool? Indexavel { get; set; }
     private bool Indexar => Indexavel ?? Publico;

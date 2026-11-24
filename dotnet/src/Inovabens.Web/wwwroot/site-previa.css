@@ -62,6 +62,7 @@ button { font: inherit; color: inherit; }
 .btn-tema { flex: none; display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--borda);
   background: var(--sup); color: var(--titulo); cursor: pointer; margin-right: -8px; }
 .btn-tema:hover { background: var(--sup-2); }
+.marca + .btn-tema { margin-left: auto; } /* página do imóvel: sem menu, o botão e o WhatsApp vão para a direita */
 .btn-tema .ico { width: 20px; height: 20px; }
 .btn-tema .sol, :root[data-tema="escuro"] .btn-tema .lua { display: none; }
 :root[data-tema="escuro"] .btn-tema .sol { display: block; }
