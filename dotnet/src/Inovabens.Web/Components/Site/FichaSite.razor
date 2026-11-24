@@ -1,12 +1,12 @@
-@* Página do imóvel como no site público, aberta pelo botão "Ver no site" da ficha (rota /imoveis/{id}/site).
-   Mostra só o que o site mostraria: fotos públicas, características públicas e o endereço apenas se for público. *@
+@* Página do imóvel no site público (/site/imovel/{id}, aberta a visitantes; também pelo botão "Ver no site" da ficha).
+   Mostra só o que o site mostra: fotos públicas, características públicas e o endereço apenas se for público. *@
 @using System.Globalization
 
 <SiteMoldura Titulo="@(SoSimulador ? "Simular financiamento · " + Im.Titulo : Im.Titulo)" Ativo="@(Locacao ? "locacao" : "venda")" MensagemWhatsapp="@MensagemWhatsapp"
              Descricao="@DescricaoMeta" Canonico="@(SoSimulador ? $"site/imovel/{Im.Id}/simulador" : $"site/imovel/{Im.Id}")"
              Imagem="@(Fotos.Count > 0 ? Fotos[0].Src : null)" DadosEstruturados="@Trilha">
     <Faixa>
-        é assim que o @Im.Codigo aparece no site público.
+        é assim que o @Im.Codigo aparece no site.
         @if (!Im.DivulgarSite)
         {
             <span class="alerta"> Este imóvel não está marcado para divulgar no site (não aparece no início nem na busca).</span>
@@ -138,7 +138,7 @@
                 <div class="galeria poucas">
                     <div class="principal"><img src="img/sem-foto.svg" alt="Imóvel sem foto" /></div>
                 </div>
-                <p class="pequeno mudo aviso-sem-fotos">Sem fotos públicas: marque as fotos como públicas na ficha do imóvel.</p>
+                @if (Logado) { <p class="pequeno mudo aviso-sem-fotos">Sem fotos públicas: marque as fotos como públicas na ficha do imóvel.</p> }
             }
             else
             {
@@ -336,7 +336,6 @@
                     {
                         <a class="btn btn-linha" href="site/imovel/@Im.Id/simulador" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-calc" /></svg> Simular financiamento</a>
                     }
-                    <p class="mudo" style="font-size:.8rem">No site publicado aqui entram também o agendamento de visita e o formulário de contato, que vira lead no CRM.</p>
                 </aside>
             </div>
         </main>
@@ -396,6 +395,8 @@
     [Parameter] public IReadOnlyList<TaxaBanco>? Taxas { get; set; }
     /// <summary>Empreendimento em lotes: quadro dos lotes e preço "a partir de" (o lote disponível mais barato).</summary>
     [Parameter] public QuadroLotes? Quadro { get; set; }
+    [CascadingParameter] public HttpContext? Http { get; set; }
+    private bool Logado => Http?.User.Identity?.IsAuthenticated == true;
 
     /// <param name="Src">Foto para exibir grande (1200 px).</param>
     /// <param name="Pequena">Versão reduzida (400 px): fundos desfocados, miniaturas e telas pequenas.</param>

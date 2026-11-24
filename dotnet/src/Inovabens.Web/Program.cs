@@ -87,7 +87,12 @@ var limiteLogin = int.TryParse(builder.Configuration["LOGIN_LIMITE_POR_MINUTO"],
 builder.Services.AddRateLimiter(o =>
 {
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(c =>
-        !HttpMethods.IsPost(c.Request.Method) ? RateLimitPartition.GetNoLimiter("")
+        // site aberto a visitantes (páginas e fotos sem login): teto generoso por endereço, contra robôs que varrem tudo
+        // (a lista pode ter 200 cartões, cada um com a sua foto)
+        !HttpMethods.IsPost(c.Request.Method) ? (c.Request.Path.StartsWithSegments("/site")
+            ? RateLimitPartition.GetFixedWindowLimiter("site:" + (c.Connection.RemoteIpAddress?.ToString() ?? "?"),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1) })
+            : RateLimitPartition.GetNoLimiter(""))
         : c.Request.Path.Equals("/login", StringComparison.OrdinalIgnoreCase)
             ? RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "?",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limiteLogin, Window = TimeSpan.FromMinutes(1) })
@@ -376,23 +381,35 @@ app.MapGet("/financeiro/dre.pdf", (int ano, HttpContext c, FinanceiroEmpresaServ
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 
-// Pré-visualização do site público (páginas próprias, abertas em outra aba pelo botão "Ver no site"):
-// /site (início), /site/imoveis?finalidade=venda|locacao (busca) e /site/imovel/{id} (ficha). Logo e menu ligam as três.
+// Site público (páginas próprias): /site (início), /site/imoveis?finalidade=venda|locacao (busca) e /site/imovel/{id} (ficha).
+// Aberto a visitantes sem login: só imóveis disponíveis e marcados para divulgar, com fotos e características públicas.
+// Usuário do sistema também abre a ficha de imóvel que ainda não está no site (botão "Ver no site"), com a faixa de avisos.
+// Enquanto SITE_PUBLICO_URL estiver vazio, segue fora do Google (noindex, Seo.cs).
 Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp) => PaginaImovelSite(id, c, s, emp, null);
 async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService? taxas)
 {
     try
     {
-        var u = UsuarioAtual.De(c.User)!;
-        var d = await s.DetalheAsync(u, id);
-        var quadro = await emp.QuadroAsync(u, id);
-        var linkAtual = d.Dados.ImobibrasilId is { } ib ? $"https://www.inovabens.com.br/imovel/{ib}" : null;
+        var u = UsuarioAtual.De(c.User);
+        ImovelDetalhe d; QuadroLotes? quadro; string? linkAtual = null;
+        if (u is not null && u.Pode(Permissoes.ImoveisVer))
+        {
+            d = await s.DetalheAsync(u, id);
+            quadro = await emp.QuadroAsync(u, id);
+            linkAtual = d.Dados.ImobibrasilId is { } ib ? $"https://www.inovabens.com.br/imovel/{ib}" : null;
+        }
+        else if (await s.DetalhePublicoAsync(id, c.RequestAborted) is { } pub) (d, quadro) = pub;
+        else return Results.NotFound();
+        CacheSite(c);
         return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
             new { Detalhe = d, LinkImobibrasil = linkAtual, Quadro = quadro, SoSimulador = taxas is not null, Taxas = taxas is null ? null : await taxas.AtuaisAsync(c.RequestAborted) });
     }
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
 }
+// visitante: a página pode ficar 5 min no cache; logado: é a versão com avisos do sistema, só dele
+static void CacheSite(HttpContext c) => c.Response.Headers.CacheControl =
+    c.User.Identity?.IsAuthenticated == true ? "private, no-store" : "public, max-age=300";
 imovel.MapGet("site", FichaSite).RequireAuthorization(Permissoes.ImoveisVer);
 // Extrato dos Lançamentos Financeiros com os mesmos filtros da tela: ?de=AAAA-MM-DD&ate=AAAA-MM-DD&tipo=RECEITAS|DESPESAS&conta=<id>&busca=texto&projetado=true&naoEnviadosBpo=true
 imovel.MapGet("extrato.pdf", (Guid id, DateOnly? de, DateOnly? ate, TipoExtrato? tipo, Guid? conta, string? busca, bool? projetado, FiltroSituacao? situacao, bool? naoEnviadosBpo, HttpContext c, RelatoriosService r) =>
@@ -411,28 +428,42 @@ app.MapGet("/imoveis/posts/arquivo/{id:guid}", (Guid id, HttpContext c, Inovaben
 app.MapGet("/admin/modelos/{id:guid}/arquivo", (Guid id, HttpContext c, DocumentosService d) => Baixar(c, u => d.BaixarModeloAsync(u, id)))
     .RequireAuthorization(Permissoes.AdminConfig);
 
-var site = app.MapGroup("/site").RequireAuthorization(Permissoes.ImoveisVer);
+var site = app.MapGroup("/site").AllowAnonymous();
 site.MapGet("imovel/{id:guid}", FichaSite);
 site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService t) => PaginaImovelSite(id, c, s, emp, t));
+// início e busca: a mesma vitrine para todos (visitante ou usuário), a que o site realmente mostra
 site.MapGet("", async (HttpContext c, ImoveisService s) =>
 {
-    var u = UsuarioAtual.De(c.User)!;
-    var venda = await s.VitrineAsync(u, new FiltroVitrine(FinalidadeImovel.VENDA));
-    var aluguel = await s.VitrineAsync(u, new FiltroVitrine(FinalidadeImovel.LOCACAO));
+    var venda = await s.VitrinePublicaAsync(new FiltroVitrine(FinalidadeImovel.VENDA), c.RequestAborted);
+    var aluguel = await s.VitrinePublicaAsync(new FiltroVitrine(FinalidadeImovel.LOCACAO), c.RequestAborted);
+    CacheSite(c);
     return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.InicioSite>(
         new { Venda = venda, Aluguel = aluguel });
 });
 site.MapGet("imoveis", async (string? finalidade, string? tipo, string? cidade, string? ordem, HttpContext c, ImoveisService s) =>
 {
-    var u = UsuarioAtual.De(c.User)!;
     var locacao = string.Equals(finalidade, "locacao", StringComparison.OrdinalIgnoreCase);
     var fin = locacao ? FinalidadeImovel.LOCACAO : FinalidadeImovel.VENDA;
     tipo = string.IsNullOrWhiteSpace(tipo) ? null : tipo.Trim();
     cidade = string.IsNullOrWhiteSpace(cidade) ? null : cidade.Trim();
-    var todos = await s.VitrineAsync(u, new FiltroVitrine(fin, Maximo: 200));
-    var itens = tipo is null && cidade is null ? todos : await s.VitrineAsync(u, new FiltroVitrine(fin, tipo, cidade, 200));
+    var todos = await s.VitrinePublicaAsync(new FiltroVitrine(fin, Maximo: 200), c.RequestAborted);
+    var itens = tipo is null && cidade is null ? todos : await s.VitrinePublicaAsync(new FiltroVitrine(fin, tipo, cidade, 200), c.RequestAborted);
+    CacheSite(c);
     return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.ListaSite>(
         new { Itens = itens, Todos = todos, Locacao = locacao, Tipo = tipo, Cidade = cidade, Ordem = ordem is "menor" or "maior" ? ordem : null });
+});
+// fotos públicas do site ainda fora do R2: confere que a foto e o imóvel estão no site; a versão reduzida em memória
+// evita baixar o original do Drive a cada pedido. Só larguras conhecidas (padrão 1200), sempre WebP quando possível.
+site.MapGet("foto/{midiaId:guid}/{arquivo}", async (Guid midiaId, string arquivo, int? l, HttpContext c, ImoveisService s, FotosReduzidas reduzidas) =>
+{
+    var largura = l is { } x && ImoveisService.LarguraValida(x) ? x : ImoveisService.LarguraTela;
+    if (!await s.FotoNoSiteAsync(midiaId, arquivo, c.RequestAborted)) return Results.NotFound();
+    c.Response.Headers.CacheControl = "public, max-age=2592000, immutable"; // o id do arquivo na URL muda quando a foto é trocada
+    if (reduzidas.EmMemoria(arquivo, largura) is { } pronta) return Results.File(pronta, "image/webp");
+    if (await s.BaixarFotoNoSiteAsync(arquivo, c.RequestAborted) is not { } original) return Results.NotFound();
+    return FotosReduzidas.Reduzivel(original.Tipo) && reduzidas.Obter(arquivo, largura, () => original.Dados) is { } webp
+        ? Results.File(webp, "image/webp")
+        : Results.NotFound(); // só imagem: nada de repassar outro tipo de arquivo sem login
 });
 
 // Página exclusiva do imóvel (landing page): /imovel/{slug}, aberta sem login quando publicada (rascunho: só usuários

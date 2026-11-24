@@ -152,14 +152,28 @@ public sealed class ImoveisService(
 
     /// <summary>
     /// Imóveis que o site público mostra: disponíveis e marcados para divulgar, com a capa entre as fotos públicas.
-    /// Usado pela pré-visualização do site (início e busca por venda/aluguel).
+    /// Versão com usuário (escopo do Corretor); o site aberto usa <see cref="VitrinePublicaAsync"/>.
     /// </summary>
     public async Task<IReadOnlyList<VitrineItem>> VitrineAsync(UsuarioAtual u, FiltroVitrine f)
     {
         u.Exigir(P.ImoveisVer);
         await using var db = await fabrica.CreateDbContextAsync();
-        var q = db.Imoveis.AsNoTracking().VisiveisPara(u)
-            .Where(i => i.ExcluidoEm == null && i.DivulgarSite && i.Situacao == SituacaoImovel.DISPONIVEL);
+        return await Vitrine(db, db.Imoveis.AsNoTracking().VisiveisPara(u), f, site: false);
+    }
+
+    /// <summary>
+    /// Vitrine do site aberto a visitantes (sem login): só imóveis disponíveis e marcados para divulgar, e só fotos
+    /// públicas, servidas pela rota pública do site (site/foto/...) quando ainda não estão no R2.
+    /// </summary>
+    public async Task<IReadOnlyList<VitrineItem>> VitrinePublicaAsync(FiltroVitrine f, CancellationToken ct = default)
+    {
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        return await Vitrine(db, db.Imoveis.AsNoTracking(), f, site: true);
+    }
+
+    private async Task<IReadOnlyList<VitrineItem>> Vitrine(InovabensDb db, IQueryable<Imovel> baseQ, FiltroVitrine f, bool site)
+    {
+        var q = baseQ.Where(i => i.ExcluidoEm == null && i.DivulgarSite && i.Situacao == SituacaoImovel.DISPONIVEL);
         if (f.Finalidade is { } fi && fi != FinalidadeImovel.AMBOS)
             q = q.Where(i => i.Finalidade == fi || i.Finalidade == FinalidadeImovel.AMBOS);
         if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.ILike(i.Tipo, Texto.LikeLiteral(tipo), @"\"));
@@ -170,7 +184,7 @@ public sealed class ImoveisService(
         var fotos = await db.ImovelMidias.AsNoTracking()
             .Where(m => ids.Contains(m.ImovelId) && m.Publica && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
             .OrderByDescending(m => m.Capa).ThenBy(m => m.Ordem).ToListAsync();
-        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First()) is var d ? d.Miniatura ?? d.Url : null);
+        var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First(), site) is var d ? d.Miniatura ?? d.Url : null);
         // empreendimento em lotes: o preço do cartão é o do lote disponível mais barato ("a partir de")
         var aPartir = await QuadroEmpreendimento.APartirDeAsync(db, ids);
 
@@ -178,6 +192,45 @@ public sealed class ImoveisService(
             i.Cidade, i.Bairro, i.Uf, aPartir.TryGetValue(i.Id, out var min) ? min : i.PrecoVenda, i.PrecoLocacao, i.Quartos, i.Suites, i.Vagas,
             i.AreaConstruidaM2 ?? i.AreaTerrenoM2 ?? i.AreaTotalM2 ?? i.AreaUtilM2, capas.GetValueOrDefault(i.Id), aPartir.ContainsKey(i.Id)))];
     }
+
+    /// <summary>
+    /// Ficha do site aberto a visitantes: null se o imóvel não está no site (excluído, indisponível ou não divulgado).
+    /// Leva só o que a página pública mostra: fotos públicas, características públicas e o corretor responsável;
+    /// nunca proprietários, envolvidos, documentos nem a pasta do Drive. Quadro de lotes junto (empreendimento).
+    /// </summary>
+    public async Task<(ImovelDetalhe Detalhe, QuadroLotes? Quadro)?> DetalhePublicoAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var im = await db.Imoveis.AsNoTracking()
+            .SingleOrDefaultAsync(i => i.Id == id && i.ExcluidoEm == null && i.DivulgarSite && i.Situacao == SituacaoImovel.DISPONIVEL, ct);
+        if (im is null) return null;
+        var carac = await db.ImovelCaracteristicas.AsNoTracking().Where(c => c.ImovelId == id && c.Publico)
+            .OrderBy(c => c.Grupo).ThenBy(c => c.Chave).ToListAsync(ct);
+        // só fotos: vídeo do Drive não é servido sem login (o vídeo do YouTube do imóvel continua aparecendo)
+        var fotos = await db.ImovelMidias.AsNoTracking()
+            .Where(m => m.ImovelId == id && m.Publica && m.Tipo == TipoMidia.FOTO && m.ArquivoChave != null && m.ArquivoChave != "")
+            .OrderBy(m => m.Ordem).ToListAsync(ct);
+        var corretor = im.CorretorResponsavelId is { } cid
+            ? await db.Usuarios.Where(x => x.Id == cid).Select(x => x.Nome).FirstOrDefaultAsync(ct)
+            : null;
+        var quadro = im.EmpreendimentoId is null ? await QuadroEmpreendimento.CarregarAsync(db, im.Id) : null;
+        return (new ImovelDetalhe(im, corretor, carac, [.. fotos.Select(m => Detalhar(m, site: true))], [], []), quadro);
+    }
+
+    /// <summary>
+    /// Foto que o site aberto pode entregar sem login: pública, ainda a foto atual da mídia, de imóvel que está no site.
+    /// Só confere (sem baixar): a rota usa a versão reduzida em memória e só baixa o original quando ela não existe.
+    /// </summary>
+    public async Task<bool> FotoNoSiteAsync(Guid midiaId, string arquivo, CancellationToken ct = default)
+    {
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        return await db.ImovelMidias.AsNoTracking().AnyAsync(m => m.Id == midiaId && m.Publica && m.Tipo == TipoMidia.FOTO
+            && m.ArquivoChave == arquivo
+            && db.Imoveis.Any(i => i.Id == m.ImovelId && i.ExcluidoEm == null && i.DivulgarSite && i.Situacao == SituacaoImovel.DISPONIVEL), ct);
+    }
+
+    /// <summary>Original da foto do site no Drive (só depois de <see cref="FotoNoSiteAsync"/>).</summary>
+    public Task<ConteudoArquivo?> BaixarFotoNoSiteAsync(string arquivo, CancellationToken ct = default) => armazenamento.BaixarAsync(arquivo, ct);
 
     public async Task<ImovelDetalhe> DetalheAsync(UsuarioAtual u, Guid id)
     {
@@ -209,9 +262,13 @@ public sealed class ImoveisService(
     /// O id do arquivo vai na URL: muda quando a foto é trocada (Magnific), então o navegador pode guardar em cache.
     /// Fotos publicadas usam as versões WebP do R2 (400 e 1200 px); as demais, a redução feita pelo próprio sistema (?l=).
     /// </summary>
-    private MidiaDetalhe Detalhar(ImovelMidia m)
+    private MidiaDetalhe Detalhar(ImovelMidia m) => Detalhar(m, site: false);
+
+    /// <param name="site">Site aberto a visitantes: a foto (ainda fora do R2) vem pela rota pública site/foto/..., sem login.</param>
+    private MidiaDetalhe Detalhar(ImovelMidia m, bool site)
     {
-        var url = string.IsNullOrEmpty(m.ArquivoChave) ? null : $"imoveis/midias/{m.Id}/{Uri.EscapeDataString(m.ArquivoChave)}";
+        var url = string.IsNullOrEmpty(m.ArquivoChave) ? null
+            : $"{(site ? "site/foto" : "imoveis/midias")}/{m.Id}/{Uri.EscapeDataString(m.ArquivoChave)}";
         var publica = PublicacaoFotosService.Situacao(m) == SituacaoPublicacao.Publicada ? publicacao.Url(m) : null;
         if (m.Tipo != TipoMidia.FOTO || url is null) return new(m, url, publica);
         return publica is not null
