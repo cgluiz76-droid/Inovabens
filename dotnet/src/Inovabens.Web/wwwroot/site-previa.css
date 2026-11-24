@@ -13,14 +13,15 @@
   --f-titulo: "Montserrat", "Segoe UI", system-ui, sans-serif;
   --f-texto: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --max: 1200px;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #060a2b; --sup: #0d1340; --sup-2: #131a50; --texto: #e8ebf8; --mudo: #a1a8c9; --borda: #222a63;
-    --titulo: #ffffff; --acento: #9db7ff; --ouro-txt: #e2b04f; --ok: #4fd08b;
-    --sombra: 0 18px 40px -18px rgb(0 0 0 / .6); --sombra-s: 0 1px 2px rgb(0 0 0 / .4);
-    color-scheme: dark;
-  }
+/* modo escuro só quando o visitante escolhe no botão do topo (localStorage "tema", o mesmo do sistema):
+   por padrão o site é claro para todos, sem seguir o modo escuro do aparelho */
+:root[data-tema="escuro"] {
+  --bg: #060a2b; --sup: #0d1340; --sup-2: #131a50; --texto: #e8ebf8; --mudo: #a1a8c9; --borda: #222a63;
+  --titulo: #ffffff; --acento: #9db7ff; --ouro-txt: #e2b04f; --ok: #4fd08b;
+  --sombra: 0 18px 40px -18px rgb(0 0 0 / .6); --sombra-s: 0 1px 2px rgb(0 0 0 / .4);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -57,7 +58,14 @@ button { font: inherit; color: inherit; }
 .nav a { color: var(--texto); font-weight: 500; padding: 8px 12px; border-radius: 8px; text-decoration: none; }
 .nav a:hover { background: var(--sup-2); color: var(--acento); }
 .nav a[aria-current="page"] { color: var(--acento); box-shadow: inset 0 -2px 0 var(--ouro); border-radius: 0; }
-@media (max-width: 860px) { .nav { display: none; } .topo .btn-zap { margin-left: auto; } }
+/* botão claro/escuro: mostra a lua no tema claro e o sol no escuro */
+.btn-tema { flex: none; display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--borda);
+  background: var(--sup); color: var(--titulo); cursor: pointer; margin-right: -8px; }
+.btn-tema:hover { background: var(--sup-2); }
+.btn-tema .ico { width: 20px; height: 20px; }
+.btn-tema .sol, :root[data-tema="escuro"] .btn-tema .lua { display: none; }
+:root[data-tema="escuro"] .btn-tema .sol { display: block; }
+@media (max-width: 860px) { .nav { display: none; } .topo .btn-zap { margin-left: auto; } .topo .btn-tema { margin-left: auto; } .topo .btn-tema + .btn-zap { margin-left: 0; } }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px; padding: 11px 18px; font-weight: 600; cursor: pointer; text-decoration: none; }
 .btn-zap { background: #0f7a40; color: #fff; }

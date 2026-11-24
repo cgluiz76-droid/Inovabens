@@ -10,6 +10,8 @@
     @* Sem o site público ligado (SITE_PUBLICO_URL), a prévia não vai para o Google; ligado, as páginas do site são indexáveis. *@
     <meta name="robots" content="@(Indexar ? "index, follow, max-image-preview:large" : "noindex, nofollow")" />
     <meta name="theme-color" content="#03075f" />
+    @* tema escolhido no botão (o mesmo do sistema) aplicado antes da primeira pintura, sem piscar claro → escuro *@
+    <script>try { if (localStorage.getItem("tema") === "escuro") document.documentElement.setAttribute("data-tema", "escuro"); } catch (e) { }</script>
     <title>@Titulo@(Avulsa ? "" : " · Inovabens")</title>
     @if (Descricao is not null)
     {
@@ -55,6 +57,8 @@
         <symbol id="i-suite" viewBox="0 0 24 24"><path d="M4 20V10l8-6 8 6v10M9 20v-6h6v6" /></symbol>
         <symbol id="i-pino" viewBox="0 0 24 24"><path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z" /><circle cx="12" cy="10" r="2.2" /></symbol>
         <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z" /><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.6-1.8-.9-.9.9a4 4 0 0 1-2.2-2.2l.9-.9-.9-1.8z" /></symbol>
+        <symbol id="i-lua" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></symbol>
+        <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></symbol>
         <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></symbol>
         <symbol id="i-ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></symbol>
         <symbol id="i-fotos" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="12" rx="2" /><path d="M7 21h12a2 2 0 0 0 2-2V9" /><path d="M3 14l4-4 4 4 2-2 4 4" /></symbol>
@@ -96,6 +100,13 @@
                 <a href="site#sobre">Sobre</a>
             </nav>
             }
+            @if (!Avulsa)
+            {
+                @* a página avulsa (página exclusiva do imóvel) tem visual próprio, só claro *@
+                <button type="button" class="btn-tema" data-alternar-tema aria-pressed="false" aria-label="Modo escuro" title="Modo claro/escuro">
+                    <svg class="ico lua" aria-hidden="true"><use href="#i-lua" /></svg><svg class="ico sol" aria-hidden="true"><use href="#i-sol" /></svg>
+                </button>
+            }
             <a class="btn btn-zap" href="@LinkWhatsapp" target="_blank" rel="noopener"><svg class="ico"><use href="#i-zap" /></svg> <span>WhatsApp</span></a>
         </div>
     </header>
@@ -125,6 +136,23 @@
         </div>
     </footer>
 
+    @if (!Avulsa)
+    {
+        <script>
+            // botão claro/escuro do topo: a escolha fica no navegador (mesma chave "tema" do sistema)
+            (() => {
+                const raiz = document.documentElement, b = document.querySelector("[data-alternar-tema]");
+                const marcar = () => { const e = raiz.getAttribute("data-tema") === "escuro"; b.setAttribute("aria-pressed", e); };
+                marcar();
+                b.addEventListener("click", () => {
+                    const novo = raiz.getAttribute("data-tema") === "escuro" ? "claro" : "escuro";
+                    raiz.setAttribute("data-tema", novo);
+                    try { localStorage.setItem("tema", novo); } catch (e) { }
+                    marcar();
+                });
+            })();
+        </script>
+    }
     @Scripts
 </body>
 </html>
