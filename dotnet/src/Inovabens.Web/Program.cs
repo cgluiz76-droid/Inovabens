@@ -493,9 +493,12 @@ paginaImovel.MapGet("{slug}/foto/{midiaId:guid}/{arquivo}", async (string slug, 
 {
     var u = UsuarioAtual.De(c.User);
     var largura = l is { } x && ImoveisService.LarguraValida(x) ? x : ImoveisService.LarguraTela;
-    // a versão reduzida já em memória só é entregue depois de conferir que a foto é pública e a página pode ser vista
-    if (await s.FotoAsync(slug, midiaId, arquivo, u, c.RequestAborted) is not { } original) return Results.NotFound();
+    // a versão reduzida já em memória só é entregue depois de conferir que a foto é pública e a página pode ser vista;
+    // o original só é baixado do Drive quando ela ainda não existe (antes, cada foto baixava o original: ~1 s por foto)
+    if (!await s.FotoVisivelAsync(slug, midiaId, arquivo, u, c.RequestAborted)) return Results.NotFound();
     c.Response.Headers.CacheControl = u is null ? "public, max-age=2592000, immutable" : "private, max-age=86400";
+    if (reduzidas.EmMemoria(arquivo, largura) is { } pronta) return Results.File(pronta, "image/webp");
+    if (await s.FotoAsync(slug, midiaId, arquivo, u, c.RequestAborted) is not { } original) return Results.NotFound();
     return FotosReduzidas.Reduzivel(original.Tipo) && reduzidas.Obter(arquivo, largura, () => original.Dados) is { } webp
         ? Results.File(webp, "image/webp")
         : Results.File(original.Dados, original.Tipo);

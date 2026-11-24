@@ -466,14 +466,20 @@ public sealed class PaginasImovelService(
     }
 
     /// <summary>Foto pública do imóvel da página (original do Drive), para quem pode ver a página. Null = não pode.</summary>
-    public async Task<ConteudoArquivo?> FotoAsync(string slug, Guid midiaId, string arquivo, UsuarioAtual? u, CancellationToken ct = default)
+    public async Task<ConteudoArquivo?> FotoAsync(string slug, Guid midiaId, string arquivo, UsuarioAtual? u, CancellationToken ct = default) =>
+        await FotoVisivelAsync(slug, midiaId, arquivo, u, ct) ? await drive.BaixarAsync(arquivo, ct) : null;
+
+    /// <summary>
+    /// A foto é pública, do imóvel da página, e a página pode ser vista por quem pede? Só confere, sem baixar: a rota
+    /// entrega a versão reduzida já em memória e só vai ao Drive (original de vários MB) quando ela ainda não existe.
+    /// </summary>
+    public async Task<bool> FotoVisivelAsync(string slug, Guid midiaId, string arquivo, UsuarioAtual? u, CancellationToken ct = default)
     {
         await using var db = await fabrica.CreateDbContextAsync(ct);
         var (p, im) = await Visivel(db, slug, u, ct);
-        if (p is null || im is null) return null;
-        var m = await db.ImovelMidias.AsNoTracking().SingleOrDefaultAsync(x => x.Id == midiaId && x.ImovelId == im.Id
+        if (p is null || im is null) return false;
+        return await db.ImovelMidias.AsNoTracking().AnyAsync(x => x.Id == midiaId && x.ImovelId == im.Id
             && x.Publica && x.Tipo == TipoMidia.FOTO && x.ArquivoChave == arquivo, ct);
-        return m is null ? null : await drive.BaixarAsync(m.ArquivoChave, ct);
     }
 
     /// <summary>

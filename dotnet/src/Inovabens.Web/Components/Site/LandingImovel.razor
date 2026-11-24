@@ -90,7 +90,9 @@
                                 {
                                     <button type="button" data-luz="@k" aria-label="Ampliar foto @(k + 1) de @Dados.Fotos.Count">
                                         <img src="@f.Pequena" srcset="@Srcset(f)" sizes="(max-width: 760px) 50vw, 260px" alt="@(f.Legenda ?? Pg.Titulo)"
-                                             loading="lazy" decoding="async" width="400" height="300" />
+                                             loading="lazy" fetchpriority="low" decoding="async" width="400" height="300" />
+                                        @* low: o Chrome adianta imagens "lazy" a até ~2.500 px da tela; sem isso elas disputam a banda
+                                           com o CSS, as fontes e a foto de capa e atrasam a primeira pintura no celular *@
                                     </button>
                                 }
                             </div>
