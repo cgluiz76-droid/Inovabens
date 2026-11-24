@@ -213,6 +213,41 @@ if (args.Contains("importar-imobibrasil-painel"))
     return;
 }
 
+// `dotnet Inovabens.Web.dll importar-notion-complemento --pasta=caminho [--usuario=email] [--simular]`: memorandos e
+// arquivos do Notion já preparados num pacote (manifesto.json + arquivos); não acessa o Notion. Rodar de novo não duplica.
+if (args.Contains("importar-notion-complemento"))
+{
+    string? Arg(string nome) => args.FirstOrDefault(a => a.StartsWith($"--{nome}=", StringComparison.Ordinal))?[(nome.Length + 3)..];
+    if (Arg("pasta") is not { } pasta || !File.Exists(Path.Combine(pasta, "manifesto.json")))
+    {
+        Console.Error.WriteLine("Informe --pasta=caminho com o manifesto.json.");
+        Environment.ExitCode = 1;
+        return;
+    }
+    using var escopo = app.Services.CreateScope();
+    var sp = escopo.ServiceProvider;
+    Guid usuarioId;
+    await using (var db = await sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+    {
+        var email = Arg("usuario");
+        usuarioId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            db.Usuarios.Where(x => x.Ativo && x.ExcluidoEm == null && (email == null ? x.Perfil!.Nome == "Administrador" : x.Email == email))
+                .OrderBy(x => x.CriadoEm).Select(x => x.Id));
+    }
+    var usuario = usuarioId == Guid.Empty ? null : await sp.GetRequiredService<AuthService>().RecarregarAsync(usuarioId);
+    if (usuario is null)
+    {
+        Console.Error.WriteLine("Usuário não encontrado (informe --usuario=email de um usuário ativo).");
+        Environment.ExitCode = 1;
+        return;
+    }
+    var simular = args.Contains("--simular");
+    var itensLog = await sp.GetRequiredService<Inovabens.Core.Notion.ComplementoNotionService>().ImportarAsync(usuario, pasta, simular, Console.WriteLine);
+    foreach (var item in itensLog) Console.WriteLine("  " + item);
+    Console.WriteLine(simular ? "=== SIMULAÇÃO (nada foi gravado) ===" : "=== COMPLEMENTO CONCLUÍDO ===");
+    return;
+}
+
 // `dotnet Inovabens.Web.dll importar-notion [--usuario=email] [--simular] [--token-arquivo=caminho] [--mapear="PROJETO=REF"]...`
 // traz o workspace do Notion (só leitura lá). Token da integração em NOTION_TOKEN ou no arquivo. --simular desfaz tudo no fim.
 if (args.Contains("importar-notion"))

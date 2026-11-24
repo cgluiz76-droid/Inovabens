@@ -42,6 +42,7 @@ public static class Registro
         services.AddScoped<ImportacaoImobibrasilService>();
         services.AddScoped<ImportacaoPainelImobibrasilService>();
         services.AddScoped<Inovabens.Core.Notion.ImportacaoNotionService>();
+        services.AddScoped<Inovabens.Core.Notion.ComplementoNotionService>();
         services.AddSingleton<GeocodificacaoService>();
         services.AddScoped<LocalizacaoLoteService>();
         services.AddSingleton<CepService>();
