@@ -87,7 +87,8 @@ public sealed class DocumentosService(IDbContextFactory<InovabensDb> fabrica, Pr
         u.Exigir(incluirInativos ? P.AdminConfig : P.CrmVer);
         await using var db = await fabrica.CreateDbContextAsync();
         var q = db.ModelosDocumento.AsNoTracking();
-        if (!incluirInativos) q = q.Where(m => m.Ativo);
+        // modelos de locação (contrato de aluguel, acordo) aparecem só na página do contrato de locação
+        if (!incluirInativos) q = q.Where(m => m.Ativo && (m.Tipo == TipoModeloDocumento.PROPOSTA || m.Tipo == TipoModeloDocumento.CONTRATO));
         if (finalidade is { } f) q = q.Where(m => m.Finalidade == null || m.Finalidade == f);
         return await q.OrderBy(m => m.Tipo).ThenBy(m => m.Nome)
             .Select(m => new ModeloResumo(m.Id, m.Nome, m.Tipo, m.Finalidade, m.NomeArquivo, m.Tamanho, m.Ativo, m.CriadoEm))
@@ -106,7 +107,8 @@ public sealed class DocumentosService(IDbContextFactory<InovabensDb> fabrica, Pr
         if (!Docx.Valido(conteudo)) throw new RegraNegocioException("arquivo", "O arquivo não é um documento Word (.docx) válido");
 
         var marcadores = Docx.Marcadores(conteudo);
-        var conhecidos = Campos.Select(c => c.Chave).ToHashSet();
+        var conhecidos = (tipo is TipoModeloDocumento.CONTRATO_LOCACAO or TipoModeloDocumento.ACORDO_LOCACAO
+            ? Locacao.LocacaoDocumentosService.Campos : Campos).Select(c => c.Chave).ToHashSet();
         await using var db = await fabrica.CreateDbContextAsync();
         var m = new ModeloDocumento
         {

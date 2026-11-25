@@ -29,6 +29,11 @@ public static class SubpastasDrive
     /// <summary>Comprovantes de receitas e despesas (por ano). Só o financeiro grava aqui; não é opção no envio de mídias.</summary>
     public const string Financeiro = "07 - Financeiro";
 
+    /// <summary>Imóvel para alugar: uma subpasta por contrato de locação (contrato, aditivos, laudos, acordos).</summary>
+    public const string Locacao = "08 - Locação";
+
+    public static bool ParaLocacao(FinalidadeImovel f) => f is FinalidadeImovel.LOCACAO or FinalidadeImovel.AMBOS;
+
     public static bool Valida(int numero) => numero is >= Matricula and <= Protocolos;
 
     public static string Nome(int numero) =>
@@ -76,8 +81,12 @@ public static class SubpastasDrive
 /// </summary>
 public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, IArmazenamento armazenamento)
 {
-    /// <summary>Pastas criadas junto com a do imóvel: as seis de documentos e a "07 - Financeiro" (comprovantes).</summary>
-    private static IEnumerable<string> PastasPadrao => SubpastasDrive.Todas.Select(s => s.Nome).Append(SubpastasDrive.Financeiro);
+    /// <summary>
+    /// Pastas criadas junto com a do imóvel: as seis de documentos, a "07 - Financeiro" (comprovantes) e, se o imóvel é
+    /// para alugar, a "08 - Locação".
+    /// </summary>
+    private static IEnumerable<string> PastasPadrao(bool locacao) =>
+        SubpastasDrive.Todas.Select(s => s.Nome).Append(SubpastasDrive.Financeiro).Concat(locacao ? [SubpastasDrive.Locacao] : []);
 
     /// <summary>Garante a pasta principal e as subpastas (01 a 07); devolve o id da pasta principal.</summary>
     public async Task<string> GarantirAsync(Guid imovelId, CancellationToken ct = default)
@@ -97,7 +106,7 @@ public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, I
             var existente = await armazenamento.BuscarPastaAsync(nome, pai, ct);
             var id = existente ?? await armazenamento.CriarPastaAsync(nome, pai, ct);
             // em paralelo (cada chamada ao Drive leva ~0,5 s); pasta recém-criada não precisa de busca
-            await Task.WhenAll(PastasPadrao.Select(async s =>
+            await Task.WhenAll(PastasPadrao(SubpastasDrive.ParaLocacao(im.Finalidade)).Select(async s =>
             {
                 if (existente is null || await armazenamento.BuscarPastaAsync(s, id, ct) is null)
                     await armazenamento.CriarPastaAsync(s, id, ct);
@@ -133,6 +142,51 @@ public sealed class PastasDriveService(IDbContextFactory<InovabensDb> fabrica, I
             return await armazenamento.BuscarPastaAsync(nomeAno, financeiro, ct)
                 ?? await armazenamento.CriarPastaAsync(nomeAno, financeiro, ct);
         });
+    }
+
+    /// <summary>Pasta "08 - Locação" do imóvel (criada se falta; o id fica gravado no imóvel).</summary>
+    public async Task<string> PastaLocacaoAsync(Guid imovelId, CancellationToken ct = default)
+    {
+        var raiz = await GarantirAsync(imovelId, ct);
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var im = await db.Imoveis.SingleAsync(i => i.Id == imovelId, ct);
+        var id = await Chamar(async () =>
+            await armazenamento.BuscarPastaAsync(SubpastasDrive.Locacao, raiz, ct) ?? await armazenamento.CriarPastaAsync(SubpastasDrive.Locacao, raiz, ct));
+        if (im.DrivePastaLocacaoId != id)
+        {
+            im.DrivePastaLocacaoId = id;
+            await db.SaveChangesAsync(ct);
+        }
+        return id;
+    }
+
+    /// <summary>Subpasta de um contrato dentro de "08 - Locação" (pelo nome; criada se falta).</summary>
+    public async Task<string> PastaContratoLocacaoAsync(Guid imovelId, string nome, CancellationToken ct = default)
+    {
+        var locacao = await PastaLocacaoAsync(imovelId, ct);
+        return await Chamar(async () =>
+            await armazenamento.BuscarPastaAsync(nome, locacao, ct) ?? await armazenamento.CriarPastaAsync(nome, locacao, ct));
+    }
+
+    /// <summary>
+    /// Regra: imóvel para alugar (locação ou venda e locação) tem a "08 - Locação". A rotina diária cria a que falta
+    /// (imóvel marcado para alugar depois, ou Drive fora do ar no cadastro). Imóvel sem "Nome do Imóvel" fica para depois.
+    /// </summary>
+    public async Task<int> CriarPastasLocacaoPendentesAsync(CancellationToken ct = default)
+    {
+        if (!armazenamento.Habilitado) return 0;
+        await using var db = await fabrica.CreateDbContextAsync(ct);
+        var ids = await db.Imoveis.AsNoTracking()
+            .Where(i => i.ExcluidoEm == null && i.DrivePastaLocacaoId == null && i.NomeDrive != null
+                && (i.Finalidade == FinalidadeImovel.LOCACAO || i.Finalidade == FinalidadeImovel.AMBOS))
+            .Select(i => i.Id).ToListAsync(ct);
+        var criadas = 0;
+        foreach (var id in ids)
+        {
+            try { await PastaLocacaoAsync(id, ct); criadas++; }
+            catch (Exception e) when (e is not OperationCanceledException) { /* tenta de novo na próxima rodada */ }
+        }
+        return criadas;
     }
 
     /// <summary>

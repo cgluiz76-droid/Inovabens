@@ -123,6 +123,67 @@ public static partial class Docx
         return mudou;
     }
 
+    /// <summary>Parágrafo de um documento gerado pelo sistema (modelos padrão). Com quebra de linha (assinaturas), alinha à esquerda.</summary>
+    public sealed record Paragrafo(string Texto, bool Negrito = false, bool Centralizado = false, int TamanhoPt = 11, int EspacoDepoisPt = 6);
+
+    /// <summary>
+    /// Cria um .docx simples (A4, Arial, texto justificado) com os parágrafos dados. Serve para os modelos padrão: cada
+    /// marcador fica num trecho só, e o usuário pode abrir no Word, ajustar e enviar como modelo novo.
+    /// </summary>
+    public static byte[] Criar(IEnumerable<Paragrafo> paragrafos)
+    {
+        XElement Par(Paragrafo p)
+        {
+            var rpr = new XElement(W + "rPr", new XElement(W + "rFonts", new XAttribute(W + "ascii", "Arial"), new XAttribute(W + "hAnsi", "Arial"), new XAttribute(W + "cs", "Arial")));
+            if (p.Negrito) rpr.Add(new XElement(W + "b"));
+            rpr.Add(new XElement(W + "sz", new XAttribute(W + "val", p.TamanhoPt * 2)));
+            var linhas = p.Texto.Replace("\r\n", "\n").Split('\n');
+            var run = new XElement(W + "r", rpr);
+            for (var i = 0; i < linhas.Length; i++)
+            {
+                if (i > 0) run.Add(new XElement(W + "br"));
+                run.Add(new XElement(W + "t", new XAttribute(XNamespace.Xml + "space", "preserve"), linhas[i]));
+            }
+            // parágrafo não se parte entre páginas (assinaturas) e título fica junto do texto seguinte
+            return new XElement(W + "p",
+                new XElement(W + "pPr",
+                    p.Negrito ? new XElement(W + "keepNext") : null,
+                    new XElement(W + "keepLines"),
+                    new XElement(W + "spacing", new XAttribute(W + "after", p.EspacoDepoisPt * 20), new XAttribute(W + "line", 276), new XAttribute(W + "lineRule", "auto")),
+                    new XElement(W + "jc", new XAttribute(W + "val", p.Centralizado ? "center" : p.Texto.Contains('\n') ? "left" : "both"))),
+                run);
+        }
+
+        var corpo = new XElement(W + "body", paragrafos.Select(Par),
+            new XElement(W + "sectPr",
+                new XElement(W + "pgSz", new XAttribute(W + "w", 11906), new XAttribute(W + "h", 16838)),
+                new XElement(W + "pgMar", new XAttribute(W + "top", 1418), new XAttribute(W + "right", 1418), new XAttribute(W + "bottom", 1418),
+                    new XAttribute(W + "left", 1418), new XAttribute(W + "header", 709), new XAttribute(W + "footer", 709), new XAttribute(W + "gutter", 0))));
+        var documento = new XDocument(new XDeclaration("1.0", "UTF-8", "yes"),
+            new XElement(W + "document", new XAttribute(XNamespace.Xmlns + "w", W.NamespaceName), corpo));
+
+        using var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            void Entrada(string nome, string conteudo)
+            {
+                using var w = new StreamWriter(zip.CreateEntry(nome, CompressionLevel.Optimal).Open(), new System.Text.UTF8Encoding(false));
+                w.Write(conteudo);
+            }
+            Entrada("[Content_Types].xml", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>
+                """);
+            Entrada("_rels/.rels", """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>
+                """);
+            using var doc = zip.CreateEntry("word/document.xml", CompressionLevel.Optimal).Open();
+            documento.Save(doc, SaveOptions.DisableFormatting);
+        }
+        return ms.ToArray();
+    }
+
     /// <summary>"a\nb" num w:t vira w:t(a) w:br w:t(b) dentro do mesmo trecho (mantém a formatação).</summary>
     private static void QuebrarLinhas(XElement t)
     {

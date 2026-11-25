@@ -83,6 +83,8 @@ public class Imovel
     public string? NomeDrive { get; set; }
     /// <summary>Id da pasta principal no Drive; null enquanto ainda não foi criada.</summary>
     public string? DrivePastaId { get; set; }
+    /// <summary>Pasta "08 - Locação" (imóvel para alugar), com uma subpasta por contrato.</summary>
+    public string? DrivePastaLocacaoId { get; set; }
     /// <summary>A pasta do Drive ainda tem o nome antigo (código trocado na migração 0027); a aplicação renomeia.</summary>
     public bool DriveRenomear { get; set; }
     /// <summary>Código anterior (IMV-000012), antes do padrão do Imobibrasil; só para busca.</summary>

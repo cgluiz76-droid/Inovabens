@@ -28,7 +28,7 @@ public enum IniciativaRescisao { LOCATARIO, LOCADOR, ACORDO, FIM_PRAZO }
 
 public enum RespostaPreferencia { ACEITA, RECUSADA, SEM_RESPOSTA }
 
-public enum TipoHistoricoLocacao { REAJUSTE, ADITIVO, RENOVACAO, RESCISAO, PREFERENCIA }
+public enum TipoHistoricoLocacao { REAJUSTE, ADITIVO, RENOVACAO, RESCISAO, PREFERENCIA, ACORDO, DOCUMENTO }
 
 /// <summary>Evento do contrato que gera aviso no sino e tarefa na agenda.</summary>
 public enum TipoAvisoLocacao { REAJUSTE, FIM, GARANTIA, SEGURO_INCENDIO, PREFERENCIA }
@@ -80,6 +80,8 @@ public class ContratoLocacao
     public decimal? PreferenciaValor { get; set; }
     public string? PreferenciaCondicoes { get; set; }
     public RespostaPreferencia? PreferenciaResposta { get; set; }
+    /// <summary>Subpasta do contrato em "08 - Locação" (renovações e aditivos ficam na mesma).</summary>
+    public string? DrivePastaId { get; set; }
     public Guid? CriadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public Guid? AtualizadoPor { get; set; }
@@ -208,6 +210,8 @@ public class ContratoLocacaoHistorico
     public CodigoIndice? Indice { get; set; }
     public decimal? Percentual { get; set; }
     public string Descricao { get; set; } = "";
+    /// <summary>JSON com os dados do ato (acordo: faturas, desconto, parcelas), para refazer o documento.</summary>
+    public string? Dados { get; set; }
     public Guid? CriadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }

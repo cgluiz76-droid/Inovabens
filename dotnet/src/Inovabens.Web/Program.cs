@@ -114,6 +114,8 @@ var app = builder.Build();
 // `dotnet Inovabens.Web.dll migrar` faz só isso e sai — use como passo de release, se preferir.
 await app.Services.GetRequiredService<Migrador>().AplicarAsync();
 await app.Services.GetRequiredService<DadosIniciais>().GarantirAsync();
+using (var escopo = app.Services.CreateScope()) // modelos Word padrão de contrato de locação e de acordo
+    await escopo.ServiceProvider.GetRequiredService<Inovabens.Core.Locacao.LocacaoDocumentosService>().GarantirModelosPadraoAsync();
 // integrações salvas em Administração → Configurações valem por cima das variáveis de ambiente
 using (var escopo = app.Services.CreateScope())
     await escopo.ServiceProvider.GetRequiredService<Inovabens.Core.Admin.ConfiguracoesService>().CarregarAsync();
@@ -389,6 +391,9 @@ app.MapGet("/locacao/{id:guid}/termo-rescisao.pdf", (Guid id, HttpContext c, Ino
     Baixar(c, u => s.TermoRescisaoPdfAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
 app.MapGet("/locacao/{id:guid}/preferencia.pdf", (Guid id, HttpContext c, Inovabens.Core.Locacao.LocacaoService s) =>
     Baixar(c, u => s.NotificacaoPreferenciaPdfAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
+// Locação: contrato ou acordo preenchido a partir de um modelo Word (?modelo=&acordo=historicoId)
+app.MapGet("/locacao/{id:guid}/documento", (Guid id, Guid modelo, Guid? acordo, HttpContext c, Inovabens.Core.Locacao.LocacaoDocumentosService s) =>
+    Baixar(c, u => s.GerarAsync(u, id, modelo, acordo))).RequireAuthorization(Permissoes.LocacaoVer);
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 

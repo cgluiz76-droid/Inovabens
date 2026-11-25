@@ -394,6 +394,15 @@ public sealed class ImoveisService(
         audit.Registrar(db, u.Id, "imoveis", id, "ATUALIZAR", antes, im);
         await db.SaveChangesAsync();
         if (im.DrivePastaId is null) await TentarCriarPastas(id);
+        else if (SubpastasDrive.ParaLocacao(im.Finalidade) && im.DrivePastaLocacaoId is null) await TentarPastaLocacao(id);
+    }
+
+    /// <summary>Imóvel marcado para alugar ganha a "08 - Locação"; se o Drive falhar, a rotina diária tenta de novo.</summary>
+    private async Task TentarPastaLocacao(Guid id)
+    {
+        if (!armazenamento.Habilitado) return;
+        try { await pastas.PastaLocacaoAsync(id); }
+        catch (Exception e) { log.LogWarning("Pasta de locação do imóvel {Imovel} não criada no Drive: {Erro}", id, e.Message); }
     }
 
     /// <summary>O tipo precisa estar cadastrado e ativo; um tipo desativado só vale para o imóvel que já o tinha.</summary>

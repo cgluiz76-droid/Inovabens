@@ -20,7 +20,9 @@
                 <span>Tipo</span>
                 <select class="input" @bind="tipo">
                     <option value="@TipoModeloDocumento.PROPOSTA">Proposta</option>
-                    <option value="@TipoModeloDocumento.CONTRATO">Contrato</option>
+                    <option value="@TipoModeloDocumento.CONTRATO">Contrato de venda</option>
+                    <option value="@TipoModeloDocumento.CONTRATO_LOCACAO">Contrato de locação</option>
+                    <option value="@TipoModeloDocumento.ACORDO_LOCACAO">Acordo de locação</option>
                 </select>
             </label>
             <label class="campo">
@@ -66,7 +68,7 @@
                     {
                         <tr class="@(m.Ativo ? "" : "mudo")">
                             <td>@m.Nome @(m.Ativo ? "" : "(desativado)")</td>
-                            <td>@(m.Tipo == TipoModeloDocumento.PROPOSTA ? "Proposta" : "Contrato")</td>
+                            <td>@Rotulo(m.Tipo)</td>
                             <td>@(m.Finalidade is { } fm ? Funis.Nome(fm) : "Todos")</td>
                             <td><a href="admin/modelos/@m.Id/arquivo" download>@m.NomeArquivo</a> <span class="pequeno mudo">@(m.Tamanho / 1024) KB</span></td>
                             <td>@Texto.DataHora(m.CriadoEm)</td>
@@ -83,12 +85,14 @@
 </section>
 
 <section class="card">
-    <h2>Marcadores disponíveis</h2>
+    <h2>Marcadores disponíveis · @(Locacao ? "locação" : "proposta e contrato de venda")</h2>
+    <p class="pequeno mudo">A lista muda conforme o tipo escolhido acima.
+        @(Locacao ? "Os modelos padrão de locação são criados pelo sistema; baixe, ajuste no Word e envie como modelo novo." : "")</p>
     <div class="tabela-rolagem">
         <table class="tabela">
             <thead><tr><th>Marcador</th><th>O que entra</th></tr></thead>
             <tbody>
-                @foreach (var (chave, desc) in DocumentosService.Campos)
+                @foreach (var (chave, desc) in Locacao ? Inovabens.Core.Locacao.LocacaoDocumentosService.Campos : DocumentosService.Campos)
                 {
                     <tr><td><code>{{@chave}}</code></td><td>@desc</td></tr>
                 }
@@ -103,6 +107,16 @@
     private TipoModeloDocumento tipo = TipoModeloDocumento.PROPOSTA;
     private FinalidadeLead? finalidade;
     private string? aviso;
+
+    private bool Locacao => tipo is TipoModeloDocumento.CONTRATO_LOCACAO or TipoModeloDocumento.ACORDO_LOCACAO;
+
+    private static string Rotulo(TipoModeloDocumento t) => t switch
+    {
+        TipoModeloDocumento.PROPOSTA => "Proposta",
+        TipoModeloDocumento.CONTRATO => "Contrato de venda",
+        TipoModeloDocumento.CONTRATO_LOCACAO => "Contrato de locação",
+        _ => "Acordo de locação",
+    };
 
     protected override Task OnInitializedAsync() => Carregar();
 

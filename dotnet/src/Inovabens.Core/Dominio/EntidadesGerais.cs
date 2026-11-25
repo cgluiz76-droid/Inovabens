@@ -393,6 +393,8 @@ public class ModeloDocumento
     public byte[] Conteudo { get; set; } = [];
     public int Tamanho { get; set; }
     public bool Ativo { get; set; } = true;
+    /// <summary>Modelo padrão gerado pelo sistema (locação, migração 0048).</summary>
+    public bool Padrao { get; set; }
     public Guid? CriadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;

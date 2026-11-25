@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = Permissoes.LocacaoVer)]
 @inherits ComponenteBase
 @inject LocacaoService Servico
+@inject LocacaoDocumentosService Documentos
 
 @* Ficha do contrato: dados, partes, faturas mês a mês (receber, ajustar, recibo), repasses aos locadores e, na fase 3,
    reajuste, renovação/aditivo, preferência na venda, rescisão com acerto e o histórico do contrato. *@
@@ -159,6 +160,51 @@ else
     </section>
 
     <section class="card">
+        <div class="titulo-secao">
+            <h2>Documentos</h2>
+            @if (Documentos.LinkPasta(c) is { } pasta)
+            {
+                <a class="btn-ghost mini" href="@pasta" target="_blank" rel="noopener">Abrir pasta no Drive</a>
+            }
+            else if (PodeEditar && Documentos.DriveHabilitado && c.Status != StatusContratoLocacao.RASCUNHO)
+            {
+                <button class="btn-ghost mini" disabled="@Ocupado" @onclick="CriarPasta" title="Cria a subpasta do contrato em 08 - Locação">Criar pasta no Drive</button>
+            }
+        </div>
+        <p class="pequeno mudo">
+            Contrato preenchido com os dados acima a partir de um modelo Word. Modelos próprios: Administração → Modelos.
+            @(Documentos.DriveHabilitado ? "A pasta do contrato fica em \"08 - Locação\" no Drive do imóvel; renovações e aditivos usam a mesma." : "")
+        </p>
+        <div class="acoes-topo">
+            <select class="input" @bind="modeloContrato" aria-label="Modelo do contrato">
+                @foreach (var m in modelosContrato)
+                {
+                    <option value="@m.Id">@m.Nome</option>
+                }
+            </select>
+            @if (modeloContrato is { } mc)
+            {
+                <a class="btn-ghost" href="@($"locacao/{Id}/documento?modelo={mc}")" download>Baixar contrato</a>
+                @if (PodeEditar && Documentos.DriveHabilitado)
+                {
+                    <button class="btn-ghost" disabled="@Ocupado" @onclick="() => SalvarNoDrive(mc, null)">Salvar no Drive</button>
+                }
+            }
+            @if (PodeEditar && Documentos.DriveHabilitado && c.Status != StatusContratoLocacao.RASCUNHO)
+            {
+                <label class="btn-ghost" title="Contrato assinado, laudo de vistoria, comprovantes…">
+                    @(Ocupado ? "Enviando…" : "Enviar arquivo à pasta")
+                    <InputFile OnChange="EnviarArquivo" class="oculto" disabled="@Ocupado" />
+                </label>
+            }
+            @if (PodeEditar && d.Faturas.Any(x => x.Saldo > 0 && x.Vencimento < DatasBR.Hoje()))
+            {
+                <button class="btn-ghost" @onclick="AbrirAcordo" title="Parcelamento dos aluguéis em atraso, com termo de acordo">Acordo de atraso</button>
+            }
+        </div>
+    </section>
+
+    <section class="card">
         <div class="titulo-secao"><h2>Faturas</h2></div>
         @if (d.Faturas.Count == 0)
         {
@@ -279,6 +325,15 @@ else
                                     @if (h.Tipo == TipoHistoricoLocacao.REAJUSTE)
                                     {
                                         <a class="btn-ghost mini" href="@($"locacao/{Id}/carta-reajuste.pdf?historico={h.Id}")" download>Carta</a>
+                                    }
+                                    else if (h.Tipo == TipoHistoricoLocacao.ACORDO && modelosAcordo.Count > 0)
+                                    {
+                                        <a class="btn-ghost mini" href="@($"locacao/{Id}/documento?modelo={modelosAcordo[0].Id}&acordo={h.Id}")" download
+                                           title="@($"Termo pelo modelo {modelosAcordo[0].Nome}")">Termo</a>
+                                        @if (PodeEditar && Documentos.DriveHabilitado)
+                                        {
+                                            <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => SalvarNoDrive(modelosAcordo[0].Id, h.Id)">Drive</button>
+                                        }
                                     }
                                 </td>
                             </tr>
@@ -533,8 +588,60 @@ else
     </Modal>
 }
 
+@if (acordando && d is not null)
+{
+    <Modal Titulo="Acordo de aluguéis em atraso" AoFechar="() => acordando = false">
+        <EditForm Model="acordo" OnValidSubmit="RegistrarAcordo">
+            <DataAnnotationsValidator />
+            <p class="pequeno mudo">Débito corrigido até hoje (multa e juros do contrato). O acordo fica no histórico e gera o termo;
+                as faturas continuam abertas e são baixadas conforme as parcelas forem pagas.</p>
+            <fieldset class="campo">
+                <legend>Faturas incluídas</legend>
+                @foreach (var x in d.Faturas.Where(x => x.Saldo > 0 && x.Vencimento < DatasBR.Hoje()))
+                {
+                    <div>
+                    <label class="check">
+                        <input type="checkbox" checked="@acordo.FaturaIds.Contains(x.Id)" @onchange="e => MarcarFatura(x.Id, (bool)e.Value!)" />
+                        @x.Competencia.ToString("MM/yyyy") · venc. @Texto.Data(x.Vencimento) · saldo @Texto.Moeda(x.Saldo)
+                    </label>
+                    </div>
+                }
+            </fieldset>
+            <div class="grade-4">
+                <label class="campo"><span>Desconto (R$)</span><InputNumber class="input" @bind-Value="acordo.Desconto" @bind-Value:after="SimularAcordo" /></label>
+                <label class="campo"><span>Entrada (R$)</span><InputNumber class="input" @bind-Value="acordo.Entrada" @bind-Value:after="SimularAcordo" /></label>
+                <label class="campo"><span>Parcelas</span><InputNumber class="input" @bind-Value="acordo.Parcelas" @bind-Value:after="SimularAcordo" /></label>
+                <label class="campo"><span>1º vencimento *</span><InputDate class="input" @bind-Value="acordo.PrimeiroVencimento" @bind-Value:after="SimularAcordo" /></label>
+            </div>
+            <label class="campo"><span>Observações</span><InputTextArea class="input" rows="2" @bind-Value="acordo.Observacao" /></label>
+            @if (calculoAcordo is { } ca)
+            {
+                <div class="previa-reajuste">
+                    <p>Débito corrigido <strong>@Texto.Moeda(ca.Debito)</strong>@(ca.Desconto > 0 ? $" − desconto {Texto.Moeda(ca.Desconto)}" : "") = <strong>@Texto.Moeda(ca.Total)</strong></p>
+                    <ul class="pequeno">
+                        @foreach (var p in ca.Parcelas)
+                        {
+                            <li>@(p.Entrada ? "Entrada" : $"Parcela {p.Numero}"): @Texto.Moeda(p.Valor) em @Texto.Data(p.Vencimento)</li>
+                        }
+                    </ul>
+                </div>
+            }
+            <MensagemErro Texto="@Erro" />
+            <div class="modal-acoes">
+                <button type="button" class="btn-ghost" @onclick="() => acordando = false">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar acordo</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
 @code {
     [Parameter] public Guid Id { get; set; }
+    private IReadOnlyList<ModeloResumo> modelosContrato = [], modelosAcordo = [];
+    private Guid? modeloContrato;
+    private bool acordando;
+    private AcordoForm acordo = new();
+    private AcordoCalculo? calculoAcordo;
 
     private ContratoDetalhe? d;
     private ContratoForm? editando;
@@ -556,11 +663,97 @@ else
     private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);
     private bool PodeReceber => Usuario.Pode(Permissoes.LocacaoReceber);
     private bool ModalAberto => editando is not null || recebendo is not null || itemFatura is not null || cancelando is not null
-        || reajustando || aditivando || notificando || rescindindo;
+        || reajustando || aditivando || notificando || rescindindo || acordando;
 
     protected override Task OnParametersSetAsync() => Carregar();
 
-    private async Task Carregar() => await Executar(async () => d = await Servico.ObterAsync(Usuario, Id));
+    private async Task Carregar() => await Executar(async () =>
+    {
+        d = await Servico.ObterAsync(Usuario, Id);
+        if (modelosContrato.Count == 0)
+        {
+            modelosContrato = await Documentos.ModelosAsync(Usuario, TipoModeloDocumento.CONTRATO_LOCACAO);
+            modelosAcordo = await Documentos.ModelosAsync(Usuario, TipoModeloDocumento.ACORDO_LOCACAO);
+            modeloContrato = modelosContrato.FirstOrDefault()?.Id;
+        }
+    });
+
+    /* ---------- documentos e Drive ---------- */
+
+    private async Task CriarPasta()
+    {
+        if (await Executar(() => Documentos.GarantirPastaAsync(Usuario, Id)))
+        {
+            await Carregar();
+            Sucesso = "Pasta do contrato criada no Drive.";
+        }
+    }
+
+    private async Task SalvarNoDrive(Guid modelo, Guid? acordoId)
+    {
+        DocumentoSalvo? r = null;
+        if (await Executar(async () => r = await Documentos.SalvarNoDriveAsync(Usuario, Id, modelo, acordoId)))
+        {
+            await Carregar();
+            Sucesso = $"{r!.Nome} guardado na pasta do contrato no Drive.";
+        }
+    }
+
+    private async Task EnviarArquivo(InputFileChangeEventArgs e)
+    {
+        DocumentoSalvo? r = null;
+        var ok = await Executar(async () =>
+        {
+            if (e.File.Size > ImoveisService.TamanhoMaximoArquivo) throw new RegraNegocioException("arquivo", "Arquivo acima de 25 MB.");
+            await using var s = e.File.OpenReadStream(ImoveisService.TamanhoMaximoArquivo);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            r = await Documentos.EnviarArquivoAsync(Usuario, Id, e.File.Name, ms.ToArray(),
+                string.IsNullOrEmpty(e.File.ContentType) ? "application/octet-stream" : e.File.ContentType);
+        });
+        if (ok)
+        {
+            await Carregar();
+            Sucesso = $"{r!.Nome} enviado para a pasta do contrato.";
+        }
+    }
+
+    private async Task AbrirAcordo()
+    {
+        Erro = null;
+        acordo = new AcordoForm
+        {
+            FaturaIds = [.. d!.Faturas.Where(x => x.Saldo > 0 && x.Vencimento < DatasBR.Hoje()).Select(x => x.Id)],
+            PrimeiroVencimento = DatasBR.Hoje().AddDays(7),
+        };
+        acordando = true;
+        await SimularAcordo();
+    }
+
+    private async Task MarcarFatura(Guid id, bool marcada)
+    {
+        if (marcada) acordo.FaturaIds.Add(id); else acordo.FaturaIds.Remove(id);
+        await SimularAcordo();
+    }
+
+    private async Task SimularAcordo()
+    {
+        calculoAcordo = null;
+        Erro = null;
+        if (acordo.FaturaIds.Count == 0 || acordo.PrimeiroVencimento is null) return;
+        try { calculoAcordo = await Documentos.SimularAcordoAsync(Usuario, Id, acordo); }
+        catch (RegraNegocioException ex) { Erro = ex.Message; }
+    }
+
+    private async Task RegistrarAcordo()
+    {
+        if (await Executar(() => Documentos.RegistrarAcordoAsync(Usuario, Id, acordo)))
+        {
+            acordando = false;
+            await Carregar();
+            Sucesso = "Acordo registrado no histórico. Baixe o termo na linha do acordo.";
+        }
+    }
 
     private async Task Editar() => await Executar(async () => editando = await Servico.FormularioAsync(Usuario, Id));
 
@@ -575,6 +768,9 @@ else
     {
         if (await Executar(() => Servico.AtivarAsync(Usuario, Id)))
         {
+            // subpasta do contrato no Drive; se falhar, a rotina diária cria depois
+            if (Documentos.DriveHabilitado)
+                try { await Documentos.GarantirPastaAsync(Usuario, Id); } catch (Exception) { }
             await Carregar();
             Sucesso = "Contrato ativado: o imóvel está como locado e as primeiras faturas foram geradas.";
         }

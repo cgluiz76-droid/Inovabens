@@ -269,6 +269,7 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         mb.Entity<ContratoLocacaoHistorico>(e =>
         {
             e.Property(x => x.Tipo).HasConversion<string>();
+            e.Property(x => x.Dados).HasColumnType("jsonb");
             e.HasOne<ContratoLocacao>().WithMany().HasForeignKey(x => x.ContratoId);
         });
         mb.Entity<LocacaoAviso>(e =>

@@ -397,6 +397,114 @@ public class LocacaoTests : IAsyncLifetime
         Assert.True((await loc.TermoRescisaoPdfAsync(admin, id)).Conteudo.Length > 1000);
         await Assert.ThrowsAsync<RegraNegocioException>(() => loc.RescindirAsync(admin, id, resc));
     }
+
+    [Fact]
+    public async Task Modelos_padrao_documento_e_acordo_de_atraso()
+    {
+        var admin = await Admin();
+        var loc = S<LocacaoService>();
+        var docs = S<LocacaoDocumentosService>();
+        Guid dono = await Pessoa(admin, "Gil Locador"), inquilino = await Pessoa(admin, "Hugo Inquilino");
+        var imovel = await Imovel(admin, FinalidadeImovel.LOCACAO, (dono, 100));
+        var hoje = DatasBR.Hoje();
+        var form = await loc.NovoParaImovelAsync(admin, imovel);
+        form.Inicio = new DateOnly(hoje.Year, hoje.Month, 1).AddMonths(-3);
+        form.ValorAluguel = 1800;
+        form.Partes.Add(new ParteForm { PessoaId = inquilino, Papel = PapelContratoLocacao.LOCATARIO });
+        var id = await loc.CriarAsync(admin, form);
+        await loc.AtivarAsync(admin, id);
+
+        // modelos padrão: criados uma vez só, fora da lista de modelos de venda
+        await docs.GarantirModelosPadraoAsync();
+        await docs.GarantirModelosPadraoAsync();
+        await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+        {
+            Assert.Equal(1, await db.ModelosDocumento.CountAsync(m => m.Padrao && m.Tipo == TipoModeloDocumento.CONTRATO_LOCACAO));
+            Assert.Equal(1, await db.ModelosDocumento.CountAsync(m => m.Padrao && m.Tipo == TipoModeloDocumento.ACORDO_LOCACAO));
+        }
+        Assert.DoesNotContain(await S<Inovabens.Core.Crm.DocumentosService>().ModelosAsync(admin, FinalidadeLead.LOCACAO),
+            m => m.Tipo is TipoModeloDocumento.CONTRATO_LOCACAO or TipoModeloDocumento.ACORDO_LOCACAO);
+        var contrato = (await docs.ModelosAsync(admin, TipoModeloDocumento.CONTRATO_LOCACAO)).First(m => m.Nome == LocacaoDocumentosService.NomeModeloContrato);
+        var acordoModelo = (await docs.ModelosAsync(admin, TipoModeloDocumento.ACORDO_LOCACAO)).First(m => m.Nome == LocacaoDocumentosService.NomeModeloAcordo);
+
+        // todo marcador dos modelos padrão é conhecido e tem valor
+        var conhecidos = LocacaoDocumentosService.Campos.Select(c => c.Chave).ToHashSet();
+        Assert.All(Docx.Marcadores(LocacaoDocumentosService.ModeloContratoPadrao()), m => Assert.Contains(m, conhecidos));
+        Assert.All(Docx.Marcadores(LocacaoDocumentosService.ModeloAcordoPadrao()), m => Assert.Contains(m, conhecidos));
+        var valores = await docs.ValoresAsync(admin, id);
+        Assert.All(conhecidos.Where(c => !c.StartsWith("acordo.")), c => Assert.True(valores.ContainsKey(c), c));
+        Assert.Contains("Hugo Inquilino", valores["locatarios.qualificacao"]);
+        Assert.Equal("R$ 1.800,00", valores["locacao.aluguel"].Replace('\u00a0', ' '));
+
+        var arq = await docs.GerarAsync(admin, id, contrato.Id);
+        if (arq.Nome.EndsWith(".docx"))
+        {
+            Assert.Empty(Docx.Marcadores(arq.Conteudo)); // tudo preenchido
+            Assert.Contains("Hugo Inquilino", TextoDocx(arq.Conteudo));
+        }
+        else Assert.True(arq.Conteudo.Length > 1000);
+
+        // acordo: faturas vencidas, desconto, entrada e 3 parcelas; a soma fecha com o total
+        var d = await loc.ObterAsync(admin, id);
+        var vencidas = d.Faturas.Where(x => x.Saldo > 0 && x.Vencimento < hoje).Select(x => x.Id).ToList();
+        Assert.NotEmpty(vencidas);
+        var af = new AcordoForm { FaturaIds = vencidas, Desconto = 50, Entrada = 300, Parcelas = 3, PrimeiroVencimento = hoje.AddDays(5) };
+        var calc = await docs.SimularAcordoAsync(admin, id, af);
+        Assert.Equal(calc.Debito - 50, calc.Total);
+        Assert.Equal(4, calc.Parcelas.Count);
+        Assert.Equal(calc.Total, calc.Parcelas.Sum(x => x.Valor));
+        await Assert.ThrowsAsync<RegraNegocioException>(() => docs.SimularAcordoAsync(admin, id,
+            new AcordoForm { FaturaIds = vencidas, Desconto = calc.Debito + 1, PrimeiroVencimento = hoje }));
+        var hid = await docs.RegistrarAcordoAsync(admin, id, af);
+        var h = (await loc.ObterAsync(admin, id)).Historico.Single(x => x.Id == hid);
+        Assert.Equal(TipoHistoricoLocacao.ACORDO, h.Tipo);
+        Assert.Equal(calc.Total, h.ValorNovo);
+        var termo = await docs.GerarAsync(admin, id, acordoModelo.Id, hid);
+        if (termo.Nome.EndsWith(".docx"))
+        {
+            Assert.Empty(Docx.Marcadores(termo.Conteudo));
+            Assert.Contains("Parcela 3", TextoDocx(termo.Conteudo));
+        }
+        // modelo de acordo sem acordo registrado: erro claro
+        await Assert.ThrowsAsync<RegraNegocioException>(() => docs.GerarAsync(admin, id, acordoModelo.Id));
+
+        // Drive (em memória): imóvel para alugar tem "08 - Locação"; o contrato, a sua subpasta, onde ficam os documentos
+        var drive = (ArmazenamentoMemoria)S<IArmazenamento>();
+        await docs.CriarPastasPendentesAsync();
+        await using (var db = await S<IDbContextFactory<InovabensDb>>().CreateDbContextAsync())
+        {
+            var im = await db.Imoveis.SingleAsync(i => i.Id == imovel);
+            Assert.NotNull(im.DrivePastaLocacaoId);
+            Assert.Equal(SubpastasDrive.Locacao, drive.Itens[im.DrivePastaLocacaoId!].Nome);
+            Assert.Equal(im.DrivePastaId, drive.Itens[im.DrivePastaLocacaoId!].Pai);
+            var pastaContrato = (await db.ContratosLocacao.SingleAsync(c => c.Id == id)).DrivePastaId;
+            Assert.NotNull(pastaContrato);
+            Assert.Equal(im.DrivePastaLocacaoId, drive.Itens[pastaContrato!].Pai);
+            Assert.StartsWith(d.Codigo + " - Hugo Inquilino", drive.Itens[pastaContrato].Nome);
+        }
+        var salvo = await docs.SalvarNoDriveAsync(admin, id, acordoModelo.Id, hid);
+        await docs.EnviarArquivoAsync(admin, id, "laudo-entrada.pdf", [1, 2, 3], "application/pdf");
+        var pasta = await docs.GarantirPastaAsync(admin, id); // a mesma pasta, não cria outra
+        Assert.Equal(new[] { "laudo-entrada.pdf", salvo.Nome }.Order(), drive.Filhos(pasta).Select(x => x.Nome).Order());
+        Assert.Equal(2, (await loc.ObterAsync(admin, id)).Historico.Count(x => x.Tipo == TipoHistoricoLocacao.DOCUMENTO));
+    }
+
+    private static string TextoDocx(byte[] docx)
+    {
+        using var zip = new System.IO.Compression.ZipArchive(new MemoryStream(docx));
+        using var r = new StreamReader(zip.GetEntry("word/document.xml")!.Open());
+        return r.ReadToEnd();
+    }
+
+    [Fact]
+    public void Nome_da_pasta_do_contrato()
+    {
+        var c = new ContratoLocacao { Numero = 7, Inicio = new DateOnly(2026, 11, 10) };
+        Assert.Equal("LOC-0007 - Ana/Bia - desde 11-2026".Replace('/', '-'), LocacaoDocumentosService.NomePasta(c, "Ana/Bia"));
+        Assert.Equal("LOC-0007 - sem locatário - desde 11-2026", LocacaoDocumentosService.NomePasta(c, null));
+        Assert.True(SubpastasDrive.ParaLocacao(FinalidadeImovel.AMBOS));
+        Assert.False(SubpastasDrive.ParaLocacao(FinalidadeImovel.VENDA));
+    }
 }
 
 /// <summary>Cálculos da fase 3: reajuste pelo índice acumulado, rescisão e avisos de vencimento.</summary>
