@@ -37,8 +37,8 @@ public sealed class UsuariosService(IDbContextFactory<InovabensDb> fabrica, Audi
         var q = db.Usuarios.AsNoTracking().Where(x => x.ExcluidoEm == null);
         if (Texto.Limpo(termo) is { } t)
         {
-            var like = $"%{Texto.LikeLiteral(t)}%";
-            q = q.Where(x => EF.Functions.ILike(x.Nome, like) || EF.Functions.ILike(x.Email, like));
+            var like = Texto.LikeBusca(t);
+            q = q.Where(x => EF.Functions.Like(FuncoesBusca.Normalizar(x.Nome), like, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(x.Email), like, @"\"));
         }
         pagina = Math.Max(1, pagina);
         var total = await q.CountAsync();

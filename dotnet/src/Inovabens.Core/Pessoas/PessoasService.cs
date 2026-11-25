@@ -124,9 +124,9 @@ public sealed class PessoasService(IDbContextFactory<InovabensDb> fabrica, Audit
         var q = db.Pessoas.AsNoTracking().Where(p => p.ExcluidoEm == null);
         if (Texto.Limpo(f.Termo) is { } t)
         {
-            var termo = $"%{Texto.LikeLiteral(t)}%";
-            q = q.Where(p => EF.Functions.ILike(p.NomeRazao, termo) || EF.Functions.ILike(p.CpfCnpj!, termo)
-                || EF.Functions.ILike(p.Email!, termo) || EF.Functions.ILike(p.Telefone!, termo));
+            var termo = Texto.LikeBusca(t);
+            q = q.Where(p => EF.Functions.Like(FuncoesBusca.Normalizar(p.NomeRazao), termo, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(p.CpfCnpj!), termo, @"\")
+                || EF.Functions.Like(FuncoesBusca.Normalizar(p.Email!), termo, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(p.Telefone!), termo, @"\"));
         }
         if (Texto.Limpo(f.Papel) is { } papel) q = q.Where(p => p.Papeis.Any(x => x.Papel == papel));
         return q;

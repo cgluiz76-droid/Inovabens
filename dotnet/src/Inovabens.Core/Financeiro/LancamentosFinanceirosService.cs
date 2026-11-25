@@ -511,5 +511,5 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
     };
 
     private static bool ContemBusca(string? busca, params string?[] campos) =>
-        Texto.Limpo(busca) is not { } b || campos.Any(c => c?.Contains(b, StringComparison.CurrentCultureIgnoreCase) == true);
+        Texto.Limpo(busca) is not { } b || campos.Any(c => Texto.Contem(c, b)); // sem maiúsculas nem acentos
 }

@@ -180,14 +180,15 @@ else
     private IEnumerable<OpcaoImovel> ImoveisDaSituacao =>
         SituacaoEscolhida is { } si ? imoveis.Where(i => i.Situacao == si) : imoveis;
 
-    /// <summary>Texto digitado → imóvel: nome exato da lista, ou um único que contenha o texto (código ou parte do nome).</summary>
+    /// <summary>Texto digitado → imóvel: nome exato da lista, ou um único que contenha o texto (código ou parte do nome),
+    /// sem diferenciar maiúsculas nem acentos.</summary>
     private static OpcaoImovel? Achar(IEnumerable<OpcaoImovel> lista, string texto)
     {
         var t = texto.Trim();
         if (t.Length == 0) return null;
-        var exato = lista.FirstOrDefault(i => string.Equals(i.Nome, t, StringComparison.OrdinalIgnoreCase));
+        var exato = lista.FirstOrDefault(i => Texto.Igual(i.Nome, t));
         if (exato is not null) return exato;
-        var parecidos = lista.Where(i => i.Nome.Contains(t, StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
+        var parecidos = lista.Where(i => Texto.Contem(i.Nome, t)).Take(2).ToList();
         return parecidos.Count == 1 ? parecidos[0] : null;
     }
 

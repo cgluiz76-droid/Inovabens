@@ -435,9 +435,9 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
         if (f.CategoriaId is { } cat) q = q.Where(l => l.CategoriaId == cat);
         if (Texto.Limpo(f.Busca) is { } busca)
         {
-            var like = $"%{Texto.LikeLiteral(busca)}%";
-            q = q.Where(l => EF.Functions.ILike(l.Descricao, like, @"\") || EF.Functions.ILike(l.PessoaNome ?? "", like, @"\")
-                || EF.Functions.ILike(l.Documento ?? "", like, @"\") || (l.Imovel != null && EF.Functions.ILike(l.Imovel.Codigo, like, @"\")));
+            var like = Texto.LikeBusca(busca);
+            q = q.Where(l => EF.Functions.Like(FuncoesBusca.Normalizar(l.Descricao), like, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(l.PessoaNome), like, @"\")
+                || EF.Functions.Like(FuncoesBusca.Normalizar(l.Documento), like, @"\") || (l.Imovel != null && EF.Functions.Like(FuncoesBusca.Normalizar(l.Imovel.Codigo), like, @"\")));
         }
         var linhas = await Linhas(q.OrderBy(l => l.DataPagamento ?? l.Vencimento).ThenBy(l => l.CriadoEm).Take(LimiteLista));
         // lançamentos de imóvel que passaram (ou vão passar) por uma conta da imobiliária: aparecem para o extrato fechar
@@ -459,9 +459,9 @@ public sealed class FinanceiroEmpresaService(IDbContextFactory<InovabensDb> fabr
         if (f.ContaId is { } conta) q = q.Where(l => l.ContaBancariaId == conta);
         if (Texto.Limpo(f.Busca) is { } busca)
         {
-            var like = $"%{Texto.LikeLiteral(busca)}%";
-            q = q.Where(l => EF.Functions.ILike(l.Descricao, like, @"") || EF.Functions.ILike(l.PessoaNome ?? "", like, @"")
-                || EF.Functions.ILike(l.Imovel!.Codigo, like, @""));
+            var like = Texto.LikeBusca(busca);
+            q = q.Where(l => EF.Functions.Like(FuncoesBusca.Normalizar(l.Descricao), like, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(l.PessoaNome), like, @"\")
+                || EF.Functions.Like(FuncoesBusca.Normalizar(l.Imovel!.Codigo), like, @"\"));
         }
         return await q.OrderBy(l => l.DataLiquidacao ?? l.Data).Take(LimiteLista).Select(l => new LancamentoEmpresaLinha(
             l.Id, l.Descricao, l.Valor, l.Data, l.Situacao == SituacaoLancamento.LIQUIDADO ? l.DataLiquidacao : null,

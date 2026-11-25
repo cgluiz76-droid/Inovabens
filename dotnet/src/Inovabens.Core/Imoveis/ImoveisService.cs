@@ -107,16 +107,16 @@ public sealed class ImoveisService(
         if (!u.EscopoProprio && f.CorretorId is { } c) q = q.Where(i => i.CorretorResponsavelId == c);
         if (f.Situacao is { } s) q = q.Where(i => i.Situacao == s);
         if (f.Finalidade is { } fi) q = q.Where(i => i.Finalidade == fi);
-        if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.ILike(i.Tipo, Texto.LikeLiteral(tipo), @"\"));
-        if (Texto.Limpo(f.Cidade) is { } cidade) q = q.Where(i => EF.Functions.ILike(i.Cidade!, Texto.LikeLiteral(cidade), @"\"));
+        if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.Like(FuncoesBusca.Normalizar(i.Tipo), Texto.LikeIgual(tipo), @"\"));
+        if (Texto.Limpo(f.Cidade) is { } cidade) q = q.Where(i => EF.Functions.Like(FuncoesBusca.Normalizar(i.Cidade!), Texto.LikeIgual(cidade), @"\"));
         if (Texto.Limpo(f.Termo) is { } termo)
         {
-            var t = $"%{Texto.LikeLiteral(termo)}%";
-            q = q.Where(i => EF.Functions.ILike(i.Titulo, t, @"\") || EF.Functions.ILike(i.NomeDrive!, t, @"\")
-                || EF.Functions.ILike(i.Codigo, t, @"\")
-                || EF.Functions.ILike(i.CodigoAntigo!, t, @"\")
-                || EF.Functions.ILike(i.Bairro!, t, @"\") || EF.Functions.ILike(i.Cidade!, t, @"\")
-                || EF.Functions.ILike(i.Logradouro!, t, @"\") || EF.Functions.ILike(i.Matricula!, t, @"\"));
+            var t = Texto.LikeBusca(termo);
+            q = q.Where(i => EF.Functions.Like(FuncoesBusca.Normalizar(i.Titulo), t, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(i.NomeDrive), t, @"\")
+                || EF.Functions.Like(FuncoesBusca.Normalizar(i.Codigo), t, @"\")
+                || EF.Functions.Like(FuncoesBusca.Normalizar(i.CodigoAntigo), t, @"\")
+                || EF.Functions.Like(FuncoesBusca.Normalizar(i.Bairro), t, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(i.Cidade), t, @"\")
+                || EF.Functions.Like(FuncoesBusca.Normalizar(i.Logradouro), t, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(i.Matricula), t, @"\"));
         }
         return q;
     }
@@ -176,8 +176,8 @@ public sealed class ImoveisService(
         var q = baseQ.Where(i => i.ExcluidoEm == null && i.DivulgarSite && i.Situacao == SituacaoImovel.DISPONIVEL);
         if (f.Finalidade is { } fi && fi != FinalidadeImovel.AMBOS)
             q = q.Where(i => i.Finalidade == fi || i.Finalidade == FinalidadeImovel.AMBOS);
-        if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.ILike(i.Tipo, Texto.LikeLiteral(tipo), @"\"));
-        if (Texto.Limpo(f.Cidade) is { } cidade) q = q.Where(i => EF.Functions.ILike(i.Cidade!, Texto.LikeLiteral(cidade), @"\"));
+        if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.Like(FuncoesBusca.Normalizar(i.Tipo), Texto.LikeIgual(tipo), @"\"));
+        if (Texto.Limpo(f.Cidade) is { } cidade) q = q.Where(i => EF.Functions.Like(FuncoesBusca.Normalizar(i.Cidade!), Texto.LikeIgual(cidade), @"\"));
         var imoveis = await q.OrderByDescending(i => i.AtualizadoEm).Take(Math.Clamp(f.Maximo, 1, 200)).ToListAsync();
 
         var ids = imoveis.Select(i => i.Id).ToList();

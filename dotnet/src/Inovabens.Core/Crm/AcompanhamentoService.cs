@@ -128,10 +128,10 @@ public sealed class AcompanhamentoService(IDbContextFactory<InovabensDb> fabrica
             q = q.Where(l => l.ImovelSugeridoId == imovel || db.LeadImoveisInteresse.Any(i => i.LeadId == l.Id && i.ImovelId == imovel));
         if (Texto.Limpo(f.Pessoa) is { } pessoa)
         {
-            var like = $"%{Texto.LikeLiteral(pessoa)}%";
+            var like = Texto.LikeBusca(pessoa);
             var digitos = new string(pessoa.Where(char.IsAsciiDigit).ToArray());
             var likeFone = digitos.Length >= 4 ? $"%{digitos}%" : null;
-            q = q.Where(l => EF.Functions.ILike(l.Pessoa!.NomeRazao, like, @"\") || EF.Functions.ILike(l.Pessoa.Email ?? "", like, @"\")
+            q = q.Where(l => EF.Functions.Like(FuncoesBusca.Normalizar(l.Pessoa!.NomeRazao), like, @"\") || EF.Functions.Like(FuncoesBusca.Normalizar(l.Pessoa.Email), like, @"\")
                              || (likeFone != null && (EF.Functions.Like(l.Pessoa.Telefone ?? "", likeFone) || EF.Functions.Like(l.Pessoa.Whatsapp ?? "", likeFone))));
         }
 

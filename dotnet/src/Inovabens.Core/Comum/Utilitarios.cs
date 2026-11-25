@@ -50,6 +50,34 @@ public static class Texto
     /// <summary>Escapa curingas de LIKE para busca literal (escape = '\').</summary>
     public static string LikeLiteral(string s) => s.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
 
+    /* ---- Regra única das buscas: sem diferenciar maiúsculas, acentos nem "ç" ("sao joao" acha "São João",
+       "acucar" acha "Açúcar"). No banco, a mesma regra é a função busca_normalizar (FuncoesBusca.Normalizar). ---- */
+
+    /// <summary>Minúsculas e sem acento (ç vira c), igual à função busca_normalizar do banco. Vazio se não houver texto.</summary>
+    public static string SemAcento(string? texto)
+    {
+        if (Limpo(texto) is not { } t) return "";
+        var sb = new System.Text.StringBuilder(t.Length);
+        foreach (var c in t.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD))
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark) sb.Append(c);
+        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+    }
+
+    /// <summary>Padrão LIKE "contém" já normalizado, para comparar com FuncoesBusca.Normalizar(coluna), escape = '\'.</summary>
+    public static string LikeBusca(string termo) => $"%{LikeLiteral(SemAcento(termo))}%";
+
+    /// <summary>Padrão LIKE "igual" normalizado (filtros por valor, como tipo e cidade).</summary>
+    public static string LikeIgual(string termo) => LikeLiteral(SemAcento(termo));
+
+    /// <summary>Busca em memória (listas já carregadas na tela): contém, sem maiúsculas nem acentos.</summary>
+    public static bool Contem(string? texto, string? busca) =>
+        string.IsNullOrWhiteSpace(busca)
+        || PtBr.CompareInfo.IndexOf(texto ?? "", busca.Trim(), CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0;
+
+    /// <summary>Igualdade sem maiúsculas nem acentos.</summary>
+    public static bool Igual(string? a, string? b) =>
+        PtBr.CompareInfo.Compare((a ?? "").Trim(), (b ?? "").Trim(), CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) == 0;
+
     public static string Moeda(decimal? v) => v is null ? "—" : v.Value.ToString("C", PtBr);
 
     /// <summary>Valor resumido para cartões: R$ 950, R$ 480 mil, R$ 1,25 mi.</summary>

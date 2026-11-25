@@ -468,7 +468,7 @@ else
     private bool VisivelNoFiltro(OpcaoImovel im) =>
         form!.Imoveis?.Contains(im.Id) == true
         || ((mostrarInativos || im.Ativo)
-            && (Texto.Limpo(filtroImovel) is not { } f || im.Nome.Contains(f, StringComparison.CurrentCultureIgnoreCase)));
+            && (Texto.Limpo(filtroImovel) is not { } f || Texto.Contem(im.Nome, f)));
 
     private void AlternarImovel(Guid id, bool marcado)
     {

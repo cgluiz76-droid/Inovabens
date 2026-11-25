@@ -93,15 +93,8 @@ public sealed class BuscaGlobalService(IDbContextFactory<InovabensDb> fabrica)
         return new ResultadoBusca(imoveis, pessoas, leads);
     }
 
-    /// <summary>Minúsculas e sem acento, igual à função busca_normalizar do banco.</summary>
-    public static string Normalizar(string? texto)
-    {
-        if (Texto.Limpo(texto) is not { } t) return "";
-        var sb = new StringBuilder(t.Length);
-        foreach (var c in t.ToLowerInvariant().Normalize(NormalizationForm.FormD))
-            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark) sb.Append(c);
-        return sb.ToString().Normalize(NormalizationForm.FormC);
-    }
+    /// <summary>Minúsculas e sem acento, igual à função busca_normalizar do banco (regra em Texto.SemAcento).</summary>
+    public static string Normalizar(string? texto) => Texto.SemAcento(texto);
 
     private static string? Juntar(params string?[] partes) =>
         string.Join(" · ", partes.Where(p => !string.IsNullOrWhiteSpace(p))) is { Length: > 0 } s ? s : null;
