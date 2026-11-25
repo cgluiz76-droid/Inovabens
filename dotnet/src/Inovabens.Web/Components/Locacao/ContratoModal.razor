@@ -1,0 +1,226 @@
+@inherits ComponenteBase
+@inject LocacaoService Servico
+@inject OpcoesService Opcoes
+
+@* Formulário do contrato (novo ou edição). Partes: locadores (com % do repasse), locatários e fiador. Os padrões da
+   Inova Bens já vêm preenchidos: 10% de administração, intermediação = 1º aluguel, multa 10% e juros 1% a.m. *@
+
+<Modal Titulo="@(EditandoId is null ? "Novo contrato de locação" : "Editar contrato")" AoFechar="AoFechar" Largo="true">
+    <EditForm Model="Form" OnValidSubmit="Salvar" class="formulario">
+        <DataAnnotationsValidator />
+        <MensagemErro Texto="@Erro" />
+
+        <h3 class="subtitulo-form">Imóvel e prazo</h3>
+        <div class="grade-3">
+            <label class="campo col-2">
+                <span>Imóvel</span>
+                <select class="input" @bind="ImovelId" disabled="@Travado">
+                    <option value="">Selecione…</option>
+                    @foreach (var i in imoveis) { <option value="@i.Id">@i.Nome</option> }
+                </select>
+                <ValidationMessage For="() => Form.ImovelCodigo" />
+            </label>
+            <label class="campo">
+                <span>Modalidade</span>
+                <select class="input" @bind="Form.Modalidade" disabled="@Travado">
+                    <option value="@ModalidadeLocacao.ADMINISTRACAO">Administração (terceiros)</option>
+                    <option value="@ModalidadeLocacao.PROPRIO">Imóvel próprio / sócios</option>
+                </select>
+            </label>
+            <label class="campo">
+                <span>Tipo</span>
+                <select class="input" @bind="Form.Tipo">
+                    <option value="@TipoLocacao.RESIDENCIAL">Residencial</option>
+                    <option value="@TipoLocacao.COMERCIAL">Comercial</option>
+                </select>
+            </label>
+            <label class="campo">
+                <span>Início</span>
+                <InputDate class="input" @bind-Value="Form.Inicio" disabled="@Travado" />
+                <ValidationMessage For="() => Form.Inicio" />
+            </label>
+            <label class="campo">
+                <span>Prazo (meses)</span>
+                <InputNumber class="input" @bind-Value="Form.PrazoMeses" min="1" />
+                <ValidationMessage For="() => Form.PrazoMeses" />
+            </label>
+            <label class="campo">
+                <span>Dia do vencimento</span>
+                <InputNumber class="input" @bind-Value="Form.DiaVencimento" min="1" max="28" />
+                <ValidationMessage For="() => Form.DiaVencimento" />
+            </label>
+            <label class="check col-2">
+                <InputCheckbox @bind-Value="Form.PagamentoAntecipado" /> Aluguel adiantado (vence no próprio mês; só sem garantia)
+                <ValidationMessage For="() => Form.PagamentoAntecipado" />
+            </label>
+        </div>
+
+        <h3 class="subtitulo-form">Valores mensais</h3>
+        <div class="grade-4">
+            <label class="campo">
+                <span>Aluguel</span>
+                <InputNumber class="input" @bind-Value="Form.ValorAluguel" step="0.01" />
+                <ValidationMessage For="() => Form.ValorAluguel" />
+            </label>
+            <label class="campo"><span>Condomínio</span><InputNumber class="input" @bind-Value="Form.ValorCondominio" step="0.01" /></label>
+            <label class="campo"><span>IPTU (mensal)</span><InputNumber class="input" @bind-Value="Form.ValorIptu" step="0.01" /></label>
+            <label class="campo"><span>Seguro incêndio (mensal)</span><InputNumber class="input" @bind-Value="Form.ValorSeguroIncendio" step="0.01" /></label>
+            <label class="campo">
+                <span>Índice de reajuste</span>
+                <select class="input" @bind="Form.IndiceReajuste">
+                    <option value="@CodigoIndice.IGPM">IGP-M</option>
+                    <option value="@CodigoIndice.IPCA">IPCA</option>
+                </select>
+            </label>
+        </div>
+
+        <h3 class="subtitulo-form">Garantia</h3>
+        <div class="grade-3">
+            <label class="campo">
+                <span>Tipo (uma só, art. 37)</span>
+                <select class="input" @bind="Form.Garantia">
+                    @foreach (var g in Enum.GetValues<GarantiaLocacao>()) { <option value="@g">@PropostasService.Rotulo(g)</option> }
+                </select>
+            </label>
+            @if (Form.Garantia != GarantiaLocacao.SEM_GARANTIA)
+            {
+                <label class="campo">
+                    <span>@(Form.Garantia == GarantiaLocacao.CAUCAO ? "Valor da caução (até 3 aluguéis)" : "Valor coberto")</span>
+                    <InputNumber class="input" @bind-Value="Form.GarantiaValor" step="0.01" />
+                    <ValidationMessage For="() => Form.GarantiaValor" />
+                </label>
+                <label class="campo">
+                    <span>Detalhe (apólice, seguradora, banco…)</span>
+                    <InputText class="input" maxlength="500" @bind-Value="Form.GarantiaDetalhe" />
+                </label>
+            }
+        </div>
+
+        <h3 class="subtitulo-form">Partes</h3>
+        <MensagemErro Texto="@ErroPartes" />
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Papel</th><th>Pessoa</th><th class="num">% repasse</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var p in Form.Partes)
+                    {
+                        <tr>
+                            <td>
+                                <select class="input" @bind="p.Papel">
+                                    <option value="@PapelContratoLocacao.LOCADOR">Locador</option>
+                                    <option value="@PapelContratoLocacao.LOCATARIO">Locatário</option>
+                                    <option value="@PapelContratoLocacao.FIADOR">Fiador</option>
+                                </select>
+                            </td>
+                            <td>
+                                <input class="input" list="locacao-pessoas" value="@NomeDe(p)" placeholder="Digite o nome"
+                                       @onchange="e => EscolherPessoa(p, e.Value?.ToString())" />
+                            </td>
+                            <td class="num">
+                                @if (p.Papel == PapelContratoLocacao.LOCADOR)
+                                {
+                                    <input class="input input-curto" type="number" step="0.01" min="0" max="100" @bind="p.Percentual" />
+                                }
+                            </td>
+                            <td><button type="button" class="btn-ghost mini" title="Remover" @onclick="() => { Form.Partes.Remove(p); }"><Icone Nome="x" /></button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <datalist id="locacao-pessoas">
+            @foreach (var p in pessoas) { <option value="@p.Nome" /> }
+        </datalist>
+        <p class="pequeno mudo">
+            <button type="button" class="btn-ghost mini" @onclick="() => Form.Partes.Add(new ParteForm { Papel = PapelContratoLocacao.LOCATARIO })">+ Parte</button>
+            Os locadores vêm dos proprietários do imóvel; os percentuais precisam somar 100%. Quem não está na lista precisa ser
+            cadastrado antes em Pessoas.
+        </p>
+
+        @if (Form.Modalidade == ModalidadeLocacao.ADMINISTRACAO)
+        {
+            <h3 class="subtitulo-form">Taxas e repasse</h3>
+            <div class="grade-4">
+                <label class="campo"><span>Taxa de administração (%)</span><InputNumber class="input" @bind-Value="Form.TaxaAdministracaoPct" step="0.01" /></label>
+                <label class="campo">
+                    <span>Intermediação (R$)</span>
+                    <InputNumber class="input" @bind-Value="Form.IntermediacaoValor" step="0.01" placeholder="= 1º aluguel" />
+                </label>
+                <label class="campo"><span>Repasse (dias após receber)</span><InputNumber class="input" @bind-Value="Form.DiasRepasse" /></label>
+            </div>
+        }
+        <h3 class="subtitulo-form">Atraso e rescisão</h3>
+        <div class="grade-4">
+            <label class="campo"><span>Multa por atraso (%)</span><InputNumber class="input" @bind-Value="Form.MultaAtrasoPct" step="0.01" /></label>
+            <label class="campo"><span>Juros (% ao mês)</span><InputNumber class="input" @bind-Value="Form.JurosMesPct" step="0.01" /></label>
+            <label class="campo"><span>Multa rescisória (aluguéis)</span><InputNumber class="input" @bind-Value="Form.MultaRescisoriaAlugueis" step="0.5" /></label>
+        </div>
+        <div class="grade-2">
+            <label class="check"><InputCheckbox @bind-Value="Form.ClausulaVigencia" /> Cláusula de vigência em caso de venda</label>
+            <label class="check"><InputCheckbox @bind-Value="Form.Averbado" /> Contrato averbado na matrícula</label>
+        </div>
+        <label class="campo">
+            <span>Observações</span>
+            <InputTextArea class="input" rows="3" @bind-Value="Form.Observacoes" />
+        </label>
+
+        <div class="acoes-form">
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+            <button type="submit" class="btn-primary" disabled="@Ocupado">@(Ocupado ? "Salvando…" : "Salvar")</button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public ContratoForm Form { get; set; } = default!;
+    [Parameter] public Guid? EditandoId { get; set; }
+    /// <summary>Contrato ativo: imóvel, início e modalidade não mudam.</summary>
+    [Parameter] public bool Travado { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public EventCallback<Guid> AoSalvar { get; set; }
+
+    private IReadOnlyList<Opcao> imoveis = [];
+    private IReadOnlyList<Opcao> pessoas = [];
+    private readonly Dictionary<Guid, string> nomes = [];
+    private string? ErroPartes;
+
+    private string ImovelId
+    {
+        get => Form.ImovelId?.ToString() ?? "";
+        set => Form.ImovelId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Executar(async () =>
+        {
+            imoveis = await Opcoes.ImoveisAsync(Usuario);
+            pessoas = await Opcoes.PessoasAsync(Usuario, 5000);
+            foreach (var p in pessoas) nomes.TryAdd(p.Id, p.Nome);
+            foreach (var p in Form.Partes.Where(p => p.PessoaId is { } id && p.PessoaNome is not null)) nomes.TryAdd(p.PessoaId!.Value, p.PessoaNome!);
+        });
+    }
+
+    private string NomeDe(ParteForm p) => p.PessoaId is { } id && nomes.TryGetValue(id, out var n) ? n : p.PessoaNome ?? "";
+
+    private void EscolherPessoa(ParteForm p, string? nome)
+    {
+        ErroPartes = null;
+        var achada = pessoas.FirstOrDefault(x => string.Equals(x.Nome, nome?.Trim(), StringComparison.OrdinalIgnoreCase));
+        p.PessoaId = achada?.Id;
+        p.PessoaNome = achada?.Nome ?? nome;
+        if (achada is null && !string.IsNullOrWhiteSpace(nome))
+            ErroPartes = $"\"{nome}\" não está no cadastro de pessoas. Escolha um nome da lista ou cadastre em Pessoas.";
+    }
+
+    private async Task Salvar()
+    {
+        Guid id = default;
+        if (await Executar(async () =>
+            {
+                if (EditandoId is { } e) { await Servico.AtualizarAsync(Usuario, e, Form); id = e; }
+                else id = await Servico.CriarAsync(Usuario, Form);
+            }))
+            await AoSalvar.InvokeAsync(id);
+    }
+}

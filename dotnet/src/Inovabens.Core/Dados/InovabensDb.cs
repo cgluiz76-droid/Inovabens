@@ -58,6 +58,12 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<ContaBancaria> ContasBancarias => Set<ContaBancaria>();
     public DbSet<CategoriaEmpresa> CategoriasEmpresa => Set<CategoriaEmpresa>();
     public DbSet<LancamentoEmpresa> LancamentosEmpresa => Set<LancamentoEmpresa>();
+    public DbSet<ContratoLocacao> ContratosLocacao => Set<ContratoLocacao>();
+    public DbSet<ContratoLocacaoParte> ContratoLocacaoPartes => Set<ContratoLocacaoParte>();
+    public DbSet<FaturaLocacao> FaturasLocacao => Set<FaturaLocacao>();
+    public DbSet<FaturaLocacaoItem> FaturaLocacaoItens => Set<FaturaLocacaoItem>();
+    public DbSet<FaturaLocacaoPagamento> FaturaLocacaoPagamentos => Set<FaturaLocacaoPagamento>();
+    public DbSet<RepasseLocacao> RepassesLocacao => Set<RepasseLocacao>();
     public DbSet<ExtratoImportacao> ExtratoImportacoes => Set<ExtratoImportacao>();
     public DbSet<ExtratoItem> ExtratoItens => Set<ExtratoItem>();
     public DbSet<RegraConciliacao> RegrasConciliacao => Set<RegraConciliacao>();
@@ -219,6 +225,42 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             e.HasOne(x => x.Categoria).WithMany().HasForeignKey(x => x.CategoriaId);
             e.HasOne(x => x.Conta).WithMany().HasForeignKey(x => x.ContaId);
             e.HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);
+        });
+        // locação (0046): tipos como texto; número do contrato e do recibo vêm de sequências do banco
+        mb.Entity<ContratoLocacao>(e =>
+        {
+            e.Property(x => x.Modalidade).HasConversion<string>();
+            e.Property(x => x.Tipo).HasConversion<string>();
+            e.Property(x => x.Status).HasConversion<string>();
+            e.Property(x => x.Numero).ValueGeneratedOnAdd();
+            e.HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);
+            e.HasMany(x => x.Partes).WithOne().HasForeignKey(x => x.ContratoId);
+        });
+        mb.Entity<ContratoLocacaoParte>(e =>
+        {
+            e.Property(x => x.Papel).HasConversion<string>();
+            e.HasOne(x => x.Pessoa).WithMany().HasForeignKey(x => x.PessoaId);
+        });
+        mb.Entity<FaturaLocacao>(e =>
+        {
+            e.Property(x => x.Status).HasConversion<string>();
+            e.HasOne(x => x.Contrato).WithMany().HasForeignKey(x => x.ContratoId);
+            e.HasMany(x => x.Itens).WithOne().HasForeignKey(x => x.FaturaId);
+            e.HasMany(x => x.Pagamentos).WithOne().HasForeignKey(x => x.FaturaId);
+        });
+        mb.Entity<FaturaLocacaoItem>().Property(x => x.Tipo).HasConversion<string>();
+        mb.Entity<FaturaLocacaoPagamento>(e =>
+        {
+            e.Property(x => x.ReciboNumero).ValueGeneratedOnAdd();
+            e.HasOne<ContaBancaria>().WithMany().HasForeignKey(x => x.ContaBancariaId);
+        });
+        mb.Entity<RepasseLocacao>(e =>
+        {
+            e.HasOne(x => x.Pessoa).WithMany().HasForeignKey(x => x.PessoaId);
+            e.HasOne<FaturaLocacaoPagamento>().WithMany().HasForeignKey(x => x.PagamentoId);
+            // declarado para o EF gravar o lançamento antes do repasse que aponta para ele (FK no banco)
+            e.HasOne<LancamentoEmpresa>().WithMany().HasForeignKey(x => x.LancamentoEmpresaId);
+            e.HasOne<ContratoLocacao>().WithMany().HasForeignKey(x => x.ContratoId);
         });
         mb.Entity<Compromisso>(e =>
         {

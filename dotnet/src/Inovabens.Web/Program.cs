@@ -378,6 +378,11 @@ app.MapGet("/financeiro/dre.xlsx", (int ano, HttpContext c, FinanceiroEmpresaSer
     .RequireAuthorization(Permissoes.FinanceiroEmpresaExportar);
 app.MapGet("/financeiro/dre.pdf", (int ano, HttpContext c, FinanceiroEmpresaService s) => Baixar(c, u => s.DrePdfAsync(u, ano)))
     .RequireAuthorization(Permissoes.FinanceiroEmpresaExportar);
+// Locação: recibo discriminado de um recebimento e extrato mensal do proprietário (?pessoa=&mes=yyyy-MM-01)
+app.MapGet("/locacao/recibo/{pagamento:guid}.pdf", (Guid pagamento, HttpContext c, Inovabens.Core.Locacao.LocacaoService s) =>
+    Baixar(c, u => s.ReciboPdfAsync(u, pagamento))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/extrato.pdf", (Guid pessoa, DateOnly mes, HttpContext c, Inovabens.Core.Locacao.LocacaoService s) =>
+    Baixar(c, u => s.ExtratoProprietarioPdfAsync(u, pessoa, mes))).RequireAuthorization(Permissoes.LocacaoVer);
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 

@@ -458,7 +458,7 @@ public sealed class LancamentosFinanceirosService(IDbContextFactory<InovabensDb>
     /* ------------------------------- Apoio -------------------------------- */
 
     /// <summary>Próximo nº do imóvel, com a linha do imóvel travada até o fim da transação (dois cadastros ao mesmo tempo não repetem).</summary>
-    private static async Task<int> ProximoNumero(InovabensDb db, Guid imovelId)
+    internal static async Task<int> ProximoNumero(InovabensDb db, Guid imovelId)
     {
         await db.Database.ExecuteSqlRawAsync("select 1 from imoveis where id = {0} for update", imovelId);
         return (await db.LancamentosFinanceiros.Where(l => l.ImovelId == imovelId).MaxAsync(l => (int?)l.Numero) ?? 0) + 1;

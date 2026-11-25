@@ -11,7 +11,7 @@
         {
             <img src="img/sem-foto.svg" alt="Sem foto" width="400" height="300" loading="lazy" />
         }
-        <span class="cartao-etiqueta">@(Locacao ? "Aluguel" : "Venda")</span>
+        <span class="cartao-etiqueta">@(Locacao ? "Aluguel" : Item.Locado ? "Venda · locado" : "Venda")</span>
     </div>
     <div class="cartao-corpo">
         <span class="rotulo">@Texto.Rotulo(Item.Tipo) · @Item.Codigo</span>

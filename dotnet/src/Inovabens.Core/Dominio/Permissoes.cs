@@ -75,6 +75,11 @@ public static class Permissoes
     /// <summary>Fechar e reabrir o mês (trava lançamentos). Só o Administrador recebe por padrão.</summary>
     public const string FinanceiroEmpresaFechar = "financeiro_empresa:fechar";
 
+    /// <summary>Locação: ver contratos e faturas; editar contratos; receber faturas e pagar repasses.</summary>
+    public const string LocacaoVer = "locacao:ver";
+    public const string LocacaoEditar = "locacao:editar";
+    public const string LocacaoReceber = "locacao:receber";
+
     public static readonly IReadOnlyList<string> Todas =
     [
         UsuariosGerir, RbacGerir, AdminConfig, AuditoriaVer,
@@ -88,5 +93,6 @@ public static class Permissoes
         ProcessosVer, ProcessosEditar,
         ChavesVer, ChavesEditar, ChavesMovimentar,
         FinanceiroEmpresaVer, FinanceiroEmpresaEditar, FinanceiroEmpresaExportar, FinanceiroEmpresaFechar,
+        LocacaoVer, LocacaoEditar, LocacaoReceber,
     ];
 }

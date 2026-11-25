@@ -176,6 +176,8 @@ public sealed class ImoveisService(
         var q = baseQ.Where(i => i.ExcluidoEm == null && i.DivulgarSite && i.Situacao == SituacaoImovel.DISPONIVEL);
         if (f.Finalidade is { } fi && fi != FinalidadeImovel.AMBOS)
             q = q.Where(i => i.Finalidade == fi || i.Finalidade == FinalidadeImovel.AMBOS);
+        // locado (contrato ativo) e à venda: continua na vitrine de venda, nunca na de aluguel
+        if (f.Finalidade == FinalidadeImovel.LOCACAO) q = q.Where(i => !db.ContratosLocacao.Any(c => c.ImovelId == i.Id && c.Status == StatusContratoLocacao.ATIVO));
         if (Texto.Limpo(f.Tipo) is { } tipo) q = q.Where(i => EF.Functions.Like(FuncoesBusca.Normalizar(i.Tipo), Texto.LikeIgual(tipo), @"\"));
         if (Texto.Limpo(f.Cidade) is { } cidade) q = q.Where(i => EF.Functions.Like(FuncoesBusca.Normalizar(i.Cidade!), Texto.LikeIgual(cidade), @"\"));
         var imoveis = await q.OrderByDescending(i => i.AtualizadoEm).Take(Math.Clamp(f.Maximo, 1, 200)).ToListAsync();
@@ -187,10 +189,14 @@ public sealed class ImoveisService(
         var capas = fotos.GroupBy(m => m.ImovelId).ToDictionary(g => g.Key, g => Detalhar(g.First(), site) is var d ? d.Miniatura ?? d.Url : null);
         // empreendimento em lotes: o preço do cartão é o do lote disponível mais barato ("a partir de")
         var aPartir = await QuadroEmpreendimento.APartirDeAsync(db, ids);
+        var locados = (await db.ContratosLocacao.Where(c => ids.Contains(c.ImovelId) && c.Status == StatusContratoLocacao.ATIVO)
+            .Select(c => c.ImovelId).ToListAsync()).ToHashSet();
 
-        return [.. imoveis.Select(i => new VitrineItem(i.Id, i.Referencia ?? i.Codigo, i.Titulo, i.Subtipo ?? i.Tipo, i.Finalidade,
-            i.Cidade, i.Bairro, i.Uf, aPartir.TryGetValue(i.Id, out var min) ? min : i.PrecoVenda, i.PrecoLocacao, i.Quartos, i.Suites, i.Vagas,
-            i.AreaConstruidaM2 ?? i.AreaTerrenoM2 ?? i.AreaTotalM2 ?? i.AreaUtilM2, capas.GetValueOrDefault(i.Id), aPartir.ContainsKey(i.Id)))];
+        return [.. imoveis.Select(i => new VitrineItem(i.Id, i.Referencia ?? i.Codigo, i.Titulo, i.Subtipo ?? i.Tipo,
+            locados.Contains(i.Id) ? FinalidadeImovel.VENDA : i.Finalidade,
+            i.Cidade, i.Bairro, i.Uf, aPartir.TryGetValue(i.Id, out var min) ? min : i.PrecoVenda, locados.Contains(i.Id) ? null : i.PrecoLocacao,
+            i.Quartos, i.Suites, i.Vagas, i.AreaConstruidaM2 ?? i.AreaTerrenoM2 ?? i.AreaTotalM2 ?? i.AreaUtilM2, capas.GetValueOrDefault(i.Id),
+            aPartir.ContainsKey(i.Id), locados.Contains(i.Id)))];
     }
 
     /// <summary>
@@ -204,6 +210,12 @@ public sealed class ImoveisService(
         var im = await db.Imoveis.AsNoTracking()
             .SingleOrDefaultAsync(i => i.Id == id && i.ExcluidoEm == null && i.DivulgarSite && i.Situacao == SituacaoImovel.DISPONIVEL, ct);
         if (im is null) return null;
+        // locado e à venda: a ficha pública mostra só a venda (o aluguel não está disponível)
+        if (await db.ContratosLocacao.AnyAsync(c => c.ImovelId == id && c.Status == StatusContratoLocacao.ATIVO, ct))
+        {
+            im.Finalidade = FinalidadeImovel.VENDA;
+            im.PrecoLocacao = null;
+        }
         var carac = await db.ImovelCaracteristicas.AsNoTracking().Where(c => c.ImovelId == id && c.Publico)
             .OrderBy(c => c.Grupo).ThenBy(c => c.Chave).ToListAsync(ct);
         // só fotos: vídeo do Drive não é servido sem login (o vídeo do YouTube do imóvel continua aparecendo)

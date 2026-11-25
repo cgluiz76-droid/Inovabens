@@ -3,6 +3,7 @@
 @inherits ComponenteBase
 @inject ImoveisService Servico
 @inject EmpreendimentosService Empreendimentos
+@inject LocacaoService Locacao
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -28,6 +29,11 @@ else
             <p class="codigo">@detalhe.Dados.Codigo</p>
             <h1>@detalhe.Dados.Titulo</h1>
             <span class="badge">@Texto.Rotulo(detalhe.Dados.Situacao)</span>
+            @if (contratoAtivo is { } ca)
+            {
+                @* "locado" vem do contrato ativo: o imóvel pode estar locado e continuar à venda *@
+                <a class="badge badge-ok" href="@($"locacao/{ca.Id}")" title="Contrato de locação ativo até @Texto.Data(ca.Fim)">Locado · @ca.Codigo</a>
+            }
             @if (vinculo is { } v)
             {
                 @* lote ou área remanescente: o anúncio, as fotos e o centro de custo ficam no empreendimento *@
@@ -46,6 +52,10 @@ else
         <div class="acoes-topo">
             <a class="btn-ghost" href="imoveis/@Id/site" target="_blank" rel="noopener"
                title="Abre o imóvel como ele aparece no site público da Inovabens">🌐 Ver no site</a>
+            @if (contratoAtivo is null && detalhe.Dados.Finalidade != FinalidadeImovel.VENDA && Usuario.Pode(Permissoes.LocacaoEditar))
+            {
+                <a class="btn-ghost" href="@($"locacao?imovel={Id}")" title="Novo contrato com os proprietários do imóvel como locadores">Contrato de locação</a>
+            }
             @if (Usuario.Pode(Permissoes.ImoveisExportar))
             {
                 <a class="btn-ghost" href="imoveis/@Id/ficha.pdf" download>Ficha PDF</a>
@@ -206,10 +216,13 @@ else
         return Recarregar();
     }
 
+    private ContratoLinha? contratoAtivo;
+
     private Task Recarregar() => Executar(async () =>
     {
         detalhe = await Servico.DetalheAsync(Usuario, Id);
         vinculo = await Empreendimentos.VinculoAsync(Usuario, Id);
+        contratoAtivo = await Locacao.AtivoDoImovelAsync(Usuario, Id);
         form = ImovelForm.De(detalhe.Dados);
     });
 

@@ -1338,3 +1338,11 @@ fieldset.campo > legend { font-size: var(--t-sm); font-weight: 600; color: var(-
 fieldset.recebimentos { margin-top: var(--e-4); }
 /* envolve as abas da ficha do imóvel só para recriá-las ao trocar de imóvel: não muda o layout */
 .conteudo-abas { display: contents; }
+
+/* Locação: subtítulos do formulário do contrato, campo curto de % e etapas da régua de cobrança */
+.subtitulo-form { font-size: 0.95rem; margin: var(--e-4) 0 var(--e-2); color: var(--texto-2); }
+.input-curto { max-width: 7rem; }
+.etapa-cobranca { white-space: nowrap; }
+.locacao-dados { display: grid; gap: var(--e-2) var(--e-4); grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); margin: 0; }
+.locacao-dados dt { font-size: 0.78rem; color: var(--texto-2); }
+.locacao-dados dd { margin: 0; }

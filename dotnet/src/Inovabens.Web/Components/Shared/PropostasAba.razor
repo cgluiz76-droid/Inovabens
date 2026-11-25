@@ -68,6 +68,11 @@
                             @(p.IndiceReajuste is { } ir ? $" · reajuste {ir}" : "")
                             @(p.CarenciaMeses is > 0 ? $" · {p.CarenciaMeses} meses de carência" : "")
                         </p>
+                        @if (p.Status == StatusProposta.ACEITA && Usuario.Pode(Permissoes.LocacaoEditar))
+                        {
+                            @* proposta de locação aceita vira rascunho do contrato (imóvel, inquilino, aluguel, prazo e garantia) *@
+                            <a class="btn-ghost mini" href="@($"locacao?proposta={p.Id}")">Gerar contrato de locação</a>
+                        }
                     }
                     @if (p.Condicoes is { } c)
                     {

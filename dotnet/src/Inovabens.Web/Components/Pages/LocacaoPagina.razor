@@ -1,0 +1,265 @@
+@page "/locacao"
+@attribute [Authorize(Policy = Permissoes.LocacaoVer)]
+@inherits ComponenteBase
+@inject LocacaoService Servico
+@inject NavigationManager Nav
+
+@* Locação (fases 1 e 2): contratos, régua de cobrança (mensagens prontas para o WhatsApp) e repasses a pagar.
+   A ficha de cada contrato (faturas, recebimentos e recibos) fica em /locacao/{id}. *@
+
+<PageTitle>Locação · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Locação</h1>
+    @if (Usuario.Pode(Permissoes.LocacaoEditar))
+    {
+        <div class="acoes-topo"><button class="btn-primary" @onclick="Novo">+ Contrato</button></div>
+    }
+</div>
+
+<div class="abas" role="tablist">
+    @foreach (var (chave, rotulo) in Abas)
+    {
+        <a class="aba @(Aba == chave ? "ativa" : "")" href="@($"locacao?aba={chave}")" role="tab" aria-selected="@(Aba == chave)">@rotulo</a>
+    }
+</div>
+
+<MensagemErro Texto="@Erro" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@if (painel is not null && Aba == "contratos")
+{
+    <div class="kpis">
+        <div class="kpi"><p class="rotulo-kpi">Contratos ativos</p><p class="valor-kpi">@painel.ContratosAtivos</p>
+            <p class="contexto-kpi">@(painel.Rascunhos > 0 ? $"{painel.Rascunhos} rascunho(s)" : "nenhum rascunho")</p></div>
+        <div class="kpi"><p class="rotulo-kpi">Aluguel mensal</p><p class="valor-kpi">@Texto.Moeda(painel.AluguelMensal)</p>
+            <p class="contexto-kpi">soma dos contratos ativos</p></div>
+        <div class="kpi"><p class="rotulo-kpi">Faturas em atraso</p>
+            <p class="valor-kpi @(painel.FaturasAtrasadas > 0 ? "texto-erro" : "")">@painel.FaturasAtrasadas</p>
+            <p class="contexto-kpi">@(painel.FaturasAtrasadas > 0 ? Texto.Moeda(painel.ValorAtrasado) : "nada vencido")</p></div>
+        <div class="kpi"><p class="rotulo-kpi">Repasses a pagar</p><p class="valor-kpi">@painel.RepassesAPagar</p>
+            <p class="contexto-kpi">@Texto.Moeda(painel.ValorRepassesAPagar)</p></div>
+    </div>
+}
+
+@switch (Aba)
+{
+    case "cobranca":
+        <section class="card">
+            <div class="titulo-secao"><h2>Régua de cobrança</h2></div>
+            <p class="pequeno mudo">Faturas que vencem em até 3 dias, vencem hoje ou estão em atraso. O sistema não envia nada sozinho:
+                clique em WhatsApp para abrir a conversa com a mensagem pronta, confira e envie.</p>
+            @if (cobrancas is null) { <p class="carregando">Carregando…</p> }
+            else if (cobrancas.Count == 0) { <p class="vazio">Nenhuma cobrança para hoje.</p> }
+            else
+            {
+                <div class="tabela-container">
+                    <table class="tabela">
+                        <thead><tr><th>Etapa</th><th>Contrato</th><th>Locatário</th><th>Ref.</th><th>Vencimento</th><th class="num">Saldo</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var c in cobrancas)
+                            {
+                                <tr>
+                                    <td class="etapa-cobranca"><span class="badge @(c.DiasAtraso > 0 ? "badge-exclusao" : "")">@c.Etapa</span>
+                                        @if (c.DiasAtraso > 0) { <p class="pequeno mudo">@c.DiasAtraso dia(s)</p> }</td>
+                                    <td><a href="@($"locacao/{c.ContratoId}")">@c.ContratoCodigo</a><p class="pequeno mudo">@c.ImovelCodigo</p></td>
+                                    <td>@c.Locatario<p class="pequeno mudo">@(c.Telefone ?? "sem telefone")</p></td>
+                                    <td>@c.Competencia.ToString("MM/yyyy")</td>
+                                    <td class="nowrap">@Texto.Data(c.Vencimento)</td>
+                                    <td class="num">@Texto.Moeda(c.Saldo)</td>
+                                    <td class="nowrap">
+                                        @if (c.LinkWhatsapp is not null)
+                                        {
+                                            <a class="btn-ghost mini" href="@c.LinkWhatsapp" target="_blank" rel="noopener" title="@c.Mensagem">WhatsApp</a>
+                                        }
+                                        else { <span class="pequeno mudo" title="@c.Mensagem">sem WhatsApp</span> }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+        break;
+
+    case "repasses":
+        <section class="card">
+            <div class="titulo-secao"><h2>Repasses a pagar</h2></div>
+            <p class="pequeno mudo">Parte de cada proprietário nos aluguéis recebidos, já sem a taxa de administração e a intermediação.
+                Também aparecem como contas a pagar no Financeiro da Imobiliária (categoria "Repasse ao proprietário").</p>
+            @if (repasses is null) { <p class="carregando">Carregando…</p> }
+            else if (repasses.Count == 0) { <p class="vazio">Nenhum repasse pendente.</p> }
+            else
+            {
+                <div class="tabela-container">
+                    <table class="tabela">
+                        <thead><tr><th>Previsto</th><th>Proprietário</th><th>Contrato</th><th>Ref.</th><th class="num">Recebido</th><th class="num">Taxa</th><th class="num">Interm.</th><th class="num">Líquido</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var r in repasses)
+                            {
+                                <tr>
+                                    <td class="nowrap @(r.PrevistoPara < DatasBR.Hoje() ? "texto-erro" : "")">@Texto.Data(r.PrevistoPara)</td>
+                                    <td>@r.Pessoa @if (r.Percentual < 100) { <span class="badge">@r.Percentual.ToString("0.##")%</span> }</td>
+                                    <td><a href="@($"locacao/{r.ContratoId}")">@r.ContratoCodigo</a><p class="pequeno mudo">@r.ImovelCodigo</p></td>
+                                    <td>@r.Competencia.ToString("MM/yyyy")</td>
+                                    <td class="num">@Texto.Moeda(r.Bruto)</td>
+                                    <td class="num">@Texto.Moeda(r.Taxa)</td>
+                                    <td class="num">@Texto.Moeda(r.Intermediacao)</td>
+                                    <td class="num"><b>@Texto.Moeda(r.Liquido)</b></td>
+                                    <td class="nowrap">
+                                        @if (Usuario.Pode(Permissoes.LocacaoReceber))
+                                        {
+                                            <button class="btn-ghost mini" @onclick="() => AbrirPagamento(r)">Pagar</button>
+                                        }
+                                        <a class="btn-ghost mini" href="@($"locacao/extrato.pdf?pessoa={r.PessoaId}&mes={r.PrevistoPara:yyyy-MM-01}")"
+                                           download title="Extrato do proprietário no mês do recebimento">Extrato</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+        break;
+
+    default:
+        <section class="card">
+            <div class="filtros">
+                <input class="input" type="search" placeholder="Buscar por imóvel ou pessoa" @bind="termo" @bind:after="Carregar" />
+                <select class="input" @bind="status" @bind:after="Carregar">
+                    <option value="">Todos</option>
+                    @foreach (var s in Enum.GetValues<StatusContratoLocacao>()) { <option value="@s">@Texto.Rotulo(s)</option> }
+                </select>
+            </div>
+            @if (contratos is null) { <p class="carregando">Carregando…</p> }
+            else if (contratos.Count == 0) { <p class="vazio">Nenhum contrato. Crie o primeiro em "+ Contrato" ou a partir de uma proposta de locação aceita no CRM.</p> }
+            else
+            {
+                <div class="tabela-container">
+                    <table class="tabela">
+                        <thead><tr><th>Contrato</th><th>Imóvel</th><th>Locatário</th><th>Locador</th><th>Vigência</th><th class="num">Aluguel</th><th>Situação</th></tr></thead>
+                        <tbody>
+                            @foreach (var c in contratos)
+                            {
+                                <tr>
+                                    <td><a href="@($"locacao/{c.Id}")"><b>@c.Codigo</b></a>
+                                        <p class="pequeno mudo">@(c.Modalidade == ModalidadeLocacao.PROPRIO ? "Próprio" : "Administração")</p></td>
+                                    <td>@c.ImovelCodigo<p class="pequeno mudo">@c.ImovelTitulo</p></td>
+                                    <td>@c.Locatarios</td>
+                                    <td>@c.Locadores</td>
+                                    <td class="nowrap">@Texto.Data(c.Inicio) a @Texto.Data(c.Fim)</td>
+                                    <td class="num">@Texto.Moeda(c.Aluguel)</td>
+                                    <td><span class="badge">@Texto.Rotulo(c.Status)</span>
+                                        @if (c.FaturasAtrasadas > 0) { <span class="badge badge-exclusao">@c.FaturasAtrasadas em atraso</span> }</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+        break;
+}
+
+@if (form is not null)
+{
+    <ContratoModal Form="form" AoFechar="() => form = null" AoSalvar="Criado" />
+}
+
+@if (pagando is not null)
+{
+    <Modal Titulo="Pagar repasse" AoFechar="() => pagando = null">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <p>@pagando.Pessoa · @pagando.ContratoCodigo · <b>@Texto.Moeda(pagando.Liquido)</b></p>
+            <div class="grade-2">
+                <label class="campo"><span>Data do pagamento</span><input class="input" type="date" @bind="dataPagamento" /></label>
+                <label class="campo">
+                    <span>Sai da conta</span>
+                    <select class="input" @bind="contaPagamento">
+                        <option value="">Selecione…</option>
+                        @foreach (var c in contas) { <option value="@c.Id">@c.Nome</option> }
+                    </select>
+                </label>
+            </div>
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => pagando = null">Cancelar</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="PagarRepasse">Confirmar pagamento</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "aba")] public string? AbaQuery { get; set; }
+    /// <summary>Atalhos que abrem o formulário já preenchido: da proposta aceita no CRM ou da ficha do imóvel.</summary>
+    [SupplyParameterFromQuery(Name = "proposta")] public Guid? PropostaQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "imovel")] public Guid? ImovelQuery { get; set; }
+
+    private static readonly (string, string)[] Abas = [("contratos", "Contratos"), ("cobranca", "Cobrança"), ("repasses", "Repasses")];
+    private string Aba => Abas.Any(a => a.Item1 == AbaQuery) ? AbaQuery! : "contratos";
+
+    private PainelLocacao? painel;
+    private IReadOnlyList<ContratoLinha>? contratos;
+    private IReadOnlyList<CobrancaLinha>? cobrancas;
+    private IReadOnlyList<RepasseLinha>? repasses;
+    private IReadOnlyList<Opcao> contas = [];
+    private string? termo;
+    private StatusContratoLocacao? status;
+    private ContratoForm? form;
+    private RepasseLinha? pagando;
+    private DateOnly dataPagamento = DatasBR.Hoje();
+    private Guid? contaPagamento;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Carregar();
+        if (form is null && Usuario.Pode(Permissoes.LocacaoEditar) && (PropostaQuery ?? ImovelQuery) is not null)
+            await Executar(async () => form = PropostaQuery is { } p ? await Servico.NovoDaPropostaAsync(Usuario, p)
+                : await Servico.NovoParaImovelAsync(Usuario, ImovelQuery!.Value));
+    }
+
+    private async Task Carregar()
+    {
+        await Executar(async () =>
+        {
+            painel = await Servico.PainelAsync(Usuario);
+            switch (Aba)
+            {
+                case "cobranca": cobrancas = await Servico.CobrancasAsync(Usuario); break;
+                case "repasses": repasses = await Servico.RepassesAPagarAsync(Usuario); break;
+                default: contratos = await Servico.ListarAsync(Usuario, status, termo); break;
+            }
+        });
+    }
+
+    private void Novo() => form = new ContratoForm { Inicio = DatasBR.Hoje() };
+
+    private void Criado(Guid id) => Nav.NavigateTo($"locacao/{id}");
+
+    private async Task AbrirPagamento(RepasseLinha r)
+    {
+        await Executar(async () =>
+        {
+            if (contas.Count == 0)
+                contas = await Servico.ContasBancariasAsync(Usuario);
+            contaPagamento = contas.FirstOrDefault()?.Id;
+            dataPagamento = DatasBR.Hoje();
+            pagando = r;
+        });
+    }
+
+    private async Task PagarRepasse()
+    {
+        if (pagando is null) return;
+        if (contaPagamento is null) { Erro = "Escolha a conta."; return; }
+        if (await Executar(() => Servico.PagarRepasseAsync(Usuario, pagando.Id, dataPagamento, contaPagamento.Value)))
+        {
+            Sucesso = $"Repasse de {Texto.Moeda(pagando.Liquido)} a {pagando.Pessoa} registrado como pago.";
+            pagando = null;
+            await Carregar();
+        }
+    }
+}

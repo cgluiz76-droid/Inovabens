@@ -1,0 +1,464 @@
+@page "/locacao/{Id:guid}"
+@attribute [Authorize(Policy = Permissoes.LocacaoVer)]
+@inherits ComponenteBase
+@inject LocacaoService Servico
+
+@* Ficha do contrato: dados, partes, faturas mês a mês (receber, ajustar, recibo) e repasses aos locadores. *@
+
+<PageTitle>@(d?.Codigo ?? "Contrato") · Locação · Inovabens</PageTitle>
+
+<p class="pequeno"><a href="locacao">← Locação</a></p>
+<MensagemErro Texto="@(ModalAberto ? null : Erro)" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@if (d is null)
+{
+    @if (Erro is null) { <p class="carregando">Carregando…</p> }
+}
+else
+{
+    var c = d.Contrato;
+    <div class="titulo">
+        <h1>@d.Codigo <span class="badge">@Texto.Rotulo(c.Status)</span></h1>
+        <div class="acoes-topo">
+            @if (PodeEditar && c.Status is StatusContratoLocacao.RASCUNHO or StatusContratoLocacao.ATIVO)
+            {
+                <button class="btn-ghost" @onclick="Editar">Editar</button>
+            }
+            @if (PodeEditar && c.Status == StatusContratoLocacao.RASCUNHO)
+            {
+                <button class="btn-ghost" @onclick="CancelarRascunho">Descartar rascunho</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Ativar"
+                        title="Confere as partes, marca o imóvel como locado e gera as primeiras faturas">Ativar contrato</button>
+            }
+            @if (PodeEditar && c.Status == StatusContratoLocacao.ATIVO)
+            {
+                <button class="btn-ghost" @onclick="() => { encerrando = true; dataEncerramento = DatasBR.Hoje(); Erro = null; }">Encerrar</button>
+            }
+            @if (PodeReceber && c.Status == StatusContratoLocacao.ATIVO)
+            {
+                <button class="btn-ghost" disabled="@Ocupado" @onclick="GerarProxima" title="Gera já a fatura do próximo mês">Gerar próxima fatura</button>
+            }
+        </div>
+    </div>
+
+    <section class="card">
+        <div class="titulo-secao"><h2>@d.ImovelCodigo · @d.ImovelTitulo</h2><a class="btn-ghost mini" href="@($"imoveis/{c.ImovelId}")">Ver imóvel</a></div>
+        @if (d.ImovelEndereco is not null) { <p class="pequeno mudo">@d.ImovelEndereco</p> }
+        <dl class="locacao-dados">
+            <div><dt>Modalidade</dt><dd>@(c.Modalidade == ModalidadeLocacao.PROPRIO ? "Imóvel próprio / sócios" : "Administração de terceiros")</dd></div>
+            <div><dt>Tipo</dt><dd>@Texto.Rotulo(c.Tipo)</dd></div>
+            <div><dt>Vigência</dt><dd>@Texto.Data(c.Inicio) a @Texto.Data(c.Fim) (@c.PrazoMeses meses)</dd></div>
+            <div><dt>Vencimento</dt><dd>dia @c.DiaVencimento @(c.PagamentoAntecipado ? "do próprio mês" : "do mês seguinte")</dd></div>
+            <div><dt>Aluguel</dt><dd><b>@Texto.Moeda(c.ValorAluguel)</b></dd></div>
+            <div><dt>Encargos mensais</dt><dd>Cond. @Texto.Moeda(c.ValorCondominio) · IPTU @Texto.Moeda(c.ValorIptu) · Seguro @Texto.Moeda(c.ValorSeguroIncendio)</dd></div>
+            <div><dt>Reajuste</dt><dd>@(c.IndiceReajuste == CodigoIndice.IGPM ? "IGP-M" : c.IndiceReajuste.ToString()) a cada 12 meses</dd></div>
+            <div><dt>Garantia</dt><dd>@PropostasService.Rotulo(c.Garantia)@(c.GarantiaValor is { } gv ? $" · {Texto.Moeda(gv)}" : "")@(c.GarantiaDetalhe is { } gd ? $" · {gd}" : "")</dd></div>
+            @if (c.Modalidade == ModalidadeLocacao.ADMINISTRACAO)
+            {
+                <div><dt>Taxa de administração</dt><dd>@c.TaxaAdministracaoPct.ToString("0.##")%</dd></div>
+                <div><dt>Intermediação</dt><dd>@Texto.Moeda(c.IntermediacaoValor) (retido @Texto.Moeda(d.IntermediacaoRetida))</dd></div>
+                <div><dt>Repasse</dt><dd>@c.DiasRepasse dia(s) após receber</dd></div>
+            }
+            <div><dt>Atraso</dt><dd>multa @c.MultaAtrasoPct.ToString("0.##")% + juros @c.JurosMesPct.ToString("0.##")% a.m.</dd></div>
+            <div><dt>Multa rescisória</dt><dd>@c.MultaRescisoriaAlugueis.ToString("0.#") aluguel(éis), proporcional</dd></div>
+            <div><dt>Em caso de venda</dt><dd>@(c.ClausulaVigencia ? "cláusula de vigência" : "sem cláusula de vigência")@(c.Averbado ? " · averbado" : " · não averbado")</dd></div>
+            @if (c.EncerradoEm is { } enc) { <div><dt>Encerrado em</dt><dd>@Texto.Data(enc) @c.MotivoEncerramento</dd></div> }
+        </dl>
+        @if (c.Observacoes is not null) { <p class="pequeno">@c.Observacoes</p> }
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao"><h2>Partes</h2></div>
+        <div class="tabela-container">
+            <table class="tabela">
+                <thead><tr><th>Papel</th><th>Nome</th><th>CPF/CNPJ</th><th>Contato</th><th class="num">% repasse</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var p in d.Partes)
+                    {
+                        <tr>
+                            <td>@Texto.Rotulo(p.Papel)</td>
+                            <td><a href="@($"pessoas?id={p.PessoaId}")">@p.Nome</a></td>
+                            <td>@(p.CpfCnpj is null ? "—" : Formatos.Documento(p.CpfCnpj))</td>
+                            <td>@(p.Contato ?? "—")</td>
+                            <td class="num">@(p.Percentual?.ToString("0.##") ?? "")</td>
+                            <td>
+                                @if (p.Papel == PapelContratoLocacao.LOCADOR)
+                                {
+                                    <a class="btn-ghost mini" href="@($"locacao/extrato.pdf?pessoa={p.PessoaId}&mes={DatasBR.Hoje():yyyy-MM-01}")" download
+                                       title="Extrato do proprietário no mês atual">Extrato do mês</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao"><h2>Faturas</h2></div>
+        @if (d.Faturas.Count == 0)
+        {
+            <p class="vazio">@(c.Status == StatusContratoLocacao.RASCUNHO ? "As faturas são geradas ao ativar o contrato." : "Nenhuma fatura ainda.")</p>
+        }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Ref.</th><th>Vencimento</th><th>Itens</th><th class="num">Total</th><th class="num">Recebido</th><th>Situação</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var f in d.Faturas)
+                        {
+                            <tr class="@(f.Status == StatusFaturaLocacao.CANCELADA ? "mudo" : "")">
+                                <td>@f.Competencia.ToString("MM/yyyy")</td>
+                                <td class="nowrap @(f.Atrasada(DatasBR.Hoje()) ? "texto-erro" : "")">@Texto.Data(f.Vencimento)</td>
+                                <td>
+                                    @foreach (var i in f.Itens)
+                                    {
+                                        <div class="pequeno">
+                                            @i.Descricao: @Texto.Moeda(i.Valor)
+                                            @if (PodeReceber && f.Status == StatusFaturaLocacao.ABERTA && i.Tipo != TipoItemFatura.ALUGUEL)
+                                            {
+                                                <button class="btn-ghost mini" title="Remover item" @onclick="() => RemoverItem(f, i)"><Icone Nome="x" /></button>
+                                            }
+                                        </div>
+                                    }
+                                    @foreach (var p in f.Pagamentos)
+                                    {
+                                        <div class="pequeno @(p.Estornado ? "mudo" : "texto-ok")">
+                                            Recibo @p.Recibo · @Texto.Data(p.Data) · @Texto.Moeda(p.Total)
+                                            @if (p.Multa + p.Juros > 0) { <span>(multa/juros @Texto.Moeda(p.Multa + p.Juros))</span> }
+                                            @if (p.Estornado) { <span> · estornado</span> }
+                                            else
+                                            {
+                                                <a class="btn-ghost mini" href="@($"locacao/recibo/{p.Id}.pdf")" download>Recibo</a>
+                                                @if (PodeReceber && !p.RepassePago)
+                                                {
+                                                    <button class="btn-ghost mini" @onclick="() => Estornar(p)">Estornar</button>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                    @if (f.Observacao is not null) { <p class="pequeno mudo">@f.Observacao</p> }
+                                </td>
+                                <td class="num">@Texto.Moeda(f.Total)</td>
+                                <td class="num">@Texto.Moeda(f.Pago)</td>
+                                <td>
+                                    <span class="badge @(f.Status == StatusFaturaLocacao.PAGA ? "badge-ok" : f.Atrasada(DatasBR.Hoje()) ? "badge-exclusao" : "")">
+                                        @(f.Atrasada(DatasBR.Hoje()) ? "Em atraso" : Texto.Rotulo(f.Status))
+                                    </span>
+                                </td>
+                                <td class="nowrap">
+                                    @if (PodeReceber && f.Status == StatusFaturaLocacao.ABERTA)
+                                    {
+                                        <button class="btn-primary mini" @onclick="() => AbrirRecebimento(f)">Receber</button>
+                                        <button class="btn-ghost mini" @onclick="() => AbrirItem(f)">+ Item</button>
+                                        @if (f.Pago == 0)
+                                        {
+                                            <button class="btn-ghost mini" @onclick="() => { cancelando = f; motivo = null; Erro = null; }">Cancelar</button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="pequeno mudo">Em aberto: @Texto.Moeda(d.Faturas.Sum(f => f.Saldo)) · recebido no contrato: @Texto.Moeda(d.Faturas.Sum(f => f.Pago))</p>
+        }
+    </section>
+
+    @if (c.Modalidade == ModalidadeLocacao.ADMINISTRACAO && d.Repasses.Count > 0)
+    {
+        <section class="card">
+            <div class="titulo-secao"><h2>Repasses</h2><a class="btn-ghost mini" href="locacao?aba=repasses">A pagar</a></div>
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Ref.</th><th>Recibo</th><th>Locador</th><th class="num">Recebido</th><th class="num">Taxa</th><th class="num">Interm.</th><th class="num">Líquido</th><th>Repasse</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in d.Repasses)
+                        {
+                            <tr class="@(r.Estornado ? "mudo" : "")">
+                                <td>@r.Competencia.ToString("MM/yyyy")</td>
+                                <td>@r.ReciboNumero.ToString("000000")</td>
+                                <td>@r.Pessoa</td>
+                                <td class="num">@Texto.Moeda(r.Bruto)</td>
+                                <td class="num">@Texto.Moeda(r.Taxa)</td>
+                                <td class="num">@Texto.Moeda(r.Intermediacao)</td>
+                                <td class="num"><b>@Texto.Moeda(r.Liquido)</b></td>
+                                <td class="nowrap">@(r.Estornado ? "estornado" : r.PagoEm is { } pg ? $"pago {Texto.Data(pg)}" : $"previsto {Texto.Data(r.PrevistoPara)}")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+}
+
+@if (editando is not null && d is not null)
+{
+    <ContratoModal Form="editando" EditandoId="Id" Travado="@(d.Contrato.Status == StatusContratoLocacao.ATIVO)" AoFechar="() => editando = null" AoSalvar="Salvo" />
+}
+
+@if (recebendo is not null)
+{
+    <Modal Titulo="@($"Receber aluguel de {recebendo.Competencia:MM/yyyy}")" AoFechar="() => recebendo = null">
+        <EditForm Model="receb" OnValidSubmit="Receber" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <p class="pequeno">Saldo da fatura: <b>@Texto.Moeda(saldo)</b> · vencimento @Texto.Data(recebendo.Vencimento)
+                @if (diasAtraso > 0) { <span class="texto-erro"> · @diasAtraso dia(s) de atraso</span> }</p>
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Data do recebimento</span>
+                    <InputDate class="input" @bind-Value="receb.Data" @bind-Value:after="Simular" />
+                    <ValidationMessage For="() => receb.Data" />
+                </label>
+                <label class="campo">
+                    <span>Valor abatido da fatura</span>
+                    <InputNumber class="input" @bind-Value="receb.Principal" @bind-Value:after="Simular" step="0.01" />
+                    <ValidationMessage For="() => receb.Principal" />
+                </label>
+                <label class="campo"><span>Multa</span><InputNumber class="input" @bind-Value="receb.Multa" step="0.01" /></label>
+                <label class="campo"><span>Juros</span><InputNumber class="input" @bind-Value="receb.Juros" step="0.01" /></label>
+                <label class="campo">
+                    <span>Entrou na conta</span>
+                    <select class="input" @bind="receb.ContaBancariaId">
+                        <option value="">@(d?.Contrato.Modalidade == ModalidadeLocacao.PROPRIO ? "Não informar" : "Selecione…")</option>
+                        @foreach (var x in contas) { <option value="@x.Id">@x.Nome</option> }
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>Forma</span>
+                    <InputText class="input" list="formas-recebimento" maxlength="30" @bind-Value="receb.Forma" />
+                    <datalist id="formas-recebimento"><option value="Pix" /><option value="Boleto" /><option value="Transferência" /><option value="Dinheiro" /></datalist>
+                </label>
+            </div>
+            <label class="campo"><span>Observação</span><InputText class="input" maxlength="300" @bind-Value="receb.Observacao" /></label>
+            <p class="pequeno">Total recebido: <b>@Texto.Moeda((receb.Principal ?? 0) + receb.Multa + receb.Juros)</b>.
+                Multa e juros sugeridos pelo contrato; ajuste se combinou outro valor (ex.: feriado no vencimento).</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => recebendo = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar recebimento</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (itemFatura is not null)
+{
+    <Modal Titulo="@($"Item na fatura de {itemFatura.Competencia:MM/yyyy}")" AoFechar="() => itemFatura = null">
+        <EditForm Model="item" OnValidSubmit="SalvarItem" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Tipo</span>
+                    <select class="input" @bind="item.Tipo">
+                        <option value="@TipoItemFatura.OUTRO">Cobrança extra (repassada ao proprietário)</option>
+                        <option value="@TipoItemFatura.DESCONTO">Desconto (reduz o aluguel)</option>
+                        <option value="@TipoItemFatura.CONDOMINIO">Condomínio</option>
+                        <option value="@TipoItemFatura.IPTU">IPTU</option>
+                        <option value="@TipoItemFatura.SEGURO_INCENDIO">Seguro incêndio</option>
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>Valor</span>
+                    <InputNumber class="input" @bind-Value="item.Valor" step="0.01" />
+                    <ValidationMessage For="() => item.Valor" />
+                </label>
+            </div>
+            <label class="campo">
+                <span>Descrição (aparece no recibo)</span>
+                <InputText class="input" maxlength="200" @bind-Value="item.Descricao" />
+                <ValidationMessage For="() => item.Descricao" />
+            </label>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => itemFatura = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Incluir</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (cancelando is not null)
+{
+    <Modal Titulo="@($"Cancelar a fatura de {cancelando.Competencia:MM/yyyy}")" AoFechar="() => cancelando = null">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <label class="campo"><span>Motivo</span><input class="input" maxlength="300" @bind="motivo" /></label>
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => cancelando = null">Voltar</button>
+                <button class="btn-perigo" disabled="@Ocupado" @onclick="CancelarFatura">Cancelar fatura</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@if (encerrando)
+{
+    <Modal Titulo="Encerrar contrato" AoFechar="() => encerrando = false">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <p class="pequeno mudo">Encerramento simples: faturas futuras sem recebimento são canceladas e o imóvel volta a ficar
+                disponível. O cálculo da rescisão (multa proporcional, vistoria de saída e devolução da caução) chega na fase 3:
+                até lá, inclua esses valores como itens na última fatura.</p>
+            <div class="grade-2">
+                <label class="campo"><span>Data da entrega das chaves</span><input class="input" type="date" @bind="dataEncerramento" /></label>
+                <label class="campo"><span>Motivo</span><input class="input" maxlength="500" @bind="motivo" /></label>
+            </div>
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => encerrando = false">Voltar</button>
+                <button class="btn-perigo" disabled="@Ocupado" @onclick="Encerrar">Encerrar contrato</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ContratoDetalhe? d;
+    private ContratoForm? editando;
+    private FaturaDetalhe? recebendo, itemFatura, cancelando;
+    private RecebimentoLocacaoForm receb = new();
+    private ItemAvulsoForm item = new();
+    private IReadOnlyList<Opcao> contas = [];
+    private decimal saldo;
+    private int diasAtraso;
+    private bool encerrando;
+    private DateOnly dataEncerramento = DatasBR.Hoje();
+    private string? motivo;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);
+    private bool PodeReceber => Usuario.Pode(Permissoes.LocacaoReceber);
+    private bool ModalAberto => editando is not null || recebendo is not null || itemFatura is not null || cancelando is not null || encerrando;
+
+    protected override Task OnParametersSetAsync() => Carregar();
+
+    private async Task Carregar() => await Executar(async () => d = await Servico.ObterAsync(Usuario, Id));
+
+    private async Task Editar() => await Executar(async () => editando = await Servico.FormularioAsync(Usuario, Id));
+
+    private async Task Salvo(Guid _)
+    {
+        editando = null;
+        await Carregar();
+        Sucesso = "Contrato salvo.";
+    }
+
+    private async Task Ativar()
+    {
+        if (await Executar(() => Servico.AtivarAsync(Usuario, Id)))
+        {
+            await Carregar();
+            Sucesso = "Contrato ativado: o imóvel está como locado e as primeiras faturas foram geradas.";
+        }
+    }
+
+    private async Task CancelarRascunho()
+    {
+        if (await Executar(() => Servico.CancelarRascunhoAsync(Usuario, Id))) await Carregar();
+    }
+
+    private async Task GerarProxima()
+    {
+        var n = 0;
+        if (await Executar(async () => n = await Servico.GerarFaturasAteAsync(Usuario, Id, DatasBR.Hoje().AddMonths(2))))
+        {
+            await Carregar();
+            Sucesso = n == 0 ? "Não há fatura nova a gerar (as próximas já existem ou o contrato terminou)." : $"{n} fatura(s) gerada(s).";
+        }
+    }
+
+    private async Task AbrirRecebimento(FaturaDetalhe f)
+    {
+        await Executar(async () =>
+        {
+            if (contas.Count == 0) contas = await Servico.ContasBancariasAsync(Usuario);
+            receb = new RecebimentoLocacaoForm { Data = DatasBR.Hoje(), ContaBancariaId = contas.FirstOrDefault()?.Id };
+            recebendo = f;
+            await Simular(true);
+        });
+    }
+
+    private Task Simular() => Simular(false);
+
+    private async Task Simular(bool preencherValor)
+    {
+        if (recebendo is null || receb.Data is null) return;
+        var (s, a) = await Servico.SimularRecebimentoAsync(Usuario, recebendo.Id, receb.Data.Value);
+        saldo = s;
+        if (preencherValor || receb.Principal is null) receb.Principal = s;
+        // multa e juros sobre o valor que está sendo pago (proporcional no pagamento parcial)
+        var fracao = s == 0 ? 0 : Math.Min(1, (receb.Principal ?? 0) / s);
+        receb.Multa = decimal.Round(a.Multa * fracao, 2);
+        receb.Juros = decimal.Round(a.Juros * fracao, 2);
+        diasAtraso = a.DiasAtraso;
+    }
+
+    private async Task Receber()
+    {
+        if (recebendo is null) return;
+        Guid pg = default;
+        if (await Executar(async () => pg = await Servico.ReceberAsync(Usuario, recebendo.Id, receb)))
+        {
+            recebendo = null;
+            await Carregar();
+            Sucesso = "Recebimento registrado. O recibo está na linha da fatura.";
+        }
+    }
+
+    private void AbrirItem(FaturaDetalhe f)
+    {
+        Erro = null;
+        item = new ItemAvulsoForm();
+        itemFatura = f;
+    }
+
+    private async Task SalvarItem()
+    {
+        if (itemFatura is null) return;
+        if (await Executar(() => Servico.AdicionarItemAsync(Usuario, itemFatura.Id, item)))
+        {
+            itemFatura = null;
+            await Carregar();
+        }
+    }
+
+    private async Task RemoverItem(FaturaDetalhe f, FaturaLocacaoItem i)
+    {
+        if (await Executar(() => Servico.RemoverItemAsync(Usuario, f.Id, i.Id))) await Carregar();
+    }
+
+    private async Task Estornar(PagamentoDetalhe p)
+    {
+        if (await Executar(() => Servico.EstornarAsync(Usuario, p.Id)))
+        {
+            await Carregar();
+            Sucesso = $"Recebimento do recibo {p.Recibo} estornado.";
+        }
+    }
+
+    private async Task CancelarFatura()
+    {
+        if (cancelando is null) return;
+        if (await Executar(() => Servico.CancelarFaturaAsync(Usuario, cancelando.Id, motivo ?? "")))
+        {
+            cancelando = null;
+            await Carregar();
+        }
+    }
+
+    private async Task Encerrar()
+    {
+        if (await Executar(() => Servico.EncerrarAsync(Usuario, Id, dataEncerramento, motivo)))
+        {
+            encerrando = false;
+            await Carregar();
+            Sucesso = "Contrato encerrado.";
+        }
+    }
+}
