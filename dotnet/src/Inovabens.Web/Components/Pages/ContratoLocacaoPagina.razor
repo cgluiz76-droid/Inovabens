@@ -3,7 +3,8 @@
 @inherits ComponenteBase
 @inject LocacaoService Servico
 
-@* Ficha do contrato: dados, partes, faturas mês a mês (receber, ajustar, recibo) e repasses aos locadores. *@
+@* Ficha do contrato: dados, partes, faturas mês a mês (receber, ajustar, recibo), repasses aos locadores e, na fase 3,
+   reajuste, renovação/aditivo, preferência na venda, rescisão com acerto e o histórico do contrato. *@
 
 <PageTitle>@(d?.Codigo ?? "Contrato") · Locação · Inovabens</PageTitle>
 
@@ -33,11 +34,17 @@ else
             }
             @if (PodeEditar && c.Status == StatusContratoLocacao.ATIVO)
             {
-                <button class="btn-ghost" @onclick="() => { encerrando = true; dataEncerramento = DatasBR.Hoje(); Erro = null; }">Encerrar</button>
+                <button class="btn-ghost" @onclick="AbrirAditivo" title="Mais prazo ou novo valor, com registro no histórico">Renovar / aditivo</button>
+                <button class="btn-ghost" @onclick="AbrirPreferencia" title="Venda do imóvel locado: notificar o locatário (art. 27)">Preferência na venda</button>
+                <button class="btn-ghost" @onclick="AbrirRescisao">Rescindir / encerrar</button>
             }
             @if (PodeReceber && c.Status == StatusContratoLocacao.ATIVO)
             {
                 <button class="btn-ghost" disabled="@Ocupado" @onclick="GerarProxima" title="Gera já a fatura do próximo mês">Gerar próxima fatura</button>
+            }
+            @if (c.Status == StatusContratoLocacao.ENCERRADO && d.Historico.Any(h => h.Tipo == TipoHistoricoLocacao.RESCISAO))
+            {
+                <a class="btn-ghost" href="@($"locacao/{Id}/termo-rescisao.pdf")" download>Termo de rescisão</a>
             }
         </div>
     </div>
@@ -53,7 +60,8 @@ else
             <div><dt>Aluguel</dt><dd><b>@Texto.Moeda(c.ValorAluguel)</b></dd></div>
             <div><dt>Encargos mensais</dt><dd>Cond. @Texto.Moeda(c.ValorCondominio) · IPTU @Texto.Moeda(c.ValorIptu) · Seguro @Texto.Moeda(c.ValorSeguroIncendio)</dd></div>
             <div><dt>Reajuste</dt><dd>@(c.IndiceReajuste == CodigoIndice.IGPM ? "IGP-M" : c.IndiceReajuste.ToString()) a cada 12 meses</dd></div>
-            <div><dt>Garantia</dt><dd>@PropostasService.Rotulo(c.Garantia)@(c.GarantiaValor is { } gv ? $" · {Texto.Moeda(gv)}" : "")@(c.GarantiaDetalhe is { } gd ? $" · {gd}" : "")</dd></div>
+            <div><dt>Garantia</dt><dd>@PropostasService.Rotulo(c.Garantia)@(c.GarantiaValor is { } gv ? $" · {Texto.Moeda(gv)}" : "")@(c.GarantiaDetalhe is { } gd ? $" · {gd}" : "")@(c.GarantiaVence is { } gve ? $" · vence {Texto.Data(gve)}" : "")</dd></div>
+            @if (c.SeguroIncendioVence is { } sv) { <div><dt>Seguro incêndio</dt><dd>vence @Texto.Data(sv)</dd></div> }
             @if (c.Modalidade == ModalidadeLocacao.ADMINISTRACAO)
             {
                 <div><dt>Taxa de administração</dt><dd>@c.TaxaAdministracaoPct.ToString("0.##")%</dd></div>
@@ -63,10 +71,64 @@ else
             <div><dt>Atraso</dt><dd>multa @c.MultaAtrasoPct.ToString("0.##")% + juros @c.JurosMesPct.ToString("0.##")% a.m.</dd></div>
             <div><dt>Multa rescisória</dt><dd>@c.MultaRescisoriaAlugueis.ToString("0.#") aluguel(éis), proporcional</dd></div>
             <div><dt>Em caso de venda</dt><dd>@(c.ClausulaVigencia ? "cláusula de vigência" : "sem cláusula de vigência")@(c.Averbado ? " · averbado" : " · não averbado")</dd></div>
-            @if (c.EncerradoEm is { } enc) { <div><dt>Encerrado em</dt><dd>@Texto.Data(enc) @c.MotivoEncerramento</dd></div> }
+            @if (c.EncerradoEm is { } enc) { <div><dt>Encerrado em</dt><dd>@Texto.Data(enc)@(c.IniciativaRescisao is { } ini ? $" · {Texto.Rotulo(ini)}" : "") @c.MotivoEncerramento</dd></div> }
         </dl>
         @if (c.Observacoes is not null) { <p class="pequeno">@c.Observacoes</p> }
     </section>
+
+    @if (c.Status == StatusContratoLocacao.ATIVO)
+    {
+        var hoje = DatasBR.Hoje();
+        <section class="card">
+            <div class="titulo-secao">
+                <h2>Reajuste e vencimentos</h2>
+                <button class="btn-ghost mini" disabled="@Ocupado" @onclick="CarregarPrevia">Ver prévia do reajuste</button>
+            </div>
+            <dl class="locacao-dados">
+                <div><dt>Próximo reajuste</dt><dd class="@(c.ProximoReajuste <= hoje ? "texto-erro" : "")">@Texto.Data(c.ProximoReajuste)@(c.UltimoReajuste is { } ur ? $" (último em {Texto.Data(ur)})" : "")</dd></div>
+                <div><dt>Fim do prazo</dt><dd class="@(c.Fim < hoje ? "texto-erro" : "")">@Texto.Data(c.Fim)@(c.Fim < hoje ? " · prorrogado por prazo indeterminado" : "")</dd></div>
+                @if (c.PreferenciaNotificadaEm is { } pn)
+                {
+                    <div><dt>Preferência na venda</dt>
+                        <dd>notificado em @Texto.Data(pn) · @Texto.Moeda(c.PreferenciaValor ?? 0) · prazo até @Texto.Data(c.PreferenciaPrazo!.Value)
+                            · @(c.PreferenciaResposta is { } pr ? Texto.Rotulo(pr) : "aguardando resposta")
+                            <a class="btn-ghost mini" href="@($"locacao/{Id}/preferencia.pdf")" download>Notificação</a>
+                            @if (PodeEditar && c.PreferenciaResposta is null)
+                            {
+                                <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Responder(RespostaPreferencia.ACEITA)">Aceitou</button>
+                                <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Responder(RespostaPreferencia.RECUSADA)">Recusou</button>
+                                @if (hoje > c.PreferenciaPrazo)
+                                {
+                                    <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Responder(RespostaPreferencia.SEM_RESPOSTA)">Sem resposta</button>
+                                }
+                            }
+                        </dd>
+                    </div>
+                }
+            </dl>
+            @if (previa is not null)
+            {
+                <div class="previa-reajuste">
+                    @if (previa.Percentual is { } pct)
+                    {
+                        <p>@Texto.Rotulo(previa.Indice) acumulado de @previa.De.ToString("MM/yyyy") a @previa.Ate.ToString("MM/yyyy"):
+                            <b>@pct.ToString("0.####")%</b> · aluguel @Texto.Moeda(previa.ValorAtual) → <b>@Texto.Moeda(previa.ValorNovo)</b>
+                            @if (previa.Negativo) { <span class="pequeno"> (índice negativo: o valor é mantido)</span> }</p>
+                        <a class="btn-ghost mini" href="@($"locacao/{Id}/carta-reajuste.pdf")" download>Carta ao locatário</a>
+                    }
+                    else
+                    {
+                        <p class="texto-erro">Faltam índices de @string.Join(", ", previa.Faltando.Select(m => m.ToString("MM/yyyy"))):
+                            sincronize os índices ou lance o mês à mão em Financeiro. Também dá para aplicar informando o valor combinado.</p>
+                    }
+                    @if (PodeEditar)
+                    {
+                        <button class="btn-primary mini" disabled="@Ocupado" @onclick="() => { reajustando = true; valorManual = null; Erro = null; }">Aplicar reajuste</button>
+                    }
+                </div>
+            }
+        </section>
+    }
 
     <section class="card">
         <div class="titulo-secao"><h2>Partes</h2></div>
@@ -111,14 +173,14 @@ else
                         @foreach (var f in d.Faturas)
                         {
                             <tr class="@(f.Status == StatusFaturaLocacao.CANCELADA ? "mudo" : "")">
-                                <td>@f.Competencia.ToString("MM/yyyy")</td>
+                                <td>@f.Competencia.ToString("MM/yyyy")@if (f.Rescisao) { <div class="pequeno"><b>Acerto da rescisão</b></div> }</td>
                                 <td class="nowrap @(f.Atrasada(DatasBR.Hoje()) ? "texto-erro" : "")">@Texto.Data(f.Vencimento)</td>
                                 <td>
                                     @foreach (var i in f.Itens)
                                     {
                                         <div class="pequeno">
                                             @i.Descricao: @Texto.Moeda(i.Valor)
-                                            @if (PodeReceber && f.Status == StatusFaturaLocacao.ABERTA && i.Tipo != TipoItemFatura.ALUGUEL)
+                                            @if (PodeReceber && f.Status == StatusFaturaLocacao.ABERTA && i.Tipo is not (TipoItemFatura.ALUGUEL or TipoItemFatura.CAUCAO))
                                             {
                                                 <button class="btn-ghost mini" title="Remover item" @onclick="() => RemoverItem(f, i)"><Icone Nome="x" /></button>
                                             }
@@ -188,6 +250,37 @@ else
                                 <td class="num">@Texto.Moeda(r.Intermediacao)</td>
                                 <td class="num"><b>@Texto.Moeda(r.Liquido)</b></td>
                                 <td class="nowrap">@(r.Estornado ? "estornado" : r.PagoEm is { } pg ? $"pago {Texto.Data(pg)}" : $"previsto {Texto.Data(r.PrevistoPara)}")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    @if (d.Historico.Count > 0)
+    {
+        <section class="card">
+            <div class="titulo-secao"><h2>Histórico do contrato</h2></div>
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th class="num">Aluguel</th><th class="num">Prazo</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var h in d.Historico)
+                        {
+                            var mudaValor = h.Tipo is TipoHistoricoLocacao.REAJUSTE or TipoHistoricoLocacao.ADITIVO or TipoHistoricoLocacao.RENOVACAO;
+                            <tr>
+                                <td class="nowrap">@Texto.Data(h.Data)</td>
+                                <td>@Texto.Rotulo(h.Tipo)</td>
+                                <td class="pre-linha">@h.Descricao</td>
+                                <td class="num nowrap">@(mudaValor && h.ValorNovo is { } vn ? $"{Texto.Moeda(h.ValorAnterior ?? 0)} → {Texto.Moeda(vn)}" : "")</td>
+                                <td class="num nowrap">@(h.PrazoNovo is { } pz && pz != h.PrazoAnterior ? $"{h.PrazoAnterior} → {pz} meses" : "")</td>
+                                <td>
+                                    @if (h.Tipo == TipoHistoricoLocacao.REAJUSTE)
+                                    {
+                                        <a class="btn-ghost mini" href="@($"locacao/{Id}/carta-reajuste.pdf?historico={h.Id}")" download>Carta</a>
+                                    }
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -297,23 +390,146 @@ else
     </Modal>
 }
 
-@if (encerrando)
+@if (reajustando && previa is not null)
 {
-    <Modal Titulo="Encerrar contrato" AoFechar="() => encerrando = false">
+    <Modal Titulo="@($"Aplicar reajuste de {Texto.Data(previa.Aniversario)}")" AoFechar="() => reajustando = false">
         <div class="formulario">
             <MensagemErro Texto="@Erro" />
-            <p class="pequeno mudo">Encerramento simples: faturas futuras sem recebimento são canceladas e o imóvel volta a ficar
-                disponível. O cálculo da rescisão (multa proporcional, vistoria de saída e devolução da caução) chega na fase 3:
-                até lá, inclua esses valores como itens na última fatura.</p>
-            <div class="grade-2">
-                <label class="campo"><span>Data da entrega das chaves</span><input class="input" type="date" @bind="dataEncerramento" /></label>
-                <label class="campo"><span>Motivo</span><input class="input" maxlength="500" @bind="motivo" /></label>
-            </div>
+            <p class="pequeno">Calculado: <b>@Texto.Moeda(previa.ValorNovo)</b>@(previa.Percentual is { } p ? $" ({p.ToString("0.####")}%)" : " (índice incompleto)").
+                Vale a partir da fatura de @previa.Aniversario.ToString("MM/yyyy"); faturas em aberto sem recebimento são refeitas.</p>
+            <label class="campo">
+                <span>Valor combinado (opcional: deixe vazio para usar o calculado)</span>
+                <input class="input" type="number" step="0.01" @bind="valorManual" />
+            </label>
             <div class="acoes-form">
-                <button class="btn-ghost" @onclick="() => encerrando = false">Voltar</button>
-                <button class="btn-perigo" disabled="@Ocupado" @onclick="Encerrar">Encerrar contrato</button>
+                <button class="btn-ghost" @onclick="() => reajustando = false">Voltar</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="AplicarReajuste">Aplicar</button>
             </div>
         </div>
+    </Modal>
+}
+
+@if (aditivando)
+{
+    <Modal Titulo="Renovação ou aditivo" AoFechar="() => aditivando = false">
+        <EditForm Model="aditivo" OnValidSubmit="SalvarAditivo" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Tipo</span>
+                    <select class="input" @bind="aditivo.Tipo">
+                        <option value="@TipoHistoricoLocacao.RENOVACAO">Renovação (mais prazo)</option>
+                        <option value="@TipoHistoricoLocacao.ADITIVO">Aditivo (valor ou outra cláusula)</option>
+                    </select>
+                </label>
+                <label class="campo"><span>Data</span><InputDate class="input" @bind-Value="aditivo.Data" /><ValidationMessage For="() => aditivo.Data" /></label>
+                <label class="campo"><span>Meses a mais no prazo</span><InputNumber class="input" @bind-Value="aditivo.MesesAdicionais" /><ValidationMessage For="() => aditivo.MesesAdicionais" /></label>
+                <label class="campo"><span>Novo aluguel (vazio: mantém)</span><InputNumber class="input" step="0.01" @bind-Value="aditivo.NovoValor" /><ValidationMessage For="() => aditivo.NovoValor" /></label>
+            </div>
+            <label class="campo">
+                <span>O que mudou</span>
+                <InputTextArea class="input" rows="3" maxlength="1000" @bind-Value="aditivo.Descricao" />
+                <ValidationMessage For="() => aditivo.Descricao" />
+            </label>
+            <p class="pequeno mudo">Prazo atual: @d?.Contrato.PrazoMeses meses (fim @(d is null ? "" : Texto.Data(d.Contrato.Fim))). Novo valor vale a partir da fatura do mês da data.</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => aditivando = false">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (notificando)
+{
+    <Modal Titulo="Notificar preferência na venda (art. 27)" AoFechar="() => notificando = false">
+        <EditForm Model="preferencia" OnValidSubmit="NotificarPreferencia" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <p class="pequeno mudo">Antes de vender a terceiro, o locatário tem preferência nas mesmas condições: ele recebe preço e
+                condições e tem 30 dias para aceitar. O sistema avisa quando o prazo estiver acabando.</p>
+            <label class="campo"><span>Preço</span><InputNumber class="input" step="0.01" @bind-Value="preferencia.Valor" /><ValidationMessage For="() => preferencia.Valor" /></label>
+            <label class="campo">
+                <span>Condições (pagamento, sinal, prazo, onde ver os documentos)</span>
+                <InputTextArea class="input" rows="4" maxlength="1000" @bind-Value="preferencia.Condicoes" />
+                <ValidationMessage For="() => preferencia.Condicoes" />
+            </label>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => notificando = false">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar notificação</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (rescindindo && d is not null)
+{
+    var ct = d.Contrato;
+    <Modal Titulo="Rescindir / encerrar contrato" AoFechar="() => rescindindo = false">
+        <EditForm Model="rescisao" OnValidSubmit="Rescindir" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Entrega das chaves</span>
+                    <InputDate class="input" @bind-Value="rescisao.EntregaChaves" @bind-Value:after="SimularRescisao" />
+                    <ValidationMessage For="() => rescisao.EntregaChaves" />
+                </label>
+                <label class="campo">
+                    <span>Iniciativa</span>
+                    <select class="input" @bind="rescisao.Iniciativa" @bind:after="SimularRescisao">
+                        <option value="@IniciativaRescisao.LOCATARIO">Locatário pediu para sair</option>
+                        <option value="@IniciativaRescisao.LOCADOR">Locador pediu o imóvel</option>
+                        <option value="@IniciativaRescisao.ACORDO">Acordo entre as partes</option>
+                        <option value="@IniciativaRescisao.FIM_PRAZO">Fim do prazo</option>
+                    </select>
+                </label>
+                @if (rescisao.EntregaChaves > ct.Fim)
+                {
+                    <label class="campo">
+                        <span>Aviso de desocupação dado em</span>
+                        <InputDate class="input" @bind-Value="rescisao.AvisoEm" @bind-Value:after="SimularRescisao" />
+                    </label>
+                }
+                <label class="campo"><span>Débitos da vistoria de saída</span><InputNumber class="input" step="0.01" @bind-Value="rescisao.DebitosVistoria" @bind-Value:after="SimularRescisao" /></label>
+                <label class="campo"><span>Descrição da vistoria</span><InputText class="input" maxlength="200" @bind-Value="rescisao.DescricaoVistoria" /></label>
+                <label class="campo"><span>Outros encargos pendentes</span><InputNumber class="input" step="0.01" @bind-Value="rescisao.OutrosDebitos" @bind-Value:after="SimularRescisao" /></label>
+                <label class="campo"><span>Descrição dos encargos</span><InputText class="input" maxlength="200" @bind-Value="rescisao.DescricaoOutros" /></label>
+                @if (ct.Garantia == GarantiaLocacao.CAUCAO)
+                {
+                    <label class="campo">
+                        <span>Caução corrigida (depositado @Texto.Moeda(ct.GarantiaValor ?? 0))</span>
+                        <InputNumber class="input" step="0.01" @bind-Value="rescisao.CaucaoCorrigida" @bind-Value:after="SimularRescisao" />
+                    </label>
+                }
+                <label class="campo"><span>Vencimento do acerto</span><InputDate class="input" @bind-Value="rescisao.VencimentoAcerto" /></label>
+            </div>
+            <label class="campo"><span>Motivo</span><InputText class="input" maxlength="500" @bind-Value="rescisao.Motivo" /></label>
+            <label class="check"><InputCheckbox @bind-Value="rescisao.IsentarMulta" @bind-Value:after="SimularRescisao" /> Isentar multa e aviso prévio (transferência de emprego, acordo)</label>
+            <label class="check"><InputCheckbox @bind-Value="rescisao.DevolverChaves" /> Registrar a devolução das chaves que estão fora</label>
+            <label class="check"><InputCheckbox @bind-Value="rescisao.AnunciarLocacao" /> Anunciar o imóvel para alugar de novo no site</label>
+            @if (acerto is not null)
+            {
+                <div class="previa-reajuste">
+                    @if (acerto.Itens.Count == 0)
+                    {
+                        <p class="pequeno">Sem multa, aviso prévio ou débitos: nenhum acerto a cobrar.</p>
+                    }
+                    else
+                    {
+                        @foreach (var i in acerto.Itens) { <div class="pequeno">@i.Descricao: <b>@Texto.Moeda(i.Valor)</b></div> }
+                        <p>Total do acerto: <b>@Texto.Moeda(acerto.TotalAcerto)</b></p>
+                    }
+                    @if (acerto.Caucao > 0) { <p class="pequeno">Caução a devolver ao locatário: <b>@Texto.Moeda(acerto.ADevolver)</b></p> }
+                    <p class="pequeno mudo">O aluguel até a entrega fica na fatura do mês (pró-rata); faturas seguintes sem recebimento são canceladas.</p>
+                </div>
+            }
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => rescindindo = false">Voltar</button>
+                <button type="submit" class="btn-perigo" disabled="@Ocupado">Encerrar contrato</button>
+            </div>
+        </EditForm>
     </Modal>
 }
 
@@ -328,13 +544,19 @@ else
     private IReadOnlyList<Opcao> contas = [];
     private decimal saldo;
     private int diasAtraso;
-    private bool encerrando;
-    private DateOnly dataEncerramento = DatasBR.Hoje();
     private string? motivo;
+    private ReajustePrevia? previa;
+    private bool reajustando, aditivando, notificando, rescindindo;
+    private decimal? valorManual;
+    private AditivoForm aditivo = new();
+    private PreferenciaForm preferencia = new();
+    private RescisaoForm rescisao = new();
+    private RescisaoCalculo? acerto;
 
     private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);
     private bool PodeReceber => Usuario.Pode(Permissoes.LocacaoReceber);
-    private bool ModalAberto => editando is not null || recebendo is not null || itemFatura is not null || cancelando is not null || encerrando;
+    private bool ModalAberto => editando is not null || recebendo is not null || itemFatura is not null || cancelando is not null
+        || reajustando || aditivando || notificando || rescindindo;
 
     protected override Task OnParametersSetAsync() => Carregar();
 
@@ -452,13 +674,82 @@ else
         }
     }
 
-    private async Task Encerrar()
+    /* ------------------------------ fase 3 ------------------------------ */
+
+    private async Task CarregarPrevia() => await Executar(async () => previa = await Servico.ReajustePreviaAsync(Usuario, Id));
+
+    private async Task AplicarReajuste()
     {
-        if (await Executar(() => Servico.EncerrarAsync(Usuario, Id, dataEncerramento, motivo)))
+        if (await Executar(() => Servico.AplicarReajusteAsync(Usuario, Id, valorManual)))
         {
-            encerrando = false;
+            reajustando = false;
+            previa = null;
             await Carregar();
-            Sucesso = "Contrato encerrado.";
+            Sucesso = "Reajuste aplicado. As faturas em aberto foram refeitas com o novo valor.";
+        }
+    }
+
+    private void AbrirAditivo()
+    {
+        Erro = null;
+        aditivo = new AditivoForm { Data = DatasBR.Hoje() };
+        aditivando = true;
+    }
+
+    private async Task SalvarAditivo()
+    {
+        if (await Executar(() => Servico.AditivoAsync(Usuario, Id, aditivo)))
+        {
+            aditivando = false;
+            await Carregar();
+            Sucesso = "Registrado no histórico do contrato.";
+        }
+    }
+
+    private void AbrirPreferencia()
+    {
+        Erro = null;
+        preferencia = new PreferenciaForm();
+        notificando = true;
+    }
+
+    private async Task NotificarPreferencia()
+    {
+        if (await Executar(() => Servico.NotificarPreferenciaAsync(Usuario, Id, preferencia)))
+        {
+            notificando = false;
+            await Carregar();
+            Sucesso = "Notificação registrada: baixe o documento em \"Reajuste e vencimentos\" e colha o ciente do locatário.";
+        }
+    }
+
+    private async Task Responder(RespostaPreferencia r)
+    {
+        if (await Executar(() => Servico.ResponderPreferenciaAsync(Usuario, Id, r))) await Carregar();
+    }
+
+    private async Task AbrirRescisao()
+    {
+        Erro = null;
+        rescisao = new RescisaoForm { EntregaChaves = DatasBR.Hoje() };
+        rescindindo = true;
+        await SimularRescisao();
+    }
+
+    private async Task SimularRescisao()
+    {
+        if (rescisao.EntregaChaves is null) { acerto = null; return; }
+        try { acerto = await Servico.SimularRescisaoAsync(Usuario, Id, rescisao); }
+        catch (Exception) { acerto = null; } // valores incompletos: a validação aparece ao salvar
+    }
+
+    private async Task Rescindir()
+    {
+        if (await Executar(() => Servico.RescindirAsync(Usuario, Id, rescisao)))
+        {
+            rescindindo = false;
+            await Carregar();
+            Sucesso = "Contrato encerrado. O termo de rescisão está no topo da página.";
         }
     }
 }

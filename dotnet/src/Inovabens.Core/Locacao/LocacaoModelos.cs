@@ -20,7 +20,7 @@ public sealed record PagamentoDetalhe(
 
 public sealed record FaturaDetalhe(
     Guid Id, DateOnly Competencia, DateOnly Vencimento, StatusFaturaLocacao Status, decimal Total, decimal Pago,
-    IReadOnlyList<FaturaLocacaoItem> Itens, IReadOnlyList<PagamentoDetalhe> Pagamentos, string? Observacao)
+    IReadOnlyList<FaturaLocacaoItem> Itens, IReadOnlyList<PagamentoDetalhe> Pagamentos, string? Observacao, bool Rescisao = false)
 {
     public decimal Saldo => Status == StatusFaturaLocacao.CANCELADA ? 0 : Math.Max(0, Total - Pago);
     public bool Atrasada(DateOnly hoje) => Status == StatusFaturaLocacao.ABERTA && Vencimento < hoje;
@@ -33,7 +33,8 @@ public sealed record RepasseLinha(
 
 public sealed record ContratoDetalhe(
     ContratoLocacao Contrato, string ImovelCodigo, string ImovelTitulo, string? ImovelEndereco, IReadOnlyList<ParteDetalhe> Partes,
-    IReadOnlyList<FaturaDetalhe> Faturas, IReadOnlyList<RepasseLinha> Repasses, decimal IntermediacaoRetida)
+    IReadOnlyList<FaturaDetalhe> Faturas, IReadOnlyList<RepasseLinha> Repasses, decimal IntermediacaoRetida,
+    IReadOnlyList<ContratoLocacaoHistorico> Historico)
 {
     public string Codigo => Contrato.Codigo;
 }
@@ -97,6 +98,9 @@ public sealed class ContratoForm : IValidatableObject
     public bool ClausulaVigencia { get; set; }
     public bool Averbado { get; set; }
     public string? Observacoes { get; set; }
+    /// <summary>Vencimento do seguro-fiança, título ou carta-fiança (gera aviso para renovar).</summary>
+    public DateOnly? GarantiaVence { get; set; }
+    public DateOnly? SeguroIncendioVence { get; set; }
     public List<ParteForm> Partes { get; set; } = [];
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
@@ -142,4 +146,102 @@ public sealed class ItemAvulsoForm
     [Required(ErrorMessage = "Informe o valor.")]
     [Range(typeof(decimal), "0.01", "99999999", ParseLimitsInInvariantCulture = true, ErrorMessage = "Valor precisa ser maior que zero.")]
     public decimal? Valor { get; set; }
+}
+
+/* ------------------------------ fase 3: reajuste, aditivo, rescisão, preferência ------------------------------ */
+
+/// <summary>
+/// Reajuste anual pelo índice acumulado nos 12 meses que terminam no mês anterior ao aniversário. Faltando mês
+/// publicado, <see cref="Percentual"/> é nulo (sincronize os índices ou lance o mês à mão em Financeiro).
+/// </summary>
+public sealed record ReajustePrevia(
+    DateOnly Aniversario, CodigoIndice Indice, DateOnly De, DateOnly Ate, decimal? Percentual, decimal ValorAtual, decimal ValorNovo,
+    IReadOnlyList<DateOnly> Faltando)
+{
+    /// <summary>Índice acumulado negativo: o aluguel não diminui (fica o valor atual).</summary>
+    public bool Negativo => Percentual < 0;
+}
+
+/// <summary>Um vencimento do contrato (reajuste, fim do prazo, garantia, seguro, prazo da preferência).</summary>
+public sealed record VencimentoLocacao(Guid ContratoId, string ContratoCodigo, string ImovelCodigo, TipoAvisoLocacao Tipo, DateOnly Data, string Descricao);
+
+public sealed class AditivoForm
+{
+    public TipoHistoricoLocacao Tipo { get; set; } = TipoHistoricoLocacao.RENOVACAO;
+
+    [Required(ErrorMessage = "Informe a data do aditivo.")]
+    public DateOnly? Data { get; set; }
+
+    /// <summary>Meses somados ao prazo (renovação). Zero quando o aditivo só muda o valor.</summary>
+    [Range(0, 600, ErrorMessage = "Entre 0 e 600 meses.")]
+    public int MesesAdicionais { get; set; }
+
+    /// <summary>Novo aluguel; vazio mantém o atual.</summary>
+    [Range(typeof(decimal), "0.01", "99999999", ParseLimitsInInvariantCulture = true, ErrorMessage = "Aluguel precisa ser maior que zero.")]
+    public decimal? NovoValor { get; set; }
+
+    [Required(ErrorMessage = "Descreva o que mudou.")]
+    [StringLength(1000, ErrorMessage = "Até 1000 caracteres.")]
+    public string Descricao { get; set; } = "";
+}
+
+public sealed class RescisaoForm
+{
+    [Required(ErrorMessage = "Informe a data da entrega das chaves.")]
+    public DateOnly? EntregaChaves { get; set; }
+
+    public IniciativaRescisao Iniciativa { get; set; } = IniciativaRescisao.LOCATARIO;
+
+    /// <summary>Quando o locatário avisou que ia sair (contrato por prazo indeterminado: 30 dias, art. 6).</summary>
+    public DateOnly? AvisoEm { get; set; }
+
+    /// <summary>Dispensa a multa e o aviso prévio (ex.: transferência de emprego, art. 4 parágrafo único, ou acordo).</summary>
+    public bool IsentarMulta { get; set; }
+
+    [Range(typeof(decimal), "0", "99999999", ParseLimitsInInvariantCulture = true, ErrorMessage = "Valor inválido.")]
+    public decimal DebitosVistoria { get; set; }
+    [StringLength(200, ErrorMessage = "Até 200 caracteres.")] public string? DescricaoVistoria { get; set; }
+
+    /// <summary>Encargos pendentes não faturados (contas de consumo, condomínio extra...).</summary>
+    [Range(typeof(decimal), "0", "99999999", ParseLimitsInInvariantCulture = true, ErrorMessage = "Valor inválido.")]
+    public decimal OutrosDebitos { get; set; }
+    [StringLength(200, ErrorMessage = "Até 200 caracteres.")] public string? DescricaoOutros { get; set; }
+
+    /// <summary>Caução corrigida a devolver (vazio: o valor depositado). Abate os débitos do acerto.</summary>
+    [Range(typeof(decimal), "0", "99999999", ParseLimitsInInvariantCulture = true, ErrorMessage = "Valor inválido.")]
+    public decimal? CaucaoCorrigida { get; set; }
+
+    /// <summary>Vencimento da fatura do acerto (vazio: 5 dias após a entrega).</summary>
+    public DateOnly? VencimentoAcerto { get; set; }
+
+    [StringLength(500, ErrorMessage = "Até 500 caracteres.")] public string? Motivo { get; set; }
+
+    /// <summary>Registra a devolução das chaves que estão fora (controle de chaves).</summary>
+    public bool DevolverChaves { get; set; } = true;
+
+    /// <summary>Volta a anunciar o imóvel para alugar no site (finalidade passa a incluir locação).</summary>
+    public bool AnunciarLocacao { get; set; }
+}
+
+/// <summary>Resultado do cálculo da rescisão (prévia na tela e base do termo).</summary>
+public sealed record RescisaoCalculo(
+    int DiasRestantes, int DiasPrazo, decimal MultaRescisoria, int DiasAvisoFaltando, decimal AvisoPrevio,
+    IReadOnlyList<ItemCalculado> Itens, decimal Caucao, decimal CaucaoAbatida)
+{
+    public decimal Debitos => Itens.Where(i => i.Valor > 0).Sum(i => i.Valor);
+    public decimal TotalAcerto => Itens.Sum(i => i.Valor);
+    /// <summary>Sobra da caução depois de abater os débitos: devolver ao locatário.</summary>
+    public decimal ADevolver => Caucao - CaucaoAbatida;
+}
+
+public sealed class PreferenciaForm
+{
+    [Required(ErrorMessage = "Informe o preço da venda.")]
+    [Range(typeof(decimal), "0.01", "9999999999", ParseLimitsInInvariantCulture = true, ErrorMessage = "Preço precisa ser maior que zero.")]
+    public decimal? Valor { get; set; }
+
+    /// <summary>Forma de pagamento, condições e onde ver a documentação (art. 27 exige todas as condições do negócio).</summary>
+    [Required(ErrorMessage = "Descreva as condições do negócio.")]
+    [StringLength(1000, ErrorMessage = "Até 1000 caracteres.")]
+    public string Condicoes { get; set; } = "";
 }

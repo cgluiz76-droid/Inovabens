@@ -90,9 +90,11 @@ public sealed class RotinaFinanceiraDiariaJob(IServiceScopeFactory e, InovabensO
         var gerados = await sp.GetRequiredService<LancamentosFinanceirosService>().GerarPrevistosAsync(LancamentosFinanceirosService.LimitePrevistos(null));
         // faturas de aluguel que vencem nos próximos 30 dias (contratos ativos)
         var faturas = await sp.GetRequiredService<Inovabens.Core.Locacao.LocacaoService>().GerarFaturasPendentesAsync(ct);
+        // reajuste, fim do prazo, garantia, seguro e preferência: aviso no sino e tarefa na agenda
+        var avisos = await sp.GetRequiredService<Inovabens.Core.Locacao.LocacaoService>().VerificarVencimentosAsync(ct: ct);
         var r = await sp.GetRequiredService<AlertasService>().VerificarAtrasadosAsync(ct);
-        Log.LogInformation("Rotina financeira: {Gerados} lançamento(s) gerado(s), {Faturas} fatura(s) de aluguel; alertas {Criados} criado(s), {Resolvidos} resolvido(s)",
-            gerados, faturas, r.Criados, r.Resolvidos);
+        Log.LogInformation("Rotina financeira: {Gerados} lançamento(s) gerado(s), {Faturas} fatura(s) de aluguel, {Avisos} aviso(s) de locação; alertas {Criados} criado(s), {Resolvidos} resolvido(s)",
+            gerados, faturas, avisos, r.Criados, r.Resolvidos);
     }
 }
 

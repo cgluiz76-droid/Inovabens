@@ -37,7 +37,7 @@ public enum TipoCompromisso { TAREFA, REUNIAO, VISITA, LIGACAO, MENSAGEM }
 
 public enum StatusCompromisso { PENDENTE, CONCLUIDO, CANCELADO }
 
-public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, TITULO_EM_ATRASO, LIMITE_GRATUITO, NOVO_LEAD, PROPOSTA_EXPIRADA, ETAPA_PARADA }
+public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, TITULO_EM_ATRASO, LIMITE_GRATUITO, NOVO_LEAD, PROPOSTA_EXPIRADA, ETAPA_PARADA, LOCACAO_VENCIMENTO }
 
 /// <summary>CAPTACAO: proprietário oferecendo o imóvel (funil de captação).</summary>
 public enum FinalidadeLead { COMPRA, LOCACAO, CAPTACAO }

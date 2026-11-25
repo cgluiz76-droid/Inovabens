@@ -55,6 +55,10 @@ else
                 {
                     <a class="pequeno" href="imoveis/@im">Abrir imóvel</a>
                 }
+                @if (a.ContratoLocacaoId is { } loc)
+                {
+                    <a class="pequeno" href="locacao/@loc">Abrir contrato de locação</a>
+                }
                 @if (a.LeadId is { } lead)
                 {
                     <a class="pequeno" href="crm?lead=@lead">Abrir lead no CRM</a>

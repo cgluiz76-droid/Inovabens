@@ -281,4 +281,183 @@ public class LocacaoTests : IAsyncLifetime
             ImovelId = imovel, Inicio = DatasBR.Hoje(), ValorAluguel = 1000, Garantia = GarantiaLocacao.FIADOR, PagamentoAntecipado = true,
         }));
     }
+
+    [Fact]
+    public async Task Reajuste_aditivo_preferencia_avisos_e_rescisao()
+    {
+        var admin = await Admin();
+        var loc = S<LocacaoService>();
+        var fabrica = S<IDbContextFactory<InovabensDb>>();
+        Guid dono = await Pessoa(admin, "Edu Locador"), inquilino = await Pessoa(admin, "Fábio Inquilino");
+        var imovel = await Imovel(admin, FinalidadeImovel.LOCACAO, (dono, 100));
+        var hoje = DatasBR.Hoje();
+        // aniversário no dia 1º do mês que vem; o prazo de 12 meses termina no fim deste mês
+        var inicio = new DateOnly(hoje.Year, hoje.Month, 1).AddMonths(-11);
+        var form = await loc.NovoParaImovelAsync(admin, imovel);
+        form.Inicio = inicio;
+        form.PrazoMeses = 12;
+        form.ValorAluguel = 2000;
+        form.Garantia = GarantiaLocacao.CAUCAO;
+        form.GarantiaValor = 1000;
+        form.Partes.Add(new ParteForm { PessoaId = inquilino, Papel = PapelContratoLocacao.LOCATARIO });
+        var id = await loc.CriarAsync(admin, form);
+        await loc.AtivarAsync(admin, id);
+
+        // índice do período: usa o que já existe no banco e completa os meses que faltam com 0,5%
+        var (de, ate) = CalculoLocacao.PeriodoReajuste(inicio.AddMonths(12));
+        await using (var db = await fabrica.CreateDbContextAsync())
+        {
+            var existentes = await db.IndicesSerie.Where(s => s.Codigo == CodigoIndice.IGPM && s.Competencia >= de && s.Competencia <= ate)
+                .Select(s => s.Competencia).ToListAsync();
+            for (var m = de; m <= ate; m = m.AddMonths(1))
+                if (!existentes.Contains(m)) db.IndicesSerie.Add(new IndiceSerie { Codigo = CodigoIndice.IGPM, Competencia = m, VariacaoMensalPct = 0.5m, Fonte = "TESTE" });
+            await db.SaveChangesAsync();
+        }
+        var previa = await loc.ReajustePreviaAsync(admin, id);
+        Assert.Equal(inicio.AddMonths(12), previa.Aniversario);
+        Assert.NotNull(previa.Percentual);
+        await using (var db = await fabrica.CreateDbContextAsync())
+        {
+            var vars = await db.IndicesSerie.Where(s => s.Codigo == CodigoIndice.IGPM && s.Competencia >= de && s.Competencia <= ate)
+                .OrderBy(s => s.Competencia).Select(s => s.VariacaoMensalPct).ToListAsync();
+            Assert.Equal(CalculoLocacao.Reajuste(2000, vars).Novo, previa.ValorNovo);
+        }
+        Assert.True((await loc.CartaReajustePdfAsync(admin, id)).Conteudo.Length > 1000);
+
+        await loc.AplicarReajusteAsync(admin, id);
+        var d = await loc.ObterAsync(admin, id);
+        Assert.Equal(previa.ValorNovo, d.Contrato.ValorAluguel);
+        Assert.Equal(previa.Aniversario, d.Contrato.UltimoReajuste);
+        var hr = Assert.Single(d.Historico, h => h.Tipo == TipoHistoricoLocacao.REAJUSTE);
+        Assert.Equal(2000, hr.ValorAnterior);
+        Assert.True((await loc.CartaReajustePdfAsync(admin, id, hr.Id)).Conteudo.Length > 1000);
+        // a fatura do mês do aniversário já sai com o novo valor; antes dele, o antigo
+        await loc.GerarFaturasAteAsync(admin, id, hoje.AddMonths(3));
+        d = await loc.ObterAsync(admin, id);
+        var aniv = d.Faturas.Single(f => f.Competencia == previa.Aniversario);
+        Assert.Equal(previa.ValorNovo, aniv.Itens.Single(i => i.Tipo == TipoItemFatura.ALUGUEL).Valor);
+
+        // fim do prazo em menos de 60 dias: alerta no sino e tarefa na agenda (o reajuste já foi aplicado: sem aviso)
+        await loc.VerificarVencimentosAsync(hoje);
+        await using (var db = await fabrica.CreateDbContextAsync())
+        {
+            var avisos = await db.LocacaoAvisos.Where(a => a.ContratoId == id).ToListAsync();
+            var fim = Assert.Single(avisos);
+            Assert.Equal(TipoAvisoLocacao.FIM, fim.Tipo);
+            Assert.True(await db.Alertas.AnyAsync(a => a.LocacaoAvisoId == fim.Id && a.UsuarioId == admin.Id && a.ResolvidoEm == null));
+            var tarefa = await db.Compromissos.SingleAsync(c => c.Id == fim.CompromissoId);
+            Assert.Equal(imovel, tarefa.ImovelId);
+        }
+        await loc.VerificarVencimentosAsync(hoje); // idempotente
+        await using (var db = await fabrica.CreateDbContextAsync())
+            Assert.Single(await db.LocacaoAvisos.Where(a => a.ContratoId == id).ToListAsync());
+        Assert.Contains(await loc.VencimentosAsync(admin), v => v.ContratoId == id && v.Tipo == TipoAvisoLocacao.FIM);
+
+        // renovação: novo fim resolve o aviso antigo
+        await loc.AditivoAsync(admin, id, new AditivoForm { Tipo = TipoHistoricoLocacao.RENOVACAO, Data = hoje, MesesAdicionais = 12, Descricao = "Renovado por mais 12 meses" });
+        d = await loc.ObterAsync(admin, id);
+        Assert.Equal(24, d.Contrato.PrazoMeses);
+        await loc.VerificarVencimentosAsync(hoje);
+        await using (var db = await fabrica.CreateDbContextAsync())
+            Assert.False(await db.Alertas.AnyAsync(a => a.ResolvidoEm == null && db.LocacaoAvisos.Any(v => v.Id == a.LocacaoAvisoId && v.ContratoId == id)));
+
+        // preferência na venda (art. 27)
+        await loc.NotificarPreferenciaAsync(admin, id, new PreferenciaForm { Valor = 450000, Condicoes = "À vista, escritura em 60 dias" });
+        Assert.True((await loc.NotificacaoPreferenciaPdfAsync(admin, id)).Conteudo.Length > 1000);
+        await loc.ResponderPreferenciaAsync(admin, id, RespostaPreferencia.RECUSADA);
+        d = await loc.ObterAsync(admin, id);
+        Assert.Equal(RespostaPreferencia.RECUSADA, d.Contrato.PreferenciaResposta);
+        Assert.Equal(2, d.Historico.Count(h => h.Tipo == TipoHistoricoLocacao.PREFERENCIA));
+
+        // chave com o locatário volta na rescisão
+        var chaves = S<ChavesService>();
+        var chave = await chaves.CriarAsync(admin, imovel, new ChaveForm { Codigo = await chaves.ProximoCodigoAsync(), Descricao = "Porta da sala" });
+        await chaves.EntregarAsync(admin, chave, new EntregaChaveForm { PessoaId = inquilino, DevolverAte = DatasBR.Agora().AddDays(30) });
+
+        // rescisão pelo locatário antes do fim: multa proporcional + vistoria, caução abate
+        var resc = new RescisaoForm { EntregaChaves = hoje, Iniciativa = IniciativaRescisao.LOCATARIO, DebitosVistoria = 300, DescricaoVistoria = "Pintura" };
+        var calc = await loc.SimularRescisaoAsync(admin, id, resc);
+        Assert.True(calc.MultaRescisoria > 0);
+        Assert.Equal(1000, calc.CaucaoAbatida);
+        await loc.RescindirAsync(admin, id, resc);
+        d = await loc.ObterAsync(admin, id);
+        Assert.Equal(StatusContratoLocacao.ENCERRADO, d.Contrato.Status);
+        Assert.Equal(hoje, d.Contrato.EncerradoEm);
+        var acerto = Assert.Single(d.Faturas, f => f.Rescisao);
+        Assert.Equal(calc.MultaRescisoria + 300 - 1000, acerto.Total);
+        Assert.Contains(acerto.Itens, i => i.Tipo == TipoItemFatura.MULTA_RESCISORIA);
+        Assert.All(d.Faturas.Where(f => !f.Rescisao && f.Competencia > CalculoLocacao.MesDe(hoje)), f => Assert.Equal(StatusFaturaLocacao.CANCELADA, f.Status));
+        // mês da entrega: só os dias usados
+        var ultimo = d.Faturas.Single(f => !f.Rescisao && f.Competencia == CalculoLocacao.MesDe(hoje));
+        var diasMes = DateTime.DaysInMonth(hoje.Year, hoje.Month);
+        if (hoje.Day < diasMes) Assert.Contains($"{hoje.Day} de {diasMes} dias", ultimo.Itens[0].Descricao);
+        Assert.Equal(SituacaoImovel.DISPONIVEL, (await S<ImoveisService>().DetalheAsync(admin, imovel)).Dados.Situacao);
+        await using (var db = await fabrica.CreateDbContextAsync())
+            Assert.NotNull((await db.ChaveMovimentos.SingleAsync(m => m.ChaveId == chave)).DevolvidaEm);
+        Assert.True((await loc.TermoRescisaoPdfAsync(admin, id)).Conteudo.Length > 1000);
+        await Assert.ThrowsAsync<RegraNegocioException>(() => loc.RescindirAsync(admin, id, resc));
+    }
+}
+
+/// <summary>Cálculos da fase 3: reajuste pelo índice acumulado, rescisão e avisos de vencimento.</summary>
+public class CalculoLocacaoFase3Tests
+{
+    [Fact]
+    public void Reajuste_acumulado_e_indice_negativo()
+    {
+        Assert.Equal((new DateOnly(2026, 9, 1), new DateOnly(2027, 8, 1)), CalculoLocacao.PeriodoReajuste(new(2027, 9, 15)));
+        var (pct, novo) = CalculoLocacao.Reajuste(1000, [1, 1]);
+        Assert.Equal(2.01m, pct);
+        Assert.Equal(1020.10m, novo);
+        var (neg, mantido) = CalculoLocacao.Reajuste(1000, [-1, 0.5m]);
+        Assert.True(neg < 0);
+        Assert.Equal(1000, mantido);
+    }
+
+    [Fact]
+    public void Rescisao_multa_proporcional_aviso_previo_e_caucao()
+    {
+        var c = new ContratoLocacao
+        {
+            Inicio = new(2026, 1, 1), PrazoMeses = 30, ValorAluguel = 2000, ValorCondominio = 400, MultaRescisoriaAlugueis = 3,
+            Garantia = GarantiaLocacao.CAUCAO, GarantiaValor = 6000,
+        };
+        var entrega = new DateOnly(2027, 1, 1);
+        var r = CalculoLocacao.Rescisao(c, new RescisaoForm { EntregaChaves = entrega, Iniciativa = IniciativaRescisao.LOCATARIO, DebitosVistoria = 500 });
+        var diasPrazo = c.Fim.DayNumber - c.Inicio.DayNumber + 1;
+        var diasRest = c.Fim.DayNumber - entrega.DayNumber;
+        Assert.Equal(decimal.Round(6000m * diasRest / diasPrazo, 2, MidpointRounding.AwayFromZero), r.MultaRescisoria);
+        Assert.Equal(r.MultaRescisoria + 500, r.Debitos);
+        Assert.Equal(r.Debitos, r.CaucaoAbatida); // caução maior que os débitos: abate tudo
+        Assert.Equal(0, r.TotalAcerto);
+        Assert.Equal(6000 - r.Debitos, r.ADevolver);
+
+        // isento ou por acordo: sem multa
+        Assert.Empty(CalculoLocacao.Rescisao(c, new RescisaoForm { EntregaChaves = entrega, Iniciativa = IniciativaRescisao.ACORDO }).Itens);
+        Assert.Empty(CalculoLocacao.Rescisao(c, new RescisaoForm { EntregaChaves = entrega, Iniciativa = IniciativaRescisao.LOCATARIO, IsentarMulta = true }).Itens);
+
+        // prazo indeterminado: aviso de 10 dias → faltam 20 de 30 dias de aluguel e encargos
+        var depois = c.Fim.AddDays(40);
+        var a = CalculoLocacao.Rescisao(c, new RescisaoForm { EntregaChaves = depois, AvisoEm = depois.AddDays(-10), Iniciativa = IniciativaRescisao.LOCATARIO });
+        Assert.Equal(0, a.MultaRescisoria);
+        Assert.Equal(20, a.DiasAvisoFaltando);
+        Assert.Equal(1600, a.AvisoPrevio); // 2400 × 20/30
+    }
+
+    [Fact]
+    public void Avisos_60_e_30_dias_antes()
+    {
+        var c = new ContratoLocacao { Inicio = new(2026, 1, 10), PrazoMeses = 12, ValorAluguel = 1000, Status = StatusContratoLocacao.ATIVO };
+        // reajuste em 10/01/2027 e fim em 09/01/2027
+        Assert.Empty(CalculoLocacao.AvisosDevidos(c, new(2026, 10, 1)));
+        var a60 = CalculoLocacao.AvisosDevidos(c, new(2026, 11, 20));
+        Assert.Equal(2, a60.Count);
+        Assert.All(a60, x => Assert.Equal(60, x.Antecedencia));
+        Assert.All(CalculoLocacao.AvisosDevidos(c, new(2026, 12, 20)), x => Assert.Equal(30, x.Antecedencia));
+        // fim do prazo deixa de avisar 30 dias depois; reajuste não aplicado continua
+        var tarde = CalculoLocacao.AvisosDevidos(c, new(2027, 3, 1));
+        Assert.Equal(TipoAvisoLocacao.REAJUSTE, Assert.Single(tarde).Tipo);
+        c.Status = StatusContratoLocacao.ENCERRADO;
+        Assert.Empty(CalculoLocacao.AvisosDevidos(c, new(2026, 12, 20)));
+    }
 }

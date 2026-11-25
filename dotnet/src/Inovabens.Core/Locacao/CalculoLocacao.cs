@@ -51,10 +51,13 @@ public static class CalculoLocacao
         return venc < inicio ? inicio : venc;
     }
 
-    /// <summary>Itens do mês: aluguel e encargos, proporcionais quando o mês não é inteiro.</summary>
-    public static IReadOnlyList<ItemCalculado> Itens(ContratoLocacao c, DateOnly competencia)
+    /// <summary>
+    /// Itens do mês: aluguel e encargos, proporcionais quando o mês não é inteiro. <paramref name="fim"/> é o último dia
+    /// cobrado (padrão: encerramento ou fim do prazo); contrato ativo passa <see cref="FimCobranca"/>.
+    /// </summary>
+    public static IReadOnlyList<ItemCalculado> Itens(ContratoLocacao c, DateOnly competencia, DateOnly? fim = null)
     {
-        var (usados, doMes) = DiasDeUso(competencia, c.Inicio, c.Fim);
+        var (usados, doMes) = DiasDeUso(competencia, c.Inicio, fim ?? c.EncerradoEm ?? c.Fim);
         if (usados == 0) return [];
         var inteiro = usados == doMes;
         decimal Parte(decimal v) => inteiro ? v : decimal.Round(v * usados / doMes, 2, MidpointRounding.AwayFromZero);
@@ -136,4 +139,121 @@ public static class CalculoLocacao
     }
 
     public static DateOnly MesDe(DateOnly d) => new(d.Year, d.Month, 1);
+
+    /// <summary>
+    /// Último dia cobrado. Ativo: só a entrega das chaves encerra a cobrança; vencido o prazo, a locação segue por prazo
+    /// indeterminado (arts. 46 e 56) e o mês do fim do prazo é cobrado inteiro.
+    /// </summary>
+    public static DateOnly FimCobranca(ContratoLocacao c) => c.EncerradoEm ?? DateOnly.MaxValue;
+
+    /* ------------------------------ reajuste ------------------------------ */
+
+    /// <summary>Meses do índice usados no reajuste: os 12 que terminam no mês anterior ao aniversário.</summary>
+    public static (DateOnly De, DateOnly Ate) PeriodoReajuste(DateOnly aniversario)
+    {
+        var ate = MesDe(aniversario).AddMonths(-1);
+        return (ate.AddMonths(-11), ate);
+    }
+
+    /// <summary>
+    /// Índice acumulado (produto das variações mensais) e o novo aluguel. Acumulado negativo mantém o valor: o contrato
+    /// fala em reajuste pela inflação, não em redução.
+    /// </summary>
+    public static (decimal Percentual, decimal Novo) Reajuste(decimal valor, IEnumerable<decimal> variacoesMensaisPct)
+    {
+        var fator = variacoesMensaisPct.Aggregate(1m, (f, v) => f * (1 + v / 100));
+        var pct = decimal.Round((fator - 1) * 100, 4, MidpointRounding.AwayFromZero);
+        var novo = pct <= 0 ? valor : decimal.Round(valor * fator, 2, MidpointRounding.AwayFromZero);
+        return (pct, novo);
+    }
+
+    /* ------------------------------ rescisão ------------------------------ */
+
+    /// <summary>
+    /// Acerto da rescisão (o aluguel até a entrega fica na fatura do mês, pró-rata):
+    /// - multa do art. 4: locatário saindo antes do fim do prazo paga a multa do contrato proporcional ao tempo que falta;
+    /// - aviso prévio do art. 6: no prazo indeterminado, o locatário avisa com 30 dias; o que faltar de aviso é cobrado em
+    ///   aluguel e encargos proporcionais;
+    /// - débitos da vistoria de saída e outros encargos;
+    /// - caução (art. 38) abate os débitos; o que sobrar volta ao locatário.
+    /// </summary>
+    public static RescisaoCalculo Rescisao(ContratoLocacao c, RescisaoForm f)
+    {
+        var entrega = f.EntregaChaves!.Value;
+        var itens = new List<ItemCalculado>();
+        var sairPorConta = f.Iniciativa == IniciativaRescisao.LOCATARIO && !f.IsentarMulta;
+
+        int diasRestantes = 0, diasPrazo = c.Fim.DayNumber - c.Inicio.DayNumber + 1;
+        decimal multa = 0;
+        if (entrega < c.Fim)
+        {
+            diasRestantes = c.Fim.DayNumber - entrega.DayNumber;
+            if (sairPorConta && c.MultaRescisoriaAlugueis > 0)
+            {
+                multa = decimal.Round(c.MultaRescisoriaAlugueis * c.ValorAluguel * diasRestantes / diasPrazo, 2, MidpointRounding.AwayFromZero);
+                if (multa > 0)
+                    itens.Add(new(TipoItemFatura.MULTA_RESCISORIA,
+                        $"Multa rescisória: {c.MultaRescisoriaAlugueis.ToString("0.#", Comum.Texto.PtBr)} aluguéis × {diasRestantes} de {diasPrazo} dias restantes (art. 4)", multa));
+            }
+        }
+
+        int faltando = 0;
+        decimal aviso = 0;
+        if (sairPorConta && entrega > c.Fim)
+        {
+            var diasAviso = f.AvisoEm is { } a ? Math.Max(0, entrega.DayNumber - a.DayNumber) : 0;
+            faltando = Math.Clamp(30 - diasAviso, 0, 30);
+            var mensal = c.ValorAluguel + c.ValorCondominio + c.ValorIptu + c.ValorSeguroIncendio;
+            aviso = decimal.Round(mensal * faltando / 30, 2, MidpointRounding.AwayFromZero);
+            if (aviso > 0)
+                itens.Add(new(TipoItemFatura.AVISO_PREVIO, $"Aviso prévio não cumprido: {faltando} de 30 dias (art. 6)", aviso));
+        }
+
+        if (f.DebitosVistoria > 0)
+            itens.Add(new(TipoItemFatura.VISTORIA, Comum.Texto.Limpo(f.DescricaoVistoria) ?? "Débitos da vistoria de saída", f.DebitosVistoria));
+        if (f.OutrosDebitos > 0)
+            itens.Add(new(TipoItemFatura.OUTRO, Comum.Texto.Limpo(f.DescricaoOutros) ?? "Encargos pendentes", f.OutrosDebitos));
+
+        decimal caucao = 0, abatida = 0;
+        if (c.Garantia == GarantiaLocacao.CAUCAO)
+        {
+            caucao = f.CaucaoCorrigida ?? c.GarantiaValor ?? 0;
+            abatida = Math.Min(caucao, itens.Sum(i => i.Valor));
+            if (abatida > 0) itens.Add(new(TipoItemFatura.CAUCAO, "Caução abatida dos débitos", -abatida));
+        }
+        return new(diasRestantes, diasPrazo, multa, faltando, aviso, itens, caucao, abatida);
+    }
+
+    /* ------------------------------ vencimentos ------------------------------ */
+
+    /// <summary>Eventos do contrato ativo que pedem providência, com as antecedências (dias) em que avisar.</summary>
+    public static IReadOnlyList<(TipoAvisoLocacao Tipo, DateOnly Data, int[] Antecedencias)> Eventos(ContratoLocacao c)
+    {
+        if (c.Status != StatusContratoLocacao.ATIVO) return [];
+        var lista = new List<(TipoAvisoLocacao, DateOnly, int[])>
+        {
+            (TipoAvisoLocacao.REAJUSTE, c.ProximoReajuste, [60, 30]),
+            (TipoAvisoLocacao.FIM, c.Fim, [60, 30]),
+        };
+        if (c.GarantiaVence is { } g) lista.Add((TipoAvisoLocacao.GARANTIA, g, [60, 30]));
+        if (c.SeguroIncendioVence is { } si) lista.Add((TipoAvisoLocacao.SEGURO_INCENDIO, si, [30]));
+        if (c.PreferenciaPrazo is { } pp && c.PreferenciaResposta is null) lista.Add((TipoAvisoLocacao.PREFERENCIA, pp, [7]));
+        return lista;
+    }
+
+    /// <summary>
+    /// Avisos que valem hoje: a menor antecedência já alcançada de cada evento (um aviso aberto por vez). Passados 30
+    /// dias da data, o aviso deixa de valer, menos o do reajuste, que espera ser aplicado.
+    /// </summary>
+    public static IReadOnlyList<(TipoAvisoLocacao Tipo, DateOnly Data, int Antecedencia)> AvisosDevidos(ContratoLocacao c, DateOnly hoje)
+    {
+        var lista = new List<(TipoAvisoLocacao, DateOnly, int)>();
+        foreach (var (tipo, data, ants) in Eventos(c))
+        {
+            if (tipo != TipoAvisoLocacao.REAJUSTE && hoje > data.AddDays(30)) continue;
+            var alcancadas = ants.Where(a => hoje >= data.AddDays(-a)).ToList();
+            if (alcancadas.Count > 0) lista.Add((tipo, data, alcancadas.Min()));
+        }
+        return lista;
+    }
 }

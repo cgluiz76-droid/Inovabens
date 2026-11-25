@@ -17,8 +17,21 @@ public enum PapelContratoLocacao { LOCADOR, LOCATARIO, FIADOR }
 
 public enum StatusFaturaLocacao { ABERTA, PAGA, CANCELADA }
 
-/// <summary>DESCONTO é negativo e reduz a base da taxa de administração (como o aluguel).</summary>
-public enum TipoItemFatura { ALUGUEL, CONDOMINIO, IPTU, SEGURO_INCENDIO, DESCONTO, OUTRO }
+/// <summary>
+/// DESCONTO é negativo e reduz a base da taxa de administração (como o aluguel). Os quatro últimos são do acerto da
+/// rescisão (migração 0047); CAUCAO é negativo (abate a caução devolvida dos débitos).
+/// </summary>
+public enum TipoItemFatura { ALUGUEL, CONDOMINIO, IPTU, SEGURO_INCENDIO, DESCONTO, OUTRO, MULTA_RESCISORIA, AVISO_PREVIO, VISTORIA, CAUCAO }
+
+/// <summary>Quem pediu o fim do contrato: define multa (art. 4) e aviso prévio (art. 6).</summary>
+public enum IniciativaRescisao { LOCATARIO, LOCADOR, ACORDO, FIM_PRAZO }
+
+public enum RespostaPreferencia { ACEITA, RECUSADA, SEM_RESPOSTA }
+
+public enum TipoHistoricoLocacao { REAJUSTE, ADITIVO, RENOVACAO, RESCISAO, PREFERENCIA }
+
+/// <summary>Evento do contrato que gera aviso no sino e tarefa na agenda.</summary>
+public enum TipoAvisoLocacao { REAJUSTE, FIM, GARANTIA, SEGURO_INCENDIO, PREFERENCIA }
 
 [Table("contratos_locacao")]
 public class ContratoLocacao
@@ -55,6 +68,18 @@ public class ContratoLocacao
     public DateTime? AtivadoEm { get; set; }
     public DateOnly? EncerradoEm { get; set; }
     public string? MotivoEncerramento { get; set; }
+    /// <summary>Aniversário do último reajuste aplicado; o próximo é 12 meses depois (sem reajuste, conta do início).</summary>
+    public DateOnly? UltimoReajuste { get; set; }
+    /// <summary>Vencimento do seguro-fiança, título de capitalização ou carta-fiança.</summary>
+    public DateOnly? GarantiaVence { get; set; }
+    public DateOnly? SeguroIncendioVence { get; set; }
+    public IniciativaRescisao? IniciativaRescisao { get; set; }
+    public DateOnly? AvisoDesocupacaoEm { get; set; }
+    /// <summary>Notificação de preferência na venda (art. 27): o locatário tem 30 dias para aceitar.</summary>
+    public DateOnly? PreferenciaNotificadaEm { get; set; }
+    public decimal? PreferenciaValor { get; set; }
+    public string? PreferenciaCondicoes { get; set; }
+    public RespostaPreferencia? PreferenciaResposta { get; set; }
     public Guid? CriadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public Guid? AtualizadoPor { get; set; }
@@ -66,6 +91,10 @@ public class ContratoLocacao
     /// <summary>Último dia do contrato (início + prazo − 1 dia).</summary>
     [NotMapped] public DateOnly Fim => Inicio.AddMonths(PrazoMeses).AddDays(-1);
     [NotMapped] public string Codigo => CodigoDe(Numero);
+    /// <summary>Aniversário em que cabe o próximo reajuste (anual, contado do início ou do último reajuste).</summary>
+    [NotMapped] public DateOnly ProximoReajuste => (UltimoReajuste ?? Inicio).AddMonths(12);
+    /// <summary>Último dia do prazo do direito de preferência (30 dias da notificação).</summary>
+    [NotMapped] public DateOnly? PreferenciaPrazo => PreferenciaNotificadaEm?.AddDays(30);
 
     public static string CodigoDe(int numero) => $"LOC-{numero:0000}";
 
@@ -97,6 +126,8 @@ public class FaturaLocacao
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime? CanceladaEm { get; set; }
     public string? MotivoCancelamento { get; set; }
+    /// <summary>Fatura do acerto da rescisão (multa, vistoria, caução), separada do aluguel do mês.</summary>
+    public bool Rescisao { get; set; }
 
     [JsonIgnore] public ContratoLocacao? Contrato { get; set; }
     [JsonIgnore] public List<FaturaLocacaoItem> Itens { get; set; } = [];
@@ -160,4 +191,36 @@ public class RepasseLocacao
     public DateOnly? PagoEm { get; set; }
     public Guid? LancamentoEmpresaId { get; set; }
     [JsonIgnore] public Pessoa? Pessoa { get; set; }
+}
+
+/// <summary>Histórico do contrato: reajustes, aditivos, renovações, rescisão e notificação de preferência.</summary>
+[Table("contrato_locacao_historico")]
+public class ContratoLocacaoHistorico
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ContratoId { get; set; }
+    public TipoHistoricoLocacao Tipo { get; set; }
+    public DateOnly Data { get; set; }
+    public decimal? ValorAnterior { get; set; }
+    public decimal? ValorNovo { get; set; }
+    public int? PrazoAnterior { get; set; }
+    public int? PrazoNovo { get; set; }
+    public CodigoIndice? Indice { get; set; }
+    public decimal? Percentual { get; set; }
+    public string Descricao { get; set; } = "";
+    public Guid? CriadoPor { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Aviso de vencimento já dado (um por evento e antecedência), com a tarefa criada na agenda.</summary>
+[Table("locacao_avisos")]
+public class LocacaoAviso
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ContratoId { get; set; }
+    public TipoAvisoLocacao Tipo { get; set; }
+    public DateOnly DataEvento { get; set; }
+    public short Antecedencia { get; set; }
+    public Guid? CompromissoId { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }

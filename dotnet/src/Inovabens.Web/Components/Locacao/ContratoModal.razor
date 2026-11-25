@@ -93,7 +93,18 @@
                     <span>Detalhe (apólice, seguradora, banco…)</span>
                     <InputText class="input" maxlength="500" @bind-Value="Form.GarantiaDetalhe" />
                 </label>
+                @if (Form.Garantia is GarantiaLocacao.SEGURO_FIANCA or GarantiaLocacao.TITULO_CAPITALIZACAO or GarantiaLocacao.FIADOR)
+                {
+                    <label class="campo">
+                        <span>Garantia vence em (aviso para renovar)</span>
+                        <InputDate class="input" @bind-Value="Form.GarantiaVence" />
+                    </label>
+                }
             }
+            <label class="campo">
+                <span>Seguro incêndio vence em</span>
+                <InputDate class="input" @bind-Value="Form.SeguroIncendioVence" />
+            </label>
         </div>
 
         <h3 class="subtitulo-form">Partes</h3>

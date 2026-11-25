@@ -64,6 +64,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<FaturaLocacaoItem> FaturaLocacaoItens => Set<FaturaLocacaoItem>();
     public DbSet<FaturaLocacaoPagamento> FaturaLocacaoPagamentos => Set<FaturaLocacaoPagamento>();
     public DbSet<RepasseLocacao> RepassesLocacao => Set<RepasseLocacao>();
+    public DbSet<ContratoLocacaoHistorico> ContratoLocacaoHistorico => Set<ContratoLocacaoHistorico>();
+    public DbSet<LocacaoAviso> LocacaoAvisos => Set<LocacaoAviso>();
     public DbSet<ExtratoImportacao> ExtratoImportacoes => Set<ExtratoImportacao>();
     public DbSet<ExtratoItem> ExtratoItens => Set<ExtratoItem>();
     public DbSet<RegraConciliacao> RegrasConciliacao => Set<RegraConciliacao>();
@@ -232,6 +234,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             e.Property(x => x.Modalidade).HasConversion<string>();
             e.Property(x => x.Tipo).HasConversion<string>();
             e.Property(x => x.Status).HasConversion<string>();
+            e.Property(x => x.IniciativaRescisao).HasConversion<string>();
+            e.Property(x => x.PreferenciaResposta).HasConversion<string>();
             e.Property(x => x.Numero).ValueGeneratedOnAdd();
             e.HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);
             e.HasMany(x => x.Partes).WithOne().HasForeignKey(x => x.ContratoId);
@@ -262,6 +266,18 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             e.HasOne<LancamentoEmpresa>().WithMany().HasForeignKey(x => x.LancamentoEmpresaId);
             e.HasOne<ContratoLocacao>().WithMany().HasForeignKey(x => x.ContratoId);
         });
+        mb.Entity<ContratoLocacaoHistorico>(e =>
+        {
+            e.Property(x => x.Tipo).HasConversion<string>();
+            e.HasOne<ContratoLocacao>().WithMany().HasForeignKey(x => x.ContratoId);
+        });
+        mb.Entity<LocacaoAviso>(e =>
+        {
+            e.Property(x => x.Tipo).HasConversion<string>();
+            e.HasOne<ContratoLocacao>().WithMany().HasForeignKey(x => x.ContratoId);
+            e.HasOne<Compromisso>().WithMany().HasForeignKey(x => x.CompromissoId);
+        });
+        mb.Entity<Alerta>().HasOne<LocacaoAviso>().WithMany().HasForeignKey(x => x.LocacaoAvisoId);
         mb.Entity<Compromisso>(e =>
         {
             e.HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);

@@ -7,7 +7,8 @@ using NpgsqlTypes;
 
 namespace Inovabens.Core.Agenda;
 
-public sealed record AlertaItem(Alerta Dados, Guid? CompromissoId, string? CompromissoTitulo, Guid? ImovelId, Guid? LeadId = null, Funil? FunilProcesso = null);
+public sealed record AlertaItem(Alerta Dados, Guid? CompromissoId, string? CompromissoTitulo, Guid? ImovelId, Guid? LeadId = null, Funil? FunilProcesso = null,
+    Guid? ContratoLocacaoId = null);
 
 public sealed record ResultadoVerificacao(int Criados, int Resolvidos);
 
@@ -27,10 +28,12 @@ public sealed class AlertasService(IDbContextFactory<InovabensDb> fabrica)
             from l in ls.DefaultIfEmpty()
             join p in db.Processos on a.ProcessoId equals p.Id into ps
             from p in ps.DefaultIfEmpty()
+            join av in db.LocacaoAvisos on a.LocacaoAvisoId equals av.Id into avs
+            from av in avs.DefaultIfEmpty()
             orderby a.GeradoEm descending
             select new AlertaItem(a, c == null ? null : c.Id, c == null ? null : c.Titulo,
                 c != null ? c.ImovelId : l != null ? l.ImovelId : p != null ? p.ImovelId : null, a.LeadId,
-                p == null ? null : p.Funil)
+                p == null ? null : p.Funil, av == null ? null : av.ContratoId)
         ).Take(200).ToListAsync();
     }
 

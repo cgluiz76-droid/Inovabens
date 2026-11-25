@@ -383,6 +383,12 @@ app.MapGet("/locacao/recibo/{pagamento:guid}.pdf", (Guid pagamento, HttpContext 
     Baixar(c, u => s.ReciboPdfAsync(u, pagamento))).RequireAuthorization(Permissoes.LocacaoVer);
 app.MapGet("/locacao/extrato.pdf", (Guid pessoa, DateOnly mes, HttpContext c, Inovabens.Core.Locacao.LocacaoService s) =>
     Baixar(c, u => s.ExtratoProprietarioPdfAsync(u, pessoa, mes))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/{id:guid}/carta-reajuste.pdf", (Guid id, Guid? historico, HttpContext c, Inovabens.Core.Locacao.LocacaoService s) =>
+    Baixar(c, u => s.CartaReajustePdfAsync(u, id, historico))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/{id:guid}/termo-rescisao.pdf", (Guid id, HttpContext c, Inovabens.Core.Locacao.LocacaoService s) =>
+    Baixar(c, u => s.TermoRescisaoPdfAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/{id:guid}/preferencia.pdf", (Guid id, HttpContext c, Inovabens.Core.Locacao.LocacaoService s) =>
+    Baixar(c, u => s.NotificacaoPreferenciaPdfAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 

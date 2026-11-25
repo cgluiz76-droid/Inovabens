@@ -83,6 +83,35 @@
         </section>
         break;
 
+    case "vencimentos":
+        <section class="card">
+            <div class="titulo-secao"><h2>Vencimentos</h2></div>
+            <p class="pequeno mudo">Reajustes, fim de prazo, garantias, seguros e prazos de preferência dos próximos 90 dias (e os que
+                ainda pedem providência). Os mesmos avisos chegam ao sino 60 e 30 dias antes, com uma tarefa na agenda.</p>
+            @if (vencimentos is null) { <p class="carregando">Carregando…</p> }
+            else if (vencimentos.Count == 0) { <p class="vazio">Nada vencendo nos próximos 90 dias.</p> }
+            else
+            {
+                <div class="tabela-container">
+                    <table class="tabela">
+                        <thead><tr><th>Data</th><th>Evento</th><th>Contrato</th><th>Providência</th></tr></thead>
+                        <tbody>
+                            @foreach (var v in vencimentos)
+                            {
+                                <tr>
+                                    <td class="nowrap @(v.Data < DatasBR.Hoje() ? "texto-erro" : "")">@Texto.Data(v.Data)</td>
+                                    <td>@(v.Tipo switch { TipoAvisoLocacao.FIM => "Fim do prazo", TipoAvisoLocacao.GARANTIA => "Garantia", TipoAvisoLocacao.SEGURO_INCENDIO => "Seguro incêndio", TipoAvisoLocacao.PREFERENCIA => "Preferência", _ => "Reajuste" })</td>
+                                    <td class="nowrap"><a href="@($"locacao/{v.ContratoId}")">@v.ContratoCodigo</a> · @v.ImovelCodigo</td>
+                                    <td class="pequeno">@v.Descricao</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+        break;
+
     case "repasses":
         <section class="card">
             <div class="titulo-secao"><h2>Repasses a pagar</h2></div>
@@ -198,12 +227,13 @@
     [SupplyParameterFromQuery(Name = "proposta")] public Guid? PropostaQuery { get; set; }
     [SupplyParameterFromQuery(Name = "imovel")] public Guid? ImovelQuery { get; set; }
 
-    private static readonly (string, string)[] Abas = [("contratos", "Contratos"), ("cobranca", "Cobrança"), ("repasses", "Repasses")];
+    private static readonly (string, string)[] Abas = [("contratos", "Contratos"), ("cobranca", "Cobrança"), ("vencimentos", "Vencimentos"), ("repasses", "Repasses")];
     private string Aba => Abas.Any(a => a.Item1 == AbaQuery) ? AbaQuery! : "contratos";
 
     private PainelLocacao? painel;
     private IReadOnlyList<ContratoLinha>? contratos;
     private IReadOnlyList<CobrancaLinha>? cobrancas;
+    private IReadOnlyList<VencimentoLocacao>? vencimentos;
     private IReadOnlyList<RepasseLinha>? repasses;
     private IReadOnlyList<Opcao> contas = [];
     private string? termo;
@@ -230,6 +260,7 @@
             {
                 case "cobranca": cobrancas = await Servico.CobrancasAsync(Usuario); break;
                 case "repasses": repasses = await Servico.RepassesAPagarAsync(Usuario); break;
+                case "vencimentos": vencimentos = await Servico.VencimentosAsync(Usuario); break;
                 default: contratos = await Servico.ListarAsync(Usuario, status, termo); break;
             }
         });

@@ -24,6 +24,8 @@ public static class Texto
         ["titulo"] = "título", ["matricula"] = "matrícula",
         ["administracao"] = "administração", ["proprio"] = "próprio", ["locatario"] = "locatário", ["condominio"] = "condomínio",
         ["incendio"] = "incêndio", ["caucao"] = "caução", ["capitalizacao"] = "capitalização",
+        ["rescisoria"] = "rescisória", ["previo"] = "prévio", ["renovacao"] = "renovação", ["rescisao"] = "rescisão",
+        ["preferencia"] = "preferência", ["locador"] = "locador",
     };
 
     /// <summary>EM_AQUISICAO -> "Em aquisição" (mesma regra do rotulo() da interface web).</summary>

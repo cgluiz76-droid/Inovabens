@@ -162,6 +162,8 @@ public class Alerta
     public Guid? LancamentoId { get; set; }
     public Guid? LeadId { get; set; }
     public Guid? ProcessoId { get; set; }
+    /// <summary>Aviso de vencimento de contrato de locação (migração 0047).</summary>
+    public Guid? LocacaoAvisoId { get; set; }
     public string Mensagem { get; set; } = "";
     public DateTime GeradoEm { get; set; } = DateTime.UtcNow;
     public DateTime? LidoEm { get; set; }

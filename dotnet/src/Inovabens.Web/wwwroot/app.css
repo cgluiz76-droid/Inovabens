@@ -1346,3 +1346,6 @@ fieldset.recebimentos { margin-top: var(--e-4); }
 .locacao-dados { display: grid; gap: var(--e-2) var(--e-4); grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); margin: 0; }
 .locacao-dados dt { font-size: 0.78rem; color: var(--texto-2); }
 .locacao-dados dd { margin: 0; }
+/* prévia do reajuste e do acerto da rescisão */
+.previa-reajuste { margin-top: var(--e-3); padding: var(--e-3); border: 1px solid var(--borda); border-radius: var(--raio-p); display: flex; flex-direction: column; gap: var(--e-2); align-items: flex-start; }
+.pre-linha { white-space: pre-line; }

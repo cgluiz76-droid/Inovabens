@@ -16,8 +16,12 @@ namespace Inovabens.Core.Locacao;
 /// terceiros" (fora da DRE), a taxa e a intermediação entram como receita e o repasse fica a pagar. No imóvel próprio
 /// o recebimento vira receita no financeiro do imóvel.
 /// </summary>
-public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, AuditService audit)
+public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabrica, AuditService audit)
 {
+    // a outra parte da classe (LocacaoFase3.cs) não enxerga os parâmetros do construtor primário
+    private IDbContextFactory<InovabensDb> Fabrica => fabrica;
+    private AuditService Audit => audit;
+
     public const string CategoriaAluguelTerceiros = "Aluguel recebido de inquilino";
     public const string CategoriaTaxaAdministracao = "Taxa de administração de aluguel";
     public const string CategoriaIntermediacao = "Taxa de intermediação de locação";
@@ -87,9 +91,11 @@ public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, Audit
         var faturas = await Faturas(db, db.FaturasLocacao.Where(f => f.ContratoId == id));
         var repasses = await Repasses(db, db.RepassesLocacao.Where(r => r.ContratoId == id));
         var retida = repasses.Where(r => !r.Estornado).Sum(r => r.Intermediacao);
+        var historico = await db.ContratoLocacaoHistorico.AsNoTracking().Where(h => h.ContratoId == id)
+            .OrderByDescending(h => h.Data).ThenByDescending(h => h.CriadoEm).ToListAsync();
         var endereco = string.Join(", ", new[] { im.Logradouro, im.Numero, im.Complemento, im.Bairro, im.Cidade, im.Uf }
             .Where(x => !string.IsNullOrWhiteSpace(x)));
-        return new(c, im.Codigo, im.Titulo, endereco.Length == 0 ? null : endereco, partes, faturas, repasses, retida);
+        return new(c, im.Codigo, im.Titulo, endereco.Length == 0 ? null : endereco, partes, faturas, repasses, retida, historico);
     }
 
     /// <summary>Contrato ativo do imóvel (aba do imóvel e site: "locado").</summary>
@@ -228,6 +234,7 @@ public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, Audit
             TaxaAdministracaoPct = c.TaxaAdministracaoPct, IntermediacaoValor = c.IntermediacaoValor, MultaAtrasoPct = c.MultaAtrasoPct,
             JurosMesPct = c.JurosMesPct, MultaRescisoriaAlugueis = c.MultaRescisoriaAlugueis, DiasRepasse = c.DiasRepasse,
             ClausulaVigencia = c.ClausulaVigencia, Averbado = c.Averbado, Observacoes = c.Observacoes, Partes = partes,
+            GarantiaVence = c.GarantiaVence, SeguroIncendioVence = c.SeguroIncendioVence,
         };
     }
 
@@ -331,41 +338,9 @@ public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, Audit
         await db.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// Encerramento simples (a rescisão com cálculo de multa, vistoria e caução vem na fase 3): faturas futuras sem
-    /// recebimento são canceladas e o imóvel volta a ficar disponível se estava como LOCADO.
-    /// </summary>
-    public async Task EncerrarAsync(UsuarioAtual u, Guid id, DateOnly data, string? motivo)
-    {
-        u.Exigir(P.LocacaoEditar);
-        await using var db = await fabrica.CreateDbContextAsync();
-        var c = await Contrato(db, u, id);
-        if (c.Status != StatusContratoLocacao.ATIVO) throw new RegraNegocioException("_", "Só o contrato ativo pode ser encerrado.");
-        if (data < c.Inicio) throw new RegraNegocioException("data", "A data de encerramento é anterior ao início.");
-        var antes = c.Copia();
-        c.Status = StatusContratoLocacao.ENCERRADO;
-        c.EncerradoEm = data;
-        c.MotivoEncerramento = Texto.Limpo(motivo);
-        c.AtualizadoPor = u.Id;
-        c.AtualizadoEm = DateTime.UtcNow;
-        var mesFim = CalculoLocacao.MesDe(data);
-        var futuras = await db.FaturasLocacao.Where(f => f.ContratoId == id && f.Status == StatusFaturaLocacao.ABERTA && f.Competencia > mesFim
-            && !f.Pagamentos.Any(p => p.EstornadoEm == null)).ToListAsync();
-        foreach (var f in futuras)
-        {
-            f.Status = StatusFaturaLocacao.CANCELADA;
-            f.CanceladaEm = DateTime.UtcNow;
-            f.MotivoCancelamento = $"Contrato encerrado em {Texto.Data(data)}";
-        }
-        var im = await db.Imoveis.SingleAsync(i => i.Id == c.ImovelId);
-        if (im.Situacao == SituacaoImovel.LOCADO)
-        {
-            im.Situacao = SituacaoImovel.DISPONIVEL;
-            audit.Registrar(db, u.Id, "imoveis", im.Id, "EDITAR", new { situacao = SituacaoImovel.LOCADO }, new { situacao = im.Situacao, contrato = c.Codigo });
-        }
-        audit.Registrar(db, u.Id, "contratos_locacao", c.Id, "ENCERRAR", antes, c);
-        await db.SaveChangesAsync();
-    }
+    /// <summary>Encerramento por acordo, sem multa nem acerto (atalho da <see cref="RescindirAsync"/>).</summary>
+    public Task EncerrarAsync(UsuarioAtual u, Guid id, DateOnly data, string? motivo) =>
+        RescindirAsync(u, id, new RescisaoForm { EntregaChaves = data, Iniciativa = IniciativaRescisao.ACORDO, Motivo = motivo, DevolverChaves = false });
 
     /* ------------------------------ faturas ------------------------------ */
 
@@ -654,7 +629,7 @@ public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, Audit
             $"Inova Bens · recibo emitido em {DatasBR.Agora():dd/MM/yyyy HH:mm}", col =>
             {
                 RelatoriosService.Paragrafo(col, $"Recebemos de {pagador} a importância de {Texto.Moeda(pg.Total)} ({Extenso.Reais(pg.Total)}), "
-                    + $"referente ao aluguel e encargos de {f.Competencia:MM/yyyy} do imóvel {d.ImovelEndereco ?? d.ImovelCodigo}, "
+                    + $"referente {(f.Rescisao ? "ao acerto da rescisão" : "ao aluguel e encargos")} de {f.Competencia:MM/yyyy} do imóvel {d.ImovelEndereco ?? d.ImovelCodigo}, "
                     + $"conforme o contrato {d.Codigo}, discriminados abaixo.");
                 RelatoriosService.Secao(col, "Valores da fatura");
                 RelatoriosService.Tabela(col, [("Descrição", 4), ("Valor", 1.4f)],
@@ -740,6 +715,9 @@ public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, Audit
         c.ClausulaVigencia = f.ClausulaVigencia;
         c.Averbado = f.Averbado;
         c.Observacoes = Texto.Limpo(f.Observacoes);
+        c.GarantiaVence = f.Garantia is GarantiaLocacao.SEGURO_FIANCA or GarantiaLocacao.TITULO_CAPITALIZACAO or GarantiaLocacao.FIADOR
+            ? f.GarantiaVence : null;
+        c.SeguroIncendioVence = f.SeguroIncendioVence;
     }
 
     private static void ValidarParaAtivar(ContratoLocacao c, IReadOnlyList<ParteForm> partes)
@@ -797,15 +775,17 @@ public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, Audit
     /// <summary>Cria as faturas que faltam, das competências cujo vencimento chega até <paramref name="ate"/>.</summary>
     private static async Task<int> GerarFaturas(InovabensDb db, ContratoLocacao c, DateOnly ate)
     {
-        var existentes = await db.FaturasLocacao.Where(f => f.ContratoId == c.Id && f.Status != StatusFaturaLocacao.CANCELADA)
+        var existentes = await db.FaturasLocacao.Where(f => f.ContratoId == c.Id && f.Status != StatusFaturaLocacao.CANCELADA && !f.Rescisao)
             .Select(f => f.Competencia).ToListAsync();
         var n = 0;
-        foreach (var comp in CalculoLocacao.Competencias(c.Inicio, c.Fim))
+        // depois do fim do prazo a cobrança continua (prazo indeterminado) até a entrega das chaves
+        var fim = CalculoLocacao.FimCobranca(c);
+        foreach (var comp in CalculoLocacao.Competencias(c.Inicio, fim < ate ? fim : ate))
         {
             var venc = CalculoLocacao.Vencimento(comp, c.DiaVencimento, c.PagamentoAntecipado, c.Inicio);
             if (venc > ate) break;
             if (existentes.Contains(comp)) continue;
-            var itens = CalculoLocacao.Itens(c, comp);
+            var itens = CalculoLocacao.Itens(c, comp, fim);
             if (itens.Count == 0) continue;
             var f = new FaturaLocacao { ContratoId = c.Id, Competencia = comp, Vencimento = venc };
             f.Itens.AddRange(itens.Select((i, k) => new FaturaLocacaoItem { FaturaId = f.Id, Ordem = k + 1, Tipo = i.Tipo, Descricao = i.Descricao, Valor = i.Valor }));
@@ -815,19 +795,22 @@ public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, Audit
         return n;
     }
 
-    /// <summary>Valores do contrato mudaram: refaz os itens fixos das faturas em aberto sem recebimento (deste mês em diante).</summary>
-    private static async Task RecalcularAbertas(InovabensDb db, ContratoLocacao c)
+    /// <summary>
+    /// Valores do contrato mudaram: refaz os itens fixos das faturas em aberto sem recebimento, a partir de
+    /// <paramref name="desde"/> (padrão: deste mês em diante).
+    /// </summary>
+    private static async Task RecalcularAbertas(InovabensDb db, ContratoLocacao c, DateOnly? desde = null)
     {
-        var mes = CalculoLocacao.MesDe(DatasBR.Hoje());
+        var mes = CalculoLocacao.MesDe(desde ?? DatasBR.Hoje());
         var abertas = await db.FaturasLocacao.Include(f => f.Itens)
-            .Where(f => f.ContratoId == c.Id && f.Status == StatusFaturaLocacao.ABERTA && f.Competencia >= mes
+            .Where(f => f.ContratoId == c.Id && f.Status == StatusFaturaLocacao.ABERTA && f.Competencia >= mes && !f.Rescisao
                 && !f.Pagamentos.Any(p => p.EstornadoEm == null)).ToListAsync();
         TipoItemFatura[] fixos = [TipoItemFatura.ALUGUEL, TipoItemFatura.CONDOMINIO, TipoItemFatura.IPTU, TipoItemFatura.SEGURO_INCENDIO];
         foreach (var f in abertas)
         {
             db.FaturaLocacaoItens.RemoveRange(f.Itens.Where(i => fixos.Contains(i.Tipo)));
             var ordem = 0;
-            foreach (var i in CalculoLocacao.Itens(c, f.Competencia))
+            foreach (var i in CalculoLocacao.Itens(c, f.Competencia, CalculoLocacao.FimCobranca(c)))
                 db.FaturaLocacaoItens.Add(new FaturaLocacaoItem { FaturaId = f.Id, Ordem = ++ordem, Tipo = i.Tipo, Descricao = i.Descricao, Valor = i.Valor });
             f.Vencimento = CalculoLocacao.Vencimento(f.Competencia, c.DiaVencimento, c.PagamentoAntecipado, c.Inicio);
         }
@@ -883,7 +866,7 @@ public sealed class LocacaoService(IDbContextFactory<InovabensDb> fabrica, Audit
             [.. f.Itens.OrderBy(i => i.Ordem)],
             [.. f.Pagamentos.OrderBy(p => p.ReciboNumero).Select(p => new PagamentoDetalhe(p.Id, p.ReciboNumero, p.Data, p.Principal, p.Multa,
                 p.Juros, p.Forma, p.ContaBancariaId is { } c ? contas.GetValueOrDefault(c) : null, p.EstornadoEm != null, comRepassePago.Contains(p.Id)))],
-            f.Observacao ?? f.MotivoCancelamento))];
+            f.Observacao ?? f.MotivoCancelamento, f.Rescisao))];
     }
 
     private static async Task<List<RepasseLinha>> Repasses(InovabensDb db, IQueryable<RepasseLocacao> q)
