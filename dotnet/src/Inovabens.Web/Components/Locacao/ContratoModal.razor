@@ -46,7 +46,8 @@
             </label>
             <label class="campo">
                 <span>Dia do vencimento</span>
-                <InputNumber class="input" @bind-Value="Form.DiaVencimento" min="1" max="28" />
+                <InputNumber class="input" @bind-Value="Form.DiaVencimento" min="1" max="30" />
+                @if (Form.DiaVencimento > 28) { <small class="mudo">Em fevereiro vence no último dia do mês (28 ou 29).</small> }
                 <ValidationMessage For="() => Form.DiaVencimento" />
             </label>
             <label class="check col-2">

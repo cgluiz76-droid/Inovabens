@@ -47,7 +47,8 @@ public static class CalculoLocacao
     public static DateOnly Vencimento(DateOnly competencia, short dia, bool antecipado, DateOnly inicio)
     {
         var mes = antecipado ? competencia : competencia.AddMonths(1);
-        var venc = new DateOnly(mes.Year, mes.Month, dia);
+        // dia 29/30 em mês mais curto (fevereiro): vence no último dia do mês
+        var venc = new DateOnly(mes.Year, mes.Month, Math.Min(dia, DateTime.DaysInMonth(mes.Year, mes.Month)));
         // adiantado no 1º mês: não vence antes de o contrato começar
         return venc < inicio ? inicio : venc;
     }

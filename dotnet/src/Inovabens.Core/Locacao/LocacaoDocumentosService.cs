@@ -422,9 +422,10 @@ public sealed class LocacaoDocumentosService(IDbContextFactory<InovabensDb> fabr
             ["contrato.fim"] = Texto.Data(c.Fim),
             ["contrato.prazo_meses"] = c.PrazoMeses.ToString(),
             ["contrato.dia_vencimento"] = c.DiaVencimento.ToString(),
-            ["contrato.forma_pagamento"] = c.PagamentoAntecipado
+            ["contrato.forma_pagamento"] = (c.PagamentoAntecipado
                 ? $"todo dia {c.DiaVencimento} do próprio mês de uso (pagamento antecipado, permitido por não haver garantia)"
-                : $"todo dia {c.DiaVencimento} do mês seguinte ao vencido",
+                : $"todo dia {c.DiaVencimento} do mês seguinte ao vencido")
+                + (c.DiaVencimento > 28 ? "; em fevereiro, no último dia do mês" : ""),
             ["contrato.observacoes"] = c.Observacoes ?? "",
             ["locador.nome"] = locador?.NomeRazao ?? "",
             ["locador.qualificacao"] = locador is null ? "" : Qualificacao(locador),

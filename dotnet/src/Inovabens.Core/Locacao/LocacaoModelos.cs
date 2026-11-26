@@ -71,7 +71,7 @@ public sealed class ContratoForm : IValidatableObject
     [Range(1, 600, ErrorMessage = "Prazo entre 1 e 600 meses.")]
     public int PrazoMeses { get; set; } = 30;
 
-    [Range(1, 28, ErrorMessage = "Dia de vencimento entre 1 e 28.")]
+    [Range(1, 30, ErrorMessage = "Dia de vencimento entre 1 e 30.")] // 29 e 30: em fevereiro vence no último dia
     public short DiaVencimento { get; set; } = 10;
 
     public bool PagamentoAntecipado { get; set; }

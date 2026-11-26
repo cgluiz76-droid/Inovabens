@@ -43,6 +43,15 @@ public class CalculoLocacaoTests
         Assert.Equal(new DateOnly(2026, 10, 10), CalculoLocacao.Vencimento(new(2026, 10, 1), 10, true, new(2026, 9, 21)));
     }
 
+    [Theory]
+    [InlineData(30, "2027-01-01", "2027-02-28")] // fevereiro comum: último dia
+    [InlineData(30, "2028-01-01", "2028-02-29")] // bissexto
+    [InlineData(29, "2027-01-01", "2027-02-28")]
+    [InlineData(30, "2027-02-01", "2027-03-30")] // nos outros meses, o próprio dia
+    [InlineData(30, "2027-03-01", "2027-04-30")]
+    public void Vencimento_dia_29_ou_30_em_fevereiro_cai_no_ultimo_dia(short dia, string competencia, string esperado) =>
+        Assert.Equal(DateOnly.Parse(esperado), CalculoLocacao.Vencimento(DateOnly.Parse(competencia), dia, false, new(2026, 1, 1)));
+
     [Fact]
     public void Multa_e_juros_pro_rata_com_fim_de_semana()
     {
