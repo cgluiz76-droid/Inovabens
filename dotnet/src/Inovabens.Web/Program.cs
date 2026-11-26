@@ -13,6 +13,7 @@ using Inovabens.Core.Locacao;
 using Inovabens.Core.Servicos;
 using Inovabens.Web;
 using Inovabens.Web.Components;
+using Inovabens.Web.Components.Site;
 using Inovabens.Web.Jobs;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -43,6 +44,7 @@ builder.Services.AddHostedService<LimiteGratuitoR2Job>();
 builder.Services.AddSingleton<RenovacaoSessao>();
 
 builder.Services.AddSingleton<FotosReduzidas>();
+builder.Services.AddSingleton<AtivosSite>(); // CSS do site público com impressão digital (cache longo)
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -438,8 +440,9 @@ app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, 
 // Aberto a visitantes sem login: só imóveis disponíveis e marcados para divulgar, com fotos e características públicas.
 // Usuário do sistema também abre a ficha de imóvel que ainda não está no site (botão "Ver no site"), com a faixa de avisos.
 // Enquanto SITE_PUBLICO_URL estiver vazio, segue fora do Google (noindex, Seo.cs).
-Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TemporadaService t) => PaginaImovelSite(id, c, s, emp, null, t);
-async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService? taxas, TemporadaService t)
+Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TemporadaService t, InovabensOpcoes op) => PaginaImovelSite(id, c, s, emp, null, t, op);
+async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService? taxas, TemporadaService t,
+    InovabensOpcoes op, bool markdown = false)
 {
     try
     {
@@ -454,12 +457,19 @@ async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, E
         else if (await s.DetalhePublicoAsync(id, c.RequestAborted) is { } pub) (d, quadro) = pub;
         else return Results.NotFound();
         CacheSite(c);
+        c.Response.Headers.Vary = "Accept"; // mesma URL: HTML para navegador, Markdown para agente que pede
+        if (taxas is null && (markdown || AnuncioSite.QuerMarkdown(c.Request)))
+            return AnuncioSite.Markdown(c, AnuncioSite.FichaMarkdown(op, d, quadro, FotosPublicas(d), await t.AtivoAsync(id, c.RequestAborted)));
         return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
             new { Detalhe = d, LinkImobibrasil = linkAtual, Quadro = quadro, SoSimulador = taxas is not null, Temporada = await t.AtivoAsync(id, c.RequestAborted), Taxas = taxas is null ? null : await taxas.AtuaisAsync(c.RequestAborted) });
     }
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
 }
+// fotos públicas da ficha (as mesmas da página), para o Markdown
+static IReadOnlyList<string> FotosPublicas(ImovelDetalhe d) => [.. d.Midias
+    .Where(m => m.Midia.Publica && m.Midia.Tipo == TipoMidia.FOTO && m.Url is not null)
+    .OrderByDescending(m => m.Midia.Capa).ThenBy(m => m.Midia.Ordem).Select(m => m.Tela ?? m.Url!)];
 // visitante: a página pode ficar 5 min no cache; logado: é a versão com avisos do sistema, só dele
 static void CacheSite(HttpContext c) => c.Response.Headers.CacheControl =
     c.User.Identity?.IsAuthenticated == true ? "private, no-store" : "public, max-age=300";
@@ -519,7 +529,26 @@ site.MapPost("temporada/{id:guid}", async (Guid id, HttpContext c, TemporadaServ
     catch (RegraNegocioException ex) { return Results.Redirect($"{volta}&erro={Uri.EscapeDataString(ex.Message)}"); }
 }).DisableAntiforgery();
 static string? NuloSeVazio(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
-site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService t, TemporadaService tp) => PaginaImovelSite(id, c, s, emp, t, tp));
+site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService t, TemporadaService tp, InovabensOpcoes op) => PaginaImovelSite(id, c, s, emp, t, tp, op));
+// Para agentes de IA: a ficha e a lista em Markdown, e o feed de todos os anúncios públicos em schema.org (JSON-LD)
+site.MapGet("imovel/{id:guid}.md", (Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TemporadaService tp, InovabensOpcoes op) =>
+    PaginaImovelSite(id, c, s, emp, null, tp, op, markdown: true));
+site.MapGet("imoveis.md", async (string? finalidade, HttpContext c, ImoveisService s, InovabensOpcoes op) =>
+{
+    var locacao = string.Equals(finalidade, "locacao", StringComparison.OrdinalIgnoreCase);
+    var itens = await s.VitrinePublicaAsync(new FiltroVitrine(locacao ? FinalidadeImovel.LOCACAO : FinalidadeImovel.VENDA, Maximo: 200), c.RequestAborted);
+    CacheSite(c);
+    return AnuncioSite.Markdown(c, AnuncioSite.ListaMarkdown(op, locacao ? "Imóveis para alugar" : "Imóveis à venda", itens));
+});
+site.MapGet("imoveis.json", async (HttpContext c, ImoveisService s, InovabensOpcoes op) =>
+{
+    var venda = await s.VitrinePublicaAsync(new FiltroVitrine(FinalidadeImovel.VENDA, Maximo: 500), c.RequestAborted);
+    var aluguel = await s.VitrinePublicaAsync(new FiltroVitrine(FinalidadeImovel.LOCACAO, Maximo: 500), c.RequestAborted);
+    CacheSite(c);
+    // "venda" e "locação" trazem os imóveis AMBOS nas duas listas: uma vez só no feed
+    var todos = venda.Concat(aluguel.Where(a => venda.All(v => v.Id != a.Id))).ToList();
+    return Results.Text(AnuncioSite.Feed(op, todos), "application/ld+json; charset=utf-8");
+});
 // início e busca: a mesma vitrine para todos (visitante ou usuário), a que o site realmente mostra
 site.MapGet("", async (HttpContext c, ImoveisService s) =>
 {
@@ -538,7 +567,11 @@ site.MapGet("imoveis", async (string? finalidade, string? tipo, string? cidade, 
     var todos = await s.VitrinePublicaAsync(new FiltroVitrine(fin, Maximo: 200), c.RequestAborted);
     var itens = tipo is null && cidade is null ? todos : await s.VitrinePublicaAsync(new FiltroVitrine(fin, tipo, cidade, 200), c.RequestAborted);
     CacheSite(c);
-    return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.ListaSite>(
+    c.Response.Headers.Vary = "Accept";
+    if (AnuncioSite.QuerMarkdown(c.Request))
+        return AnuncioSite.Markdown(c, AnuncioSite.ListaMarkdown(c.RequestServices.GetRequiredService<InovabensOpcoes>(),
+            locacao ? "Imóveis para alugar" : "Imóveis à venda", itens));
+    return (IResult)new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.ListaSite>(
         new { Itens = itens, Todos = todos, Locacao = locacao, Tipo = tipo, Cidade = cidade, Ordem = ordem is "menor" or "maior" ? ordem : null });
 });
 // fotos públicas do site ainda fora do R2: confere que a foto e o imóvel estão no site; a versão reduzida em memória

@@ -10,6 +10,8 @@
     @* Sem o site público ligado (SITE_PUBLICO_URL), a prévia não vai para o Google; ligado, as páginas do site são indexáveis. *@
     <meta name="robots" content="@(Indexar ? "index, follow, max-image-preview:large" : "noindex, nofollow")" />
     <meta name="theme-color" content="#03075f" />
+    @* versão da página em texto (Markdown) para agentes de IA; o mesmo endereço responde Markdown a quem pede Accept: text/markdown *@
+    @if (Markdown is not null) { <link rel="alternate" type="text/markdown" href="@Markdown" /> }
     @* tema escolhido no botão (o mesmo do sistema) aplicado antes da primeira pintura, sem piscar claro → escuro *@
     @if (ComTema)
     {
@@ -45,7 +47,7 @@
     @* as duas fontes ficam no caminho crítico (títulos e texto): pedir já evita a troca tardia que move o layout *@
     <link rel="preload" href="fontes/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="fontes/montserrat-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="@Assets["site-previa.css"]" />
+    <link rel="stylesheet" href="@Ativos["site-previa.css"]" />
     @foreach (var json in DadosEstruturados)
     {
         @((MarkupString)("<script type=\"application/ld+json\">" + json + "</script>"))
@@ -160,6 +162,7 @@
 </html>
 
 @inject InovabensOpcoes Op
+@inject AtivosSite Ativos
 @code {
     /// <summary>WhatsApp e telefone do site atual da Inovabens.</summary>
     public const string Whatsapp = "5517981850171";
@@ -174,6 +177,8 @@
     [Parameter] public string? Imagem { get; set; }
     /// <summary>Dados estruturados (JSON-LD já serializado) da página: organização, trilha, etc.</summary>
     [Parameter] public IReadOnlyList<string> DadosEstruturados { get; set; } = [];
+    /// <summary>Endereço da versão Markdown da página (agentes de IA).</summary>
+    [Parameter] public string? Markdown { get; set; }
 
     private bool Publico => Op.SitePublicoUrl is not null;
     [CascadingParameter] public HttpContext? Http { get; set; }

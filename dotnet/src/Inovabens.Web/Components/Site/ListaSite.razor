@@ -1,7 +1,7 @@
 @* Busca do site (rota /site/imoveis?finalidade=venda|locacao&tipo=&cidade=&ordem=): todos os imóveis divulgados daquela finalidade. *@
 
 <SiteMoldura Titulo="@TituloPagina" Ativo="@(Locacao ? "locacao" : "venda")" Descricao="@Descricao" Canonico="@Canonico"
-             DadosEstruturados="@Trilha">
+             DadosEstruturados="@Trilha" Markdown="@($"site/imoveis.md?finalidade={(Locacao ? "locacao" : "venda")}")">
     <main class="miolo">
         <nav class="trilha" aria-label="Você está em">
             <a href="site">Início</a><span>›</span><span aria-current="page">@(Locacao ? "Alugar" : "Comprar")</span>
@@ -70,7 +70,8 @@
     private string Descricao => DadosSite.Resumo(
         $"{Contagem}: {(Tipo is null ? "imóveis" : Texto.Rotulo(Tipo).ToLowerInvariant())} {(Locacao ? "para alugar" : "à venda")} "
         + $"{(Cidade is null ? "em São José do Rio Preto e região" : "em " + Cidade)} com a Inovabens (CRECI 50457-J). Veja fotos, valores e fale pelo WhatsApp.");
-    private IReadOnlyList<string> Trilha => [DadosSite.Trilha(Op, ("Início", "site"), (Locacao ? "Alugar" : "Comprar", Canonico))];
+    private IReadOnlyList<string> Trilha =>
+        [DadosSite.Trilha(Op, ("Início", "site"), (Locacao ? "Alugar" : "Comprar", Canonico)), AnuncioSite.ListaJsonLd(Op, TituloPagina, Itens)];
     private string Contagem => Itens.Count == 1 ? "1 imóvel encontrado" : $"{Itens.Count} imóveis encontrados";
     private IEnumerable<string> Tipos => Todos.Select(i => i.Tipo).Distinct(StringComparer.OrdinalIgnoreCase).Order();
     private IEnumerable<string> Cidades => Todos.Select(i => i.Cidade).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Order();

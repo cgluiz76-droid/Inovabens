@@ -3,7 +3,7 @@
    O pedido não bloqueia as datas: a equipe confirma e combina o pagamento. *@
 
 <SiteMoldura Avulsa Titulo="@($"Temporada · {T.Titulo} · Inova Bens")" Descricao="@($"Aluguel por temporada em {T.Cidade}: diária a partir de {Texto.Moeda(T.Diaria)}.")"
-             Canonico="@($"site/temporada/{T.ImovelId}")" MensagemWhatsapp="@($"Olá! Vi no site o imóvel {T.Codigo} para temporada e gostaria de reservar.")">
+             Canonico="@($"site/temporada/{T.ImovelId}")" DadosEstruturados="@([AnuncioSite.TemporadaJsonLd(Op, T)])" MensagemWhatsapp="@($"Olá! Vi no site o imóvel {T.Codigo} para temporada e gostaria de reservar.")">
     <main class="miolo" style="padding-block: 28px; max-width: 860px">
         <section class="bloco">
             <span class="rotulo">Aluguel por temporada · @T.Codigo</span>
@@ -90,6 +90,8 @@
         </section>
     </main>
 </SiteMoldura>
+
+@inject InovabensOpcoes Op
 
 @code {
     [Parameter, EditorRequired] public TemporadaPublica T { get; set; } = default!;

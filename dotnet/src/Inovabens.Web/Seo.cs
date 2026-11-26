@@ -57,6 +57,11 @@ public static class Seo
         var op = app.Services.GetRequiredService<InovabensOpcoes>();
 
         app.MapGet("/robots.txt", () => Results.Text(RobotsTxt(op), "text/plain; charset=utf-8")).AllowAnonymous();
+        app.MapGet("/llms.txt", (HttpContext c) =>
+        {
+            c.Response.Headers.CacheControl = "public, max-age=3600";
+            return Results.Text(LlmsTxt(op), "text/markdown; charset=utf-8");
+        }).AllowAnonymous();
 
         // navegadores e robôs pedem /favicon.ico mesmo com o ícone SVG declarado: evita um 404 com página inteira
         app.MapGet("/favicon.ico", () => Results.Redirect("/img/marca.svg", permanent: true)).AllowAnonymous();
@@ -91,9 +96,50 @@ public static class Seo
         var sb = new StringBuilder();
         sb.AppendLine("# Sistema interno da Inovabens. As páginas não são indexadas (X-Robots-Tag: noindex);");
         sb.AppendLine("# o rastreamento fica liberado para que o Google consiga ler essa instrução.");
+        sb.AppendLine();
+        // robôs que coletam conteúdo para TREINAR modelos de IA: bloqueados (decisão da Inova Bens, 2026-11-26).
+        // Os de busca com IA (OAI-SearchBot, Claude-SearchBot, PerplexityBot) e os acionados por um usuário
+        // (ChatGPT-User, Claude-User, Perplexity-User) seguem liberados pela regra geral: o site aparece nas respostas.
+        foreach (var robo in RobosTreino) sb.AppendLine($"User-agent: {robo}");
+        sb.AppendLine("Disallow: /");
+        sb.AppendLine();
         sb.AppendLine("User-agent: *");
         sb.AppendLine("Allow: /");
         if (op.SitePublicoUrl is not null) sb.AppendLine($"Sitemap: {op.SitePublicoUrl}/sitemap.xml");
+        return sb.ToString();
+    }
+
+    /// <summary>Robôs de treino de IA (cada empresa documenta o seu): OpenAI, Anthropic, Google, Apple, Common Crawl, Meta, ByteDance.</summary>
+    public static readonly string[] RobosTreino = ["GPTBot", "ClaudeBot", "Google-Extended", "Applebot-Extended", "CCBot", "meta-externalagent", "Bytespider"];
+
+    /// <summary>
+    /// /llms.txt: apresentação curta para agentes de IA (proposta llmstxt.org) com os endereços úteis. Poucos agentes leem
+    /// hoje; custa pouco e aponta para as versões em Markdown e o feed, que são o que importa.
+    /// </summary>
+    public static string LlmsTxt(InovabensOpcoes op)
+    {
+        string A(string c) => Absoluto(op, c);
+        var sb = new StringBuilder();
+        sb.AppendLine("# Inova Bens Gestão Patrimonial");
+        sb.AppendLine();
+        sb.AppendLine("> Imobiliária em São José do Rio Preto/SP (CRECI 50457-J): venda, locação, aluguel por temporada, administração de imóveis e regularização.");
+        sb.AppendLine();
+        sb.AppendLine("Os anúncios trazem preço, área, quartos e características. Endereço exato só quando o proprietário autoriza; senão, bairro e cidade.");
+        sb.AppendLine("Atendimento: WhatsApp (17) 98185-0171. Visitas, propostas e reservas são confirmadas pela equipe.");
+        sb.AppendLine();
+        sb.AppendLine("## Imóveis");
+        sb.AppendLine();
+        sb.AppendLine($"- [Imóveis à venda (Markdown)]({A("site/imoveis.md?finalidade=venda")}): lista com preço e link de cada ficha");
+        sb.AppendLine($"- [Imóveis para alugar (Markdown)]({A("site/imoveis.md?finalidade=locacao")}): lista com aluguel mensal");
+        sb.AppendLine($"- [Feed de anúncios (JSON-LD schema.org)]({A("site/imoveis.json")}): todos os anúncios públicos, RealEstateListing com oferta");
+        sb.AppendLine($"- Ficha de um imóvel em Markdown: {A("site/imovel/{id}.md")} (ou a página da ficha pedindo Accept: text/markdown)");
+        sb.AppendLine($"- Aluguel por temporada: {A("site/temporada/{id}")} (dias livres, preço da estadia e pedido de reserva)");
+        sb.AppendLine();
+        sb.AppendLine("## Site");
+        sb.AppendLine();
+        sb.AppendLine($"- [Página inicial]({A("site")})");
+        sb.AppendLine($"- [Comprar]({A("site/imoveis?finalidade=venda")})");
+        sb.AppendLine($"- [Alugar]({A("site/imoveis?finalidade=locacao")})");
         return sb.ToString();
     }
 

@@ -29,18 +29,20 @@
 <MensagemErro Texto="@Erro" />
 @if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
 
-@if (painel is not null && Aba == "contratos")
+@if (Aba == "contratos")
 {
-    <div class="kpis">
-        <div class="kpi"><p class="rotulo-kpi">Contratos ativos</p><p class="valor-kpi">@painel.ContratosAtivos</p>
-            <p class="contexto-kpi">@(painel.Rascunhos > 0 ? $"{painel.Rascunhos} rascunho(s)" : "nenhum rascunho")</p></div>
-        <div class="kpi"><p class="rotulo-kpi">Aluguel mensal</p><p class="valor-kpi">@Texto.Moeda(painel.AluguelMensal)</p>
+    @* os cartões ocupam o lugar desde o 1º desenho (com "…" até o painel chegar): sem isso a lista "pulava" (CLS) *@
+    var p = painel;
+    <div class="kpis" aria-busy="@(p is null)">
+        <div class="kpi"><p class="rotulo-kpi">Contratos ativos</p><p class="valor-kpi">@(p?.ContratosAtivos.ToString() ?? "…")</p>
+            <p class="contexto-kpi">@(p is null ? "…" : p.Rascunhos > 0 ? $"{p.Rascunhos} rascunho(s)" : "nenhum rascunho")</p></div>
+        <div class="kpi"><p class="rotulo-kpi">Aluguel mensal</p><p class="valor-kpi">@(p is null ? "…" : Texto.Moeda(p.AluguelMensal))</p>
             <p class="contexto-kpi">soma dos contratos ativos</p></div>
         <div class="kpi"><p class="rotulo-kpi">Faturas em atraso</p>
-            <p class="valor-kpi @(painel.FaturasAtrasadas > 0 ? "texto-erro" : "")">@painel.FaturasAtrasadas</p>
-            <p class="contexto-kpi">@(painel.FaturasAtrasadas > 0 ? Texto.Moeda(painel.ValorAtrasado) : "nada vencido")</p></div>
-        <div class="kpi"><p class="rotulo-kpi">Repasses a pagar</p><p class="valor-kpi">@painel.RepassesAPagar</p>
-            <p class="contexto-kpi">@Texto.Moeda(painel.ValorRepassesAPagar)</p></div>
+            <p class="valor-kpi @(p?.FaturasAtrasadas > 0 ? "texto-erro" : "")">@(p?.FaturasAtrasadas.ToString() ?? "…")</p>
+            <p class="contexto-kpi">@(p is null ? "…" : p.FaturasAtrasadas > 0 ? Texto.Moeda(p.ValorAtrasado) : "nada vencido")</p></div>
+        <div class="kpi"><p class="rotulo-kpi">Repasses a pagar</p><p class="valor-kpi">@(p?.RepassesAPagar.ToString() ?? "…")</p>
+            <p class="contexto-kpi">@(p is null ? "…" : Texto.Moeda(p.ValorRepassesAPagar))</p></div>
     </div>
 }
 
@@ -119,7 +121,7 @@
             <div class="titulo-secao">
                 <h2>Relatórios e obrigações anuais</h2>
                 <label class="campo-inline">Ano
-                    <select class="input" value="@ano" @onchange="async e => { ano = int.Parse(e.Value!.ToString()!); await Carregar(); }">
+                    <select class="input" aria-label="Ano" value="@ano" @onchange="async e => { ano = int.Parse(e.Value!.ToString()!); await Carregar(); }">
                         @for (var a = DatasBR.Hoje().Year; a >= DatasBR.Hoje().Year - 5; a--) { var x = a; <option value="@x">@x</option> }
                     </select>
                 </label>
@@ -230,8 +232,8 @@
     default:
         <section class="card">
             <div class="filtros">
-                <input class="input" type="search" placeholder="Buscar por imóvel ou pessoa" @bind="termo" @bind:after="Carregar" />
-                <select class="input" @bind="status" @bind:after="Carregar">
+                <input class="input" type="search" aria-label="Buscar contrato" placeholder="Buscar por imóvel ou pessoa" @bind="termo" @bind:after="Carregar" />
+                <select class="input" aria-label="Situação do contrato" @bind="status" @bind:after="Carregar">
                     <option value="">Todos</option>
                     @foreach (var s in Enum.GetValues<StatusContratoLocacao>()) { <option value="@s">@Texto.Rotulo(s)</option> }
                 </select>

@@ -339,7 +339,8 @@ button { font: inherit; color: inherit; }
 .temporada-grade .cab { color: var(--mudo); font-size: .72rem; font-weight: 600; }
 .temporada-grade .livre, .temporada-leg.livre { background: color-mix(in srgb, var(--ok) 14%, var(--sup)); color: var(--texto); }
 .temporada-grade .ocupado, .temporada-leg.ocupado { background: var(--sup-2); color: var(--mudo); text-decoration: line-through; }
-.temporada-grade .passado { color: var(--mudo); opacity: .5; }
+/* sem opacidade: o cinza já tem contraste AA; o dia passado se distingue do livre por não ter fundo */
+.temporada-grade .passado { color: var(--mudo); }
 .temporada-grade .escolhido { outline: 2px solid var(--ouro); outline-offset: -2px; font-weight: 700; }
 .temporada-leg { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-left: 6px; }
 .temporada-calc { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; max-width: none; }

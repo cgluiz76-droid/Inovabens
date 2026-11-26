@@ -3,8 +3,8 @@
 @using System.Globalization
 
 <SiteMoldura Titulo="@(SoSimulador ? "Simular financiamento · " + Im.Titulo : Im.Titulo)" Ativo="@(Locacao ? "locacao" : "venda")" MensagemWhatsapp="@MensagemWhatsapp"
-             Descricao="@DescricaoMeta" Canonico="@(SoSimulador ? $"site/imovel/{Im.Id}/simulador" : $"site/imovel/{Im.Id}")"
-             Imagem="@(Fotos.Count > 0 ? Fotos[0].Src : null)" DadosEstruturados="@Trilha">
+             Descricao="@(SoSimulador ? DadosSite.Resumo($"Simule o financiamento de {Im.Titulo}: entrada, prazo e parcelas. {DescricaoMeta}") : DescricaoMeta)" Canonico="@(SoSimulador ? $"site/imovel/{Im.Id}/simulador" : $"site/imovel/{Im.Id}")"
+             Imagem="@(Fotos.Count > 0 ? Fotos[0].Src : null)" DadosEstruturados="@Trilha" Markdown="@(SoSimulador ? null : $"site/imovel/{Im.Id}.md")">
     <Faixa>
         é assim que o @Im.Codigo aparece no site.
         @if (!Im.DivulgarSite)
@@ -468,10 +468,14 @@
         Texto.Limpo(Im.DescricaoPublica) ?? "",
     }.Where(x => x.Length > 0)));
 
-    private IReadOnlyList<string> Trilha =>
-    [
-        DadosSite.Trilha(Op, ("Início", "site"), (Locacao ? "Alugar" : "Comprar", LinkLista), (Im.Titulo, $"site/imovel/{Im.Id}")),
-    ];
+    private IReadOnlyList<string> Trilha => SoSimulador
+        ? [DadosSite.Trilha(Op, ("Início", "site"), (Locacao ? "Alugar" : "Comprar", LinkLista), (Im.Titulo, $"site/imovel/{Im.Id}"))]
+        :
+        [
+            DadosSite.Trilha(Op, ("Início", "site"), (Locacao ? "Alugar" : "Comprar", LinkLista), (Im.Titulo, $"site/imovel/{Im.Id}")),
+            // o anúncio para buscadores e agentes de IA: oferta (preço exibido), imóvel e características públicas
+            AnuncioSite.FichaJsonLd(Op, Detalhe, Quadro, [.. Fotos.Select(f => f.Src)], DescricaoMeta),
+        ];
 
     private string LinkLista => $"site/imoveis?finalidade={(Locacao ? "locacao" : "venda")}";
 
