@@ -46,7 +46,7 @@ public sealed record CobrancaLinha(
 
 public sealed record PainelLocacao(
     int ContratosAtivos, int Rascunhos, decimal AluguelMensal, int FaturasAtrasadas, decimal ValorAtrasado,
-    int RepassesAPagar, decimal ValorRepassesAPagar);
+    int RepassesAPagar, decimal ValorRepassesAPagar, int ImoveisVagos = 0);
 
 public sealed class ParteForm
 {

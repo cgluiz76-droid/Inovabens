@@ -3,6 +3,7 @@
 @inherits ComponenteBase
 @inject LocacaoService Servico
 @inject VistoriaService Vistorias
+@inject LocacaoRelatoriosService Relatorios
 @inject NavigationManager Nav
 
 @* Locação (fases 1 e 2): contratos, régua de cobrança (mensagens prontas para o WhatsApp) e repasses a pagar.
@@ -110,6 +111,44 @@
                     </table>
                 </div>
             }
+        </section>
+        break;
+
+    case "relatorios":
+        <section class="card">
+            <div class="titulo-secao">
+                <h2>Relatórios e obrigações anuais</h2>
+                <label class="campo-inline">Ano
+                    <select class="input" value="@ano" @onchange="async e => { ano = int.Parse(e.Value!.ToString()!); await Carregar(); }">
+                        @for (var a = DatasBR.Hoje().Year; a >= DatasBR.Hoje().Year - 5; a--) { var x = a; <option value="@x">@x</option> }
+                    </select>
+                </label>
+            </div>
+            <p class="pequeno mudo">Valores do ano pela data do recebimento (regime de caixa, como no IR e na DIMOB).</p>
+            <h3>Relatório gerencial (Excel)</h3>
+            <p class="pequeno">Inadimplência por idade da dívida, vencimentos (contratos, reajustes, garantias e seguros), repasses, receita da
+                administração, vacância e tempo para alugar, chamados, custo de manutenção por imóvel, rentabilidade e carteira por proprietário.</p>
+            <div class="acoes-topo"><a class="btn-primary" href="@($"locacao/gerencial.xlsx?ano={ano}")" download>Baixar relatório @ano</a></div>
+            <h3>DIMOB (para o escritório contábil)</h3>
+            <p class="pequeno">Locações administradas: locador, locatário, imóvel e, mês a mês, aluguel e comissão. A aba "Conferir" lista
+                CPF/CNPJ e CEP que faltam no cadastro. Entrega até o último dia útil de fevereiro de @(ano + 1).</p>
+            <div class="acoes-topo"><a class="btn-ghost" href="@($"locacao/dimob.xlsx?ano={ano}")" download>Baixar dados da DIMOB @ano</a></div>
+            <h3>Informe de rendimentos do proprietário</h3>
+            @if (locadores is null) { <p class="carregando">Carregando…</p> }
+            else if (locadores.Count == 0) { <p class="vazio">Nenhum repasse com recebimento em @ano.</p> }
+            else
+            {
+                <div class="acoes-topo">
+                    <select class="input" @bind="locador" aria-label="Proprietário">
+                        @foreach (var l in locadores) { <option value="@l.Id">@l.Nome</option> }
+                    </select>
+                    @if (locador is { } lid)
+                    {
+                        <a class="btn-ghost" href="@($"locacao/informe-rendimentos.pdf?pessoa={lid}&ano={ano}")" download>Baixar informe</a>
+                    }
+                </div>
+            }
+            <p class="pequeno mudo">Por contrato: carta de cobrança, notificação de atraso, 2ª via da fatura e declaração de quitação anual ficam na ficha do contrato.</p>
         </section>
         break;
 
@@ -262,7 +301,7 @@
     [SupplyParameterFromQuery(Name = "proposta")] public Guid? PropostaQuery { get; set; }
     [SupplyParameterFromQuery(Name = "imovel")] public Guid? ImovelQuery { get; set; }
 
-    private static readonly (string, string)[] Abas = [("contratos", "Contratos"), ("cobranca", "Cobrança"), ("vencimentos", "Vencimentos"), ("repasses", "Repasses"), ("vistorias", "Vistorias")];
+    private static readonly (string, string)[] Abas = [("contratos", "Contratos"), ("cobranca", "Cobrança"), ("vencimentos", "Vencimentos"), ("repasses", "Repasses"), ("vistorias", "Vistorias"), ("relatorios", "Relatórios")];
     private string Aba => Abas.Any(a => a.Item1 == AbaQuery) ? AbaQuery! : "contratos";
 
     private PainelLocacao? painel;
@@ -272,6 +311,10 @@
     private IReadOnlyList<RepasseLinha>? repasses;
     private IReadOnlyList<VistoriaLinha>? vistorias;
     private bool vistoriasTodas;
+    // em jan/fev o padrão é o ano anterior (época do informe, da DIMOB e do IR)
+    private int ano = DatasBR.Hoje().Month <= 2 ? DatasBR.Hoje().Year - 1 : DatasBR.Hoje().Year;
+    private IReadOnlyList<Opcao>? locadores;
+    private Guid? locador;
     private IReadOnlyList<Opcao> contas = [];
     private string? termo;
     private StatusContratoLocacao? status;
@@ -298,6 +341,10 @@
                 case "cobranca": cobrancas = await Servico.CobrancasAsync(Usuario); break;
                 case "repasses": repasses = await Servico.RepassesAPagarAsync(Usuario); break;
                 case "vistorias": vistorias = await Vistorias.ListarAsync(Usuario, soAgendadas: !vistoriasTodas); break;
+                case "relatorios":
+                    locadores = await Relatorios.LocadoresAsync(Usuario, ano);
+                    if (locadores.All(l => l.Id != locador)) locador = locadores.FirstOrDefault()?.Id;
+                    break;
                 case "vencimentos": vencimentos = await Servico.VencimentosAsync(Usuario); break;
                 default: contratos = await Servico.ListarAsync(Usuario, status, termo); break;
             }

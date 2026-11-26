@@ -401,6 +401,19 @@ app.MapGet("/locacao/{id:guid}/documento", (Guid id, Guid modelo, Guid? acordo, 
 // Locação: laudo da vistoria (PDF da empresa de vistoria, guardado no Drive)
 app.MapGet("/locacao/vistoria/{id:guid}/laudo", (Guid id, HttpContext c, Inovabens.Core.Locacao.VistoriaService s) =>
     Baixar(c, u => s.LaudoAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
+// Locação, fase 6: documentos de cobrança e quitação, informe de rendimentos, DIMOB e relatório gerencial
+app.MapGet("/locacao/fatura/{id:guid}/segunda-via.pdf", (Guid id, HttpContext c, Inovabens.Core.Locacao.LocacaoRelatoriosService s) =>
+    Baixar(c, u => s.SegundaViaPdfAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/{id:guid}/cobranca.pdf", (Guid id, bool? notificacao, HttpContext c, Inovabens.Core.Locacao.LocacaoRelatoriosService s) =>
+    Baixar(c, u => s.CobrancaPdfAsync(u, id, notificacao == true))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/{id:guid}/quitacao.pdf", (Guid id, int ano, HttpContext c, Inovabens.Core.Locacao.LocacaoRelatoriosService s) =>
+    Baixar(c, u => s.QuitacaoAnualPdfAsync(u, id, ano))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/informe-rendimentos.pdf", (Guid pessoa, int ano, HttpContext c, Inovabens.Core.Locacao.LocacaoRelatoriosService s) =>
+    Baixar(c, u => s.InformeRendimentosPdfAsync(u, pessoa, ano))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/dimob.xlsx", (int ano, HttpContext c, Inovabens.Core.Locacao.LocacaoRelatoriosService s) =>
+    Baixar(c, u => s.DimobExcelAsync(u, ano))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/locacao/gerencial.xlsx", (int ano, HttpContext c, Inovabens.Core.Locacao.LocacaoRelatoriosService s) =>
+    Baixar(c, u => s.GerencialExcelAsync(u, ano))).RequireAuthorization(Permissoes.LocacaoVer);
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 

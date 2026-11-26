@@ -206,6 +206,22 @@ else
                 <button class="btn-ghost" @onclick="AbrirAcordo" title="Parcelamento dos aluguéis em atraso, com termo de acordo">Acordo de atraso</button>
             }
         </div>
+        <div class="acoes-topo">
+            @if (d.Faturas.Any(x => x.Saldo > 0 && x.Atrasada(DatasBR.Hoje())))
+            {
+                <a class="btn-ghost" href="@($"locacao/{Id}/cobranca.pdf")" download title="Aviso amigável com as faturas vencidas atualizadas">Carta de cobrança</a>
+                <a class="btn-ghost" href="@($"locacao/{Id}/cobranca.pdf?notificacao=true")" download
+                   title="Notificação formal com prazo de 10 dias (arts. 9º, III, e 62 da Lei do Inquilinato); fiadores cientificados">Notificação de atraso</a>
+            }
+            @if (AnosComFatura.Count > 0)
+            {
+                <select class="input" @bind="anoQuitacao" aria-label="Ano da declaração">
+                    @foreach (var a in AnosComFatura) { <option value="@a">@a</option> }
+                </select>
+                <a class="btn-ghost" href="@($"locacao/{Id}/quitacao.pdf?ano={anoQuitacao}")" download
+                   title="Pagamentos do ano para o IR do inquilino e declaração de quitação">Declaração de quitação</a>
+            }
+        </div>
     </section>
 
     <section class="card">
@@ -262,6 +278,11 @@ else
                                     </span>
                                 </td>
                                 <td class="nowrap">
+                                    @if (f.Status == StatusFaturaLocacao.ABERTA)
+                                    {
+                                        <a class="btn-ghost mini" href="@($"locacao/fatura/{f.Id}/segunda-via.pdf")" download
+                                           title="Fatura em PDF; vencida, sai com multa e juros até hoje">2ª via</a>
+                                    }
                                     @if (PodeReceber && f.Status == StatusFaturaLocacao.ABERTA)
                                     {
                                         <button class="btn-primary mini" @onclick="() => AbrirRecebimento(f)">Receber</button>
@@ -735,6 +756,9 @@ else
     private AditivoForm aditivo = new();
     private PreferenciaForm preferencia = new();
     private RescisaoForm rescisao = new();
+    private int anoQuitacao = DatasBR.Hoje().Month <= 2 ? DatasBR.Hoje().Year - 1 : DatasBR.Hoje().Year;
+    private IReadOnlyList<int> AnosComFatura => d is null ? [] : [.. d.Faturas.Select(f => f.Competencia.Year)
+        .Concat(d.Faturas.SelectMany(f => f.Pagamentos).Select(p => p.Data.Year)).Distinct().OrderDescending()];
     private RescisaoCalculo? acerto;
 
     private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);

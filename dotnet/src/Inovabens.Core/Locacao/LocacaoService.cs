@@ -73,7 +73,12 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
             .Where(r => r.PagoEm == null && visiveis.Any(c => c.Id == r.ContratoId)
                 && db.FaturaLocacaoPagamentos.Any(p => p.Id == r.PagamentoId && p.EstornadoEm == null))
             .Select(r => r.Liquido).ToListAsync();
-        return new(ativos, rascunhos, aluguel, atrasadas.Count, atrasadas.Sum(f => f.Saldo), repasses.Count, repasses.Sum());
+        // vacância: imóvel para alugar, ainda na carteira, sem contrato ativo
+        var vagos = await db.Imoveis.VisiveisPara(u).CountAsync(i => i.ExcluidoEm == null
+            && (i.Finalidade == FinalidadeImovel.LOCACAO || i.Finalidade == FinalidadeImovel.AMBOS)
+            && i.Situacao != SituacaoImovel.VENDIDO && i.Situacao != SituacaoImovel.ARQUIVADO
+            && !db.ContratosLocacao.Any(c => c.ImovelId == i.Id && c.Status == StatusContratoLocacao.ATIVO));
+        return new(ativos, rascunhos, aluguel, atrasadas.Count, atrasadas.Sum(f => f.Saldo), repasses.Count, repasses.Sum(), vagos);
     }
 
     public async Task<ContratoDetalhe> ObterAsync(UsuarioAtual u, Guid id)

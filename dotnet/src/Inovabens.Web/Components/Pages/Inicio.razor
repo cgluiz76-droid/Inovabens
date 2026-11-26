@@ -3,6 +3,7 @@
 @inject PainelService Servico
 @inject CrmService Crm
 @inject AgendaService Agenda
+@inject LocacaoService Locacao
 
 <PageTitle>Painel · Inovabens</PageTitle>
 
@@ -96,6 +97,24 @@ else
                 <span class="contexto-kpi">@(naoPagos > 0 ? "a pagar ou a receber" : "tudo em dia")</span>
             </div>
         }
+        @if (locacao is not null)
+        {
+            <a class="kpi link-kpi" href="locacao?aba=cobranca">
+                <span class="rotulo-kpi">Aluguéis em atraso</span>
+                <span class="valor-kpi @(locacao.FaturasAtrasadas > 0 ? "texto-erro" : "")">@Texto.Moeda(locacao.ValorAtrasado)</span>
+                <span class="contexto-kpi">@(locacao.FaturasAtrasadas == 0 ? "tudo em dia" : locacao.FaturasAtrasadas == 1 ? "1 fatura" : $"{locacao.FaturasAtrasadas} faturas")</span>
+            </a>
+            <a class="kpi link-kpi" href="locacao?aba=relatorios">
+                <span class="rotulo-kpi">Imóveis vagos</span>
+                <span class="valor-kpi">@locacao.ImoveisVagos</span>
+                <span class="contexto-kpi">para alugar · @locacao.ContratosAtivos locados</span>
+            </a>
+            <a class="kpi link-kpi" href="locacao?aba=repasses">
+                <span class="rotulo-kpi">Repasses a pagar</span>
+                <span class="valor-kpi">@Texto.Moeda(locacao.ValorRepassesAPagar)</span>
+                <span class="contexto-kpi">@(locacao.RepassesAPagar == 0 ? "nenhum pendente" : $"{locacao.RepassesAPagar} a proprietários")</span>
+            </a>
+        }
         <a class="kpi link-kpi" href="alertas">
             <span class="rotulo-kpi">Alertas em aberto</span>
             <span class="valor-kpi @(resumo.AlertasAbertos > 0 ? "texto-erro" : "")">@resumo.AlertasAbertos</span>
@@ -186,6 +205,7 @@ else
 @code {
     private ResumoPainel? resumo;
     private IReadOnlyList<AtividadeItem>? atividades;
+    private PainelLocacao? locacao;
 
     protected override Task OnInitializedAsync() => Carregar();
 
@@ -193,6 +213,7 @@ else
     {
         resumo = await Servico.ResumoAsync(Usuario);
         if (Usuario.Pode(Permissoes.AgendaVer)) atividades = await Crm.AtividadesAsync(Usuario);
+        if (Usuario.Pode(Permissoes.LocacaoVer)) locacao = await Locacao.PainelAsync(Usuario);
     });
 
     /// <summary>Concluir pede a justificativa (regra das atividades) num pop-up.</summary>
