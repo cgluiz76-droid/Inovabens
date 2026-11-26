@@ -232,7 +232,7 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
             ValorAluguel = c.ValorAluguel, ValorCondominio = c.ValorCondominio, ValorIptu = c.ValorIptu, ValorSeguroIncendio = c.ValorSeguroIncendio,
             IndiceReajuste = c.IndiceReajuste, Garantia = c.Garantia, GarantiaValor = c.GarantiaValor, GarantiaDetalhe = c.GarantiaDetalhe,
             TaxaAdministracaoPct = c.TaxaAdministracaoPct, IntermediacaoValor = c.IntermediacaoValor, MultaAtrasoPct = c.MultaAtrasoPct,
-            JurosMesPct = c.JurosMesPct, MultaRescisoriaAlugueis = c.MultaRescisoriaAlugueis, DiasRepasse = c.DiasRepasse,
+            JurosMesPct = c.JurosMesPct, MultaRescisoriaAlugueis = c.MultaRescisoriaAlugueis, DiasRepasse = c.DiasRepasse, LimiteManutencao = c.LimiteManutencao,
             ClausulaVigencia = c.ClausulaVigencia, Averbado = c.Averbado, Observacoes = c.Observacoes, Partes = partes,
             GarantiaVence = c.GarantiaVence, SeguroIncendioVence = c.SeguroIncendioVence,
         };
@@ -474,6 +474,18 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
                 && db.FaturaLocacaoPagamentos.Any(p => p.Id == r.PagamentoId && p.EstornadoEm == null)).SumAsync(r => (decimal?)r.Intermediacao) ?? 0;
             var calc = CalculoLocacao.Repasses([.. locadores.Select(l => (l.PessoaId, l.Percentual ?? 0))], f.Itens, pg.Principal, pg.Multa, pg.Juros,
                 c.TaxaAdministracaoPct, c.IntermediacaoValor - retida);
+            // conserto por conta do locador ainda não abatido: sai deste repasse (a imobiliária já pagou ou vai pagar o prestador)
+            var manutencoes = await ManutencaoService.PendentesDeAbaterAsync(db, c.Id);
+            calc = CalculoLocacao.AbaterManutencao(calc, manutencoes.Sum(m => m.Pendente));
+            var abatido = calc.Sum(r => r.DescontoManutencao);
+            foreach (var m in manutencoes)
+            {
+                if (abatido <= 0) break;
+                var v = Math.Min(abatido, m.Pendente);
+                db.ManutencaoAbatimentos.Add(new ManutencaoAbatimento { ChamadoId = m.ChamadoId, PagamentoId = pg.Id, Valor = v });
+                abatido -= v;
+            }
+            var reembolso = CalculoLocacao.Reembolso(f.Itens, pg.Principal);
             var taxa = calc.Sum(r => r.Taxa);
             var interm = calc.Sum(r => r.Intermediacao);
             var mes = CalculoLocacao.MesDe(data);
@@ -488,8 +500,11 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
             var lancs = new List<LancamentoEmpresa>
             {
                 Lanc(CategoriaAluguelTerceiros, await Categoria(db, CategoriaAluguelTerceiros, TipoCategoriaEmpresa.ENTRADA, GrupoCategoriaEmpresa.TERCEIROS),
-                    pg.Total - taxa - interm, data, data, locatario?.PessoaId, locatario?.NomeRazao),
+                    pg.Total - taxa - interm - reembolso, data, data, locatario?.PessoaId, locatario?.NomeRazao),
             };
+            if (reembolso > 0) lancs.Add(Lanc(ManutencaoService.CategoriaReembolsoInquilino,
+                await Categoria(db, ManutencaoService.CategoriaReembolsoInquilino, TipoCategoriaEmpresa.ENTRADA, GrupoCategoriaEmpresa.TERCEIROS),
+                reembolso, data, data, locatario?.PessoaId, locatario?.NomeRazao));
             if (taxa > 0) lancs.Add(Lanc(CategoriaTaxaAdministracao,
                 await Categoria(db, CategoriaTaxaAdministracao, TipoCategoriaEmpresa.ENTRADA, GrupoCategoriaEmpresa.RECEITA), taxa, data, data, null, null));
             if (interm > 0) lancs.Add(Lanc(CategoriaIntermediacao,
@@ -504,7 +519,8 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
                 db.RepassesLocacao.Add(new RepasseLocacao
                 {
                     PagamentoId = pg.Id, ContratoId = c.Id, PessoaId = r.PessoaId, Percentual = r.Percentual, Bruto = r.Bruto,
-                    TaxaAdministracao = r.Taxa, Intermediacao = r.Intermediacao, Liquido = r.Liquido, PrevistoPara = previsto,
+                    TaxaAdministracao = r.Taxa, Intermediacao = r.Intermediacao, Liquido = r.Liquido, DescontoManutencao = r.DescontoManutencao,
+                    PrevistoPara = previsto,
                     LancamentoEmpresaId = lr.Id,
                 });
             }
@@ -670,12 +686,13 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
             {
                 if (linhas.Count == 0) { RelatoriosService.Paragrafo(col, "Nenhum recebimento neste mês."); return; }
                 RelatoriosService.Tabela(col, [("Contrato", 1.2f), ("Imóvel", 1), ("Ref.", 0.9f), ("Recebido", 1.2f), ("Taxa adm.", 1.1f),
-                        ("Intermediação", 1.2f), ("Líquido", 1.2f), ("Repasse", 1.1f)],
+                        ("Intermediação", 1.2f), ("Manutenção", 1.1f), ("Líquido", 1.2f), ("Repasse", 1.1f)],
                     [.. linhas.Select(r => new[] { r.ContratoCodigo, r.ImovelCodigo, r.Competencia.ToString("MM/yyyy"), Texto.Moeda(r.Bruto),
-                        Texto.Moeda(r.Taxa), Texto.Moeda(r.Intermediacao), Texto.Moeda(r.Liquido),
-                        r.PagoEm is { } p ? $"pago {Texto.Data(p)}" : $"prev. {Texto.Data(r.PrevistoPara)}" })], colunasDireita: 5);
+                        Texto.Moeda(r.Taxa), Texto.Moeda(r.Intermediacao), Texto.Moeda(r.DescontoManutencao), Texto.Moeda(r.Liquido),
+                        r.PagoEm is { } p ? $"pago {Texto.Data(p)}" : $"prev. {Texto.Data(r.PrevistoPara)}" })], colunasDireita: 6);
                 RelatoriosService.Campos(col, 4, ("Total recebido", Texto.Moeda(linhas.Sum(r => r.Bruto))),
                     ("Taxa de administração", Texto.Moeda(linhas.Sum(r => r.Taxa))), ("Intermediação", Texto.Moeda(linhas.Sum(r => r.Intermediacao))),
+                    ("Manutenção descontada", Texto.Moeda(linhas.Sum(r => r.DescontoManutencao))),
                     ("Líquido a receber", Texto.Moeda(linhas.Sum(r => r.Liquido))));
             }, paisagem: true);
         audit.Registrar(db, u.Id, "repasses_locacao", null, "EXPORTAR", depois: new { relatorio = "extrato-proprietario", pessoa = pessoaId, mes });
@@ -712,6 +729,7 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
         c.JurosMesPct = f.JurosMesPct;
         c.MultaRescisoriaAlugueis = f.MultaRescisoriaAlugueis;
         c.DiasRepasse = f.DiasRepasse;
+        c.LimiteManutencao = f.LimiteManutencao;
         c.ClausulaVigencia = f.ClausulaVigencia;
         c.Averbado = f.Averbado;
         c.Observacoes = Texto.Limpo(f.Observacoes);
@@ -828,7 +846,7 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
         await db.SaveChangesAsync();
     }
 
-    private static async Task<Guid> Categoria(InovabensDb db, string nome, TipoCategoriaEmpresa tipo, GrupoCategoriaEmpresa grupo)
+    internal static async Task<Guid> Categoria(InovabensDb db, string nome, TipoCategoriaEmpresa tipo, GrupoCategoriaEmpresa grupo)
     {
         // pelo nome padrão; se foi renomeada, a primeira ativa do mesmo tipo e grupo
         return await db.CategoriasEmpresa.Where(c => c.Nome == nome && c.Tipo == tipo).Select(c => (Guid?)c.Id).FirstOrDefaultAsync()
@@ -883,6 +901,6 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
             }).ToListAsync();
         return [.. linhas.Select(x => new RepasseLinha(x.r.Id, x.r.ContratoId, ContratoLocacao.CodigoDe(x.Contrato.Numero), x.Contrato.Codigo,
             x.r.PessoaId, x.Nome, x.r.Percentual, x.r.Bruto, x.r.TaxaAdministracao, x.r.Intermediacao, x.r.Liquido, x.r.PrevistoPara,
-            x.r.PagoEm ?? x.PagoLanc, x.Competencia, x.ReciboNumero, x.Estornado))];
+            x.r.PagoEm ?? x.PagoLanc, x.Competencia, x.ReciboNumero, x.Estornado, x.r.DescontoManutencao))];
     }
 }

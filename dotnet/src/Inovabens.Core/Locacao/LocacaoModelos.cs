@@ -29,7 +29,7 @@ public sealed record FaturaDetalhe(
 public sealed record RepasseLinha(
     Guid Id, Guid ContratoId, string ContratoCodigo, string ImovelCodigo, Guid PessoaId, string Pessoa, decimal Percentual,
     decimal Bruto, decimal Taxa, decimal Intermediacao, decimal Liquido, DateOnly PrevistoPara, DateOnly? PagoEm,
-    DateOnly Competencia, int ReciboNumero, bool Estornado);
+    DateOnly Competencia, int ReciboNumero, bool Estornado, decimal DescontoManutencao = 0);
 
 public sealed record ContratoDetalhe(
     ContratoLocacao Contrato, string ImovelCodigo, string ImovelTitulo, string? ImovelEndereco, IReadOnlyList<ParteDetalhe> Partes,
@@ -95,6 +95,10 @@ public sealed class ContratoForm : IValidatableObject
     [Range(typeof(decimal), "0", "10", ParseLimitsInInvariantCulture = true, ErrorMessage = "Juros entre 0 e 10% ao mês.")] public decimal JurosMesPct { get; set; } = 1;
     [Range(typeof(decimal), "0", "12", ParseLimitsInInvariantCulture = true, ErrorMessage = "Entre 0 e 12 aluguéis.")] public decimal MultaRescisoriaAlugueis { get; set; } = 3;
     [Range(0, 30, ErrorMessage = "Entre 0 e 30 dias.")] public short DiasRepasse { get; set; } = 5;
+
+    /// <summary>Conserto por conta do locador até este valor dispensa a aprovação do proprietário.</summary>
+    [Range(typeof(decimal), "0", "999999", ParseLimitsInInvariantCulture = true, ErrorMessage = "Valor inválido.")]
+    public decimal LimiteManutencao { get; set; }
     public bool ClausulaVigencia { get; set; }
     public bool Averbado { get; set; }
     public string? Observacoes { get; set; }

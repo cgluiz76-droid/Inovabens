@@ -9,6 +9,7 @@ using Inovabens.Core.Financeiro;
 using Inovabens.Core.Imoveis;
 using Inovabens.Core.Pessoas;
 using Inovabens.Core.Relatorios;
+using Inovabens.Core.Locacao;
 using Inovabens.Core.Servicos;
 using Inovabens.Web;
 using Inovabens.Web.Components;
@@ -97,13 +98,16 @@ builder.Services.AddRateLimiter(o =>
             ? RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "?",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limiteLogin, Window = TimeSpan.FromMinutes(1) })
         // formulário de contato das páginas de imóvel (público): poucos envios por endereço, contra spam
-        : c.Request.Path.StartsWithSegments("/" + PaginasImovelService.Prefixo) && c.Request.Path.Value!.EndsWith("/formulario", StringComparison.Ordinal)
+        : (c.Request.Path.StartsWithSegments("/" + PaginasImovelService.Prefixo) && c.Request.Path.Value!.EndsWith("/formulario", StringComparison.Ordinal))
+            // links públicos da manutenção (inquilino abre chamado, proprietário aprova): mesmo teto
+            || c.Request.Path.StartsWithSegments("/chamado") || c.Request.Path.StartsWithSegments("/aprovacao")
             ? RateLimitPartition.GetFixedWindowLimiter("form:" + (c.Connection.RemoteIpAddress?.ToString() ?? "?"),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) })
             : RateLimitPartition.GetNoLimiter(""));
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.OnRejected = (ctx, ct) => new ValueTask(ctx.HttpContext.Response.WriteAsync(
         ctx.HttpContext.Request.Path.Value?.EndsWith("/formulario") == true
+            || ctx.HttpContext.Request.Path.StartsWithSegments("/chamado") || ctx.HttpContext.Request.Path.StartsWithSegments("/aprovacao")
             ? "Muitos envios a partir deste endereço. Aguarde alguns minutos ou fale conosco pelo WhatsApp."
             : "Muitas tentativas de login a partir deste endereço. Aguarde um minuto e tente de novo.", ct));
 });
@@ -484,6 +488,82 @@ site.MapGet("foto/{midiaId:guid}/{arquivo}", async (Guid midiaId, string arquivo
 
 // Página exclusiva do imóvel (landing page): /imovel/{slug}, aberta sem login quando publicada (rascunho: só usuários
 // do sistema com acesso ao imóvel). Imagem da prévia do link (WhatsApp, e-mail) e fotos públicas também sem login.
+// Manutenção (locação): links públicos sem login. /aprovacao/{token} = proprietário aprova ou recusa o orçamento;
+// /chamado/{token} = inquilino pede um reparo (link fixo do contrato). Formulários simples: POST e volta com o resultado.
+var manutencaoPublica = app.MapGroup("").AllowAnonymous();
+manutencaoPublica.MapGet("aprovacao/{token}", async (string token, string? r, HttpContext c, ManutencaoService s) =>
+{
+    var dados = await s.AprovacaoAsync(token, c.RequestAborted);
+    if (dados is null) return Results.NotFound();
+    c.Response.Headers.CacheControl = "private, no-store";
+    return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.AprovacaoManutencao>(
+        new { Dados = dados, Token = token, Resultado = r });
+});
+manutencaoPublica.MapPost("aprovacao/{token}", async (string token, HttpContext c, ManutencaoService s) =>
+{
+    var f = await c.Request.ReadFormAsync(c.RequestAborted);
+    string r;
+    try
+    {
+        var orc = Guid.TryParse(f["orcamento"].ToString(), out var g) ? g : (Guid?)null;
+        if (!await s.ResponderAprovacaoAsync(token, f["decisao"].ToString() == "aprovar", orc, f["obs"].ToString(), f["nome"].ToString(), c.RequestAborted))
+            return Results.NotFound();
+        r = "ok";
+    }
+    catch (RegraNegocioException ex) { r = ex.Message; }
+    return Results.Redirect($"/aprovacao/{Uri.EscapeDataString(token)}?r={Uri.EscapeDataString(r)}");
+}).DisableAntiforgery();
+// arquivo da cotação (PDF/foto) para o proprietário conferir antes de escolher
+manutencaoPublica.MapGet("aprovacao/{token}/cotacao/{orcamento:guid}", async (string token, Guid orcamento, HttpContext c, ManutencaoService s) =>
+{
+    var a = await s.CotacaoPublicaAsync(token, orcamento, c.RequestAborted);
+    if (a is null) return Results.NotFound();
+    c.Response.Headers.CacheControl = "private, no-store";
+    // PDF e imagens abrem no navegador; outros tipos baixam
+    var abre = a.Tipo == "application/pdf" || a.Tipo.StartsWith("image/", StringComparison.Ordinal);
+    return abre ? Results.File(a.Dados, a.Tipo) : Results.File(a.Dados, a.Tipo, a.Nome);
+});
+manutencaoPublica.MapGet("chamado/{token}", async (string token, string? ok, string? erro, HttpContext c, ManutencaoService s) =>
+{
+    var dados = await s.ContextoInquilinoAsync(token, c.RequestAborted);
+    if (dados is null) return Results.NotFound();
+    c.Response.Headers.CacheControl = "private, no-store";
+    return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.ChamadoInquilino>(
+        new { Dados = dados, Token = token, Codigo = ok, Erro = erro });
+});
+manutencaoPublica.MapPost("chamado/{token}", async (string token, HttpContext c, ManutencaoService s) =>
+{
+    var f = await c.Request.ReadFormAsync(c.RequestAborted);
+    var form = new AberturaInquilinoForm
+    {
+        Nome = f["nome"].ToString(), Telefone = f["telefone"].ToString(), Titulo = f["titulo"].ToString(),
+        Descricao = f["descricao"].ToString(), Site = f["site"].ToString(),
+        Categoria = Enum.TryParse<CategoriaManutencao>(f["categoria"].ToString(), out var cat) ? cat : CategoriaManutencao.OUTROS,
+        Urgencia = Enum.TryParse<UrgenciaManutencao>(f["urgencia"].ToString(), out var urg) ? urg : UrgenciaManutencao.MEDIA,
+    };
+    var volta = $"/chamado/{Uri.EscapeDataString(token)}";
+    try
+    {
+        var fotos = new List<(string, byte[], string)>();
+        foreach (var arq in f.Files.Where(a => a.Length > 0))
+        {
+            if (fotos.Count >= ManutencaoService.MaxFotosInquilino)
+                throw new RegraNegocioException("fotos", $"Envie até {ManutencaoService.MaxFotosInquilino} fotos.");
+            if (arq.Length > ManutencaoService.TamanhoMaximoFoto) throw new RegraNegocioException("fotos", "Cada foto pode ter até 10 MB.");
+            using var ms = new MemoryStream();
+            await arq.CopyToAsync(ms, c.RequestAborted);
+            fotos.Add((arq.FileName, ms.ToArray(), arq.ContentType ?? ""));
+        }
+        var codigo = await s.AbrirPeloInquilinoAsync(token, form, fotos, c.RequestAborted);
+        if (codigo is null) return Results.NotFound();
+        return Results.Redirect($"{volta}?ok={Uri.EscapeDataString(codigo)}");
+    }
+    catch (RegraNegocioException ex)
+    {
+        return Results.Redirect($"{volta}?erro={Uri.EscapeDataString(ex.Message)}");
+    }
+}).DisableAntiforgery().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(60_000_000));
+
 var paginaImovel = app.MapGroup("/" + PaginasImovelService.Prefixo).AllowAnonymous();
 paginaImovel.MapGet("{slug}", async (string slug, HttpContext c, PaginasImovelService s) =>
 {

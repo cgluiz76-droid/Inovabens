@@ -34,6 +34,7 @@ public static class Registro
         services.AddScoped<AuditService>();
         services.AddScoped<Locacao.LocacaoService>();
         services.AddScoped<Locacao.LocacaoDocumentosService>();
+        services.AddScoped<Locacao.ManutencaoService>();
         services.AddScoped<AuthService>();
         services.AddScoped<OpcoesService>();
         services.AddScoped<ImoveisService>();

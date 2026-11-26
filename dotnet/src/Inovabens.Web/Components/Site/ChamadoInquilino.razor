@@ -1,0 +1,82 @@
+@* Link fixo do contrato para o inquilino pedir um reparo (sem login): o que aconteceu, urgência e até 5 fotos.
+   A equipe recebe o aviso no sino. Formulário simples (multipart), sem JavaScript. *@
+
+<SiteMoldura Avulsa Titulo="Pedido de manutenção · Inova Bens" Indexavel="false">
+    <main class="miolo" style="padding-block: 28px; max-width: 720px">
+        <section class="bloco">
+            <span class="rotulo">Inova Bens · manutenção do imóvel</span>
+            <h1 style="font-size: 1.5rem">Pedir um reparo</h1>
+            <p>@Dados.Imovel · contrato @Dados.Contrato</p>
+            <p><small>Em emergência (vazamento forte, falta de energia, risco), ligue também para @SiteMoldura.TelefoneTexto.</small></p>
+        </section>
+
+        @if (Codigo is { } cod)
+        {
+            <p class="lp-form-ok" role="status">Pedido @cod registrado! A Inova Bens vai entrar em contato pelo telefone informado.</p>
+        }
+        else if (Erro is { } erro)
+        {
+            <p class="lp-form-ok" role="alert" style="border-left-color: var(--erro, #b3261e)">@erro</p>
+        }
+
+        @if (Dados.Abertos.Count > 0)
+        {
+            <section class="bloco">
+                <h2>Pedidos em andamento</h2>
+                <ul>
+                    @foreach (var a in Dados.Abertos)
+                    {
+                        <li>@a.Codigo · @a.Titulo · @Texto.Rotulo(a.Status).ToLowerInvariant()</li>
+                    }
+                </ul>
+            </section>
+        }
+
+        <section class="bloco">
+            <h2>Novo pedido</h2>
+            <form class="lp-form" method="post" action="@($"/chamado/{Token}")" enctype="multipart/form-data">
+                <label>O que aconteceu? *
+                    <input name="titulo" required maxlength="200" placeholder="Ex.: torneira da cozinha vazando" />
+                </label>
+                <label>Detalhes
+                    <textarea name="descricao" rows="4" maxlength="4000" placeholder="Onde, desde quando, o que já tentou…"></textarea>
+                </label>
+                <label>Tipo
+                    <select name="categoria" class="input">
+                        @foreach (var c in Enum.GetValues<CategoriaManutencao>())
+                        {
+                            <option value="@c" selected="@(c == CategoriaManutencao.OUTROS)">@Texto.Rotulo(c)</option>
+                        }
+                    </select>
+                </label>
+                <label>Urgência
+                    <select name="urgencia" class="input">
+                        <option value="BAIXA">Baixa (pode esperar)</option>
+                        <option value="MEDIA" selected>Média</option>
+                        <option value="ALTA">Alta (atrapalha o uso do imóvel)</option>
+                        <option value="EMERGENCIA">Emergência (risco ou dano)</option>
+                    </select>
+                </label>
+                <label>Fotos (até 5)
+                    <input type="file" name="fotos" accept="image/*" multiple />
+                </label>
+                <label>Seu nome *
+                    <input name="nome" required maxlength="200" autocomplete="name" />
+                </label>
+                <label>Telefone / WhatsApp *
+                    <input name="telefone" required maxlength="30" autocomplete="tel" inputmode="tel" />
+                </label>
+                @* campo escondido contra robôs *@
+                <input name="site" tabindex="-1" autocomplete="off" style="position: absolute; left: -9999px" aria-hidden="true" />
+                <button type="submit" class="btn btn-ouro">Enviar pedido</button>
+            </form>
+        </section>
+    </main>
+</SiteMoldura>
+
+@code {
+    [Parameter, EditorRequired] public ContextoChamadoPublico Dados { get; set; } = default!;
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public string? Codigo { get; set; }
+    [Parameter] public string? Erro { get; set; }
+}

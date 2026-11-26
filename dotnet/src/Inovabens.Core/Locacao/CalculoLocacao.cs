@@ -12,9 +12,10 @@ public sealed record Acrescimos(int DiasAtraso, decimal Multa, decimal Juros)
 }
 
 /// <summary>Parte de um locador num recebimento.</summary>
-public sealed record RepasseCalculado(Guid PessoaId, decimal Percentual, decimal Bruto, decimal Taxa, decimal Intermediacao)
+/// <summary>Repasse de um locador. <see cref="DescontoManutencao"/>: conserto por conta do locador abatido deste repasse.</summary>
+public sealed record RepasseCalculado(Guid PessoaId, decimal Percentual, decimal Bruto, decimal Taxa, decimal Intermediacao, decimal DescontoManutencao = 0)
 {
-    public decimal Liquido => Bruto - Taxa - Intermediacao;
+    public decimal Liquido => Bruto - Taxa - Intermediacao - DescontoManutencao;
 }
 
 /// <summary>
@@ -104,7 +105,8 @@ public static class CalculoLocacao
         var fracao = totalFatura <= 0 ? 1 : Math.Min(1, principal / totalFatura);
         var aluguel = itens.Where(i => i.Tipo is TipoItemFatura.ALUGUEL or TipoItemFatura.DESCONTO).Sum(i => i.Valor) * fracao;
         aluguel = Math.Max(0, decimal.Round(aluguel, 2, MidpointRounding.AwayFromZero));
-        var bruto = principal + multa + juros;
+        // conserto cobrado do inquilino (item MANUTENCAO) reembolsa a imobiliária, que pagou o prestador: fica fora do repasse
+        var bruto = principal + multa + juros - Reembolso(itens, principal);
         var intermediacao = Math.Min(Math.Max(0, intermediacaoPendente), aluguel);
         var baseTaxa = aluguel - intermediacao + multa + juros;
         var taxa = decimal.Round(baseTaxa * taxaPct / 100, 2, MidpointRounding.AwayFromZero);
@@ -127,6 +129,39 @@ public static class CalculoLocacao
             var m = decimal.Round(intermediacao * f, 2, MidpointRounding.AwayFromZero);
             lista.Add(new(pessoa, pct, b, t, m));
             rb += b; rt += t; ri += m;
+        }
+        return lista;
+    }
+
+    /// <summary>Parte do recebimento que reembolsa conserto cobrado do inquilino (proporcional no pagamento parcial).</summary>
+    public static decimal Reembolso(IReadOnlyList<FaturaLocacaoItem> itens, decimal principal)
+    {
+        var manut = itens.Where(i => i.Tipo == TipoItemFatura.MANUTENCAO).Sum(i => i.Valor);
+        if (manut <= 0) return 0;
+        var total = itens.Sum(i => i.Valor);
+        var fracao = total <= 0 ? 1 : Math.Min(1, principal / total);
+        return decimal.Round(manut * fracao, 2, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
+    /// Desconta dos repasses o conserto por conta do locador ainda não abatido (<paramref name="pendente"/>), até zerar o
+    /// líquido; o desconto se divide na proporção do líquido de cada locador (a sobra do arredondamento fica com o último).
+    /// </summary>
+    public static IReadOnlyList<RepasseCalculado> AbaterManutencao(IReadOnlyList<RepasseCalculado> repasses, decimal pendente)
+    {
+        var disponivel = repasses.Sum(r => Math.Max(0, r.Liquido));
+        var total = Math.Min(Math.Max(0, pendente), disponivel);
+        if (total <= 0) return repasses;
+        var lista = new List<RepasseCalculado>();
+        decimal usado = 0;
+        for (var i = 0; i < repasses.Count; i++)
+        {
+            var r = repasses[i];
+            var parte = i == repasses.Count - 1
+                ? total - usado
+                : Math.Min(Math.Max(0, r.Liquido), decimal.Round(total * Math.Max(0, r.Liquido) / disponivel, 2, MidpointRounding.AwayFromZero));
+            usado += parte;
+            lista.Add(r with { DescontoManutencao = r.DescontoManutencao + parte });
         }
         return lista;
     }

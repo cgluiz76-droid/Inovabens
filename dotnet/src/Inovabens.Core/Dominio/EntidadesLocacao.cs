@@ -21,7 +21,7 @@ public enum StatusFaturaLocacao { ABERTA, PAGA, CANCELADA }
 /// DESCONTO é negativo e reduz a base da taxa de administração (como o aluguel). Os quatro últimos são do acerto da
 /// rescisão (migração 0047); CAUCAO é negativo (abate a caução devolvida dos débitos).
 /// </summary>
-public enum TipoItemFatura { ALUGUEL, CONDOMINIO, IPTU, SEGURO_INCENDIO, DESCONTO, OUTRO, MULTA_RESCISORIA, AVISO_PREVIO, VISTORIA, CAUCAO }
+public enum TipoItemFatura { ALUGUEL, CONDOMINIO, IPTU, SEGURO_INCENDIO, DESCONTO, OUTRO, MULTA_RESCISORIA, AVISO_PREVIO, VISTORIA, CAUCAO, MANUTENCAO }
 
 /// <summary>Quem pediu o fim do contrato: define multa (art. 4) e aviso prévio (art. 6).</summary>
 public enum IniciativaRescisao { LOCATARIO, LOCADOR, ACORDO, FIM_PRAZO }
@@ -82,6 +82,10 @@ public class ContratoLocacao
     public RespostaPreferencia? PreferenciaResposta { get; set; }
     /// <summary>Subpasta do contrato em "08 - Locação" (renovações e aditivos ficam na mesma).</summary>
     public string? DrivePastaId { get; set; }
+    /// <summary>Conserto por conta do locador até este valor dispensa a aprovação do proprietário (migração 0049).</summary>
+    public decimal LimiteManutencao { get; set; }
+    /// <summary>Link para o inquilino abrir chamado de manutenção sem login.</summary>
+    public string? TokenChamado { get; set; }
     public Guid? CriadoPor { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public Guid? AtualizadoPor { get; set; }
@@ -188,7 +192,9 @@ public class RepasseLocacao
     public decimal Bruto { get; set; }
     public decimal TaxaAdministracao { get; set; }
     public decimal Intermediacao { get; set; }
+    /// <summary>Já descontado o conserto por conta do locador (<see cref="DescontoManutencao"/>).</summary>
     public decimal Liquido { get; set; }
+    public decimal DescontoManutencao { get; set; }
     public DateOnly PrevistoPara { get; set; }
     public DateOnly? PagoEm { get; set; }
     public Guid? LancamentoEmpresaId { get; set; }

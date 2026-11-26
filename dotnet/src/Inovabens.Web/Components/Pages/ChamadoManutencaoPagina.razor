@@ -1,0 +1,641 @@
+@page "/manutencao/{Id:guid}"
+@attribute [Authorize(Policy = Permissoes.LocacaoVer)]
+@inherits ComponenteBase
+@inject ManutencaoService Servico
+@inject OpcoesService Opcoes
+@inject ChavesService Chaves
+
+@* Ficha do chamado: orçamentos → aprovação (na hora, dentro do limite do contrato, ou pelo link do proprietário) →
+   agenda (compromisso + chave + WhatsApp) → conclusão com o lançamento do custo. Fotos, orçamentos e nota vão para o Drive. *@
+
+<PageTitle>@(d?.Codigo ?? "Chamado") · Manutenção · Inovabens</PageTitle>
+
+<p class="pequeno"><a href="manutencao">← Manutenção</a></p>
+<MensagemErro Texto="@(ModalAberto ? null : Erro)" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@if (d is null)
+{
+    @if (Erro is null) { <p class="carregando">Carregando…</p> }
+}
+else
+{
+    var c = d.Chamado;
+    <div class="titulo">
+        <h1>@d.Codigo · @c.Titulo <span class="badge">@Texto.Rotulo(c.Status)</span></h1>
+        @if (PodeEditar && c.Aberto)
+        {
+            <div class="acoes-topo">
+                <button class="btn-ghost" @onclick="Editar">Editar</button>
+                @if (c.Status is StatusChamado.APROVADO)
+                {
+                    <button class="btn-primary" @onclick="AbrirAgenda">Agendar</button>
+                }
+                @if (c.Status is StatusChamado.APROVADO or StatusChamado.AGENDADO)
+                {
+                    <button class="btn-primary" @onclick="AbrirConclusao">Concluir</button>
+                }
+                <button class="btn-ghost" @onclick="() => { Erro = null; motivo = null; cancelando = true; }">Cancelar chamado</button>
+            </div>
+        }
+    </div>
+
+    @if (avisos is not null && (avisos.WhatsappPrestador ?? avisos.WhatsappInquilino) is not null)
+    {
+        <section class="card">
+            <p>Avise os envolvidos (abre o WhatsApp com a mensagem pronta; confira e envie):</p>
+            <div class="acoes-topo">
+                @if (avisos.WhatsappPrestador is { } wp) { <a class="btn-ghost" href="@wp" target="_blank" rel="noopener">WhatsApp do prestador</a> }
+                @if (avisos.WhatsappInquilino is { } wi) { <a class="btn-ghost" href="@wi" target="_blank" rel="noopener">WhatsApp do inquilino</a> }
+            </div>
+        </section>
+    }
+
+    <section class="card">
+        <div class="titulo-secao"><h2>@d.ImovelCodigo</h2><a class="btn-ghost mini" href="@($"imoveis/{c.ImovelId}")">Ver imóvel</a></div>
+        <p>@d.ImovelEndereco</p>
+        <dl class="locacao-dados">
+            <div><dt>Categoria</dt><dd>@Texto.Rotulo(c.Categoria)</dd></div>
+            <div><dt>Urgência</dt><dd>@Texto.Rotulo(c.Urgencia)</dd></div>
+            <div><dt>Custo por conta do</dt><dd>@Texto.Rotulo(c.Responsavel)</dd></div>
+            <div><dt>Origem</dt><dd>@Texto.Rotulo(c.Origem)</dd></div>
+            <div><dt>Contrato</dt><dd>@if (d.ContratoCodigo is { } cc) { <a href="@($"locacao/{c.ContratoId}")">@cc</a> } else { <span>—</span> }</dd></div>
+            @if (d.ContratoCodigo is not null && d.Modalidade == ModalidadeLocacao.ADMINISTRACAO)
+            {
+                <div><dt>Pré-aprovado até</dt><dd>@Texto.Moeda(d.LimiteManutencao)</dd></div>
+            }
+            @if (c.SolicitanteNome is not null)
+            {
+                <div><dt>Quem pediu</dt><dd>@c.SolicitanteNome @c.SolicitanteTelefone</dd></div>
+            }
+            @if (d.LocatarioNome is not null) { <div><dt>Locatário</dt><dd>@d.LocatarioNome @d.LocatarioTelefone</dd></div> }
+            @if (d.LocadorNome is not null) { <div><dt>Locador</dt><dd>@d.LocadorNome @d.LocadorTelefone</dd></div> }
+            @if (d.PrestadorNome is not null) { <div><dt>Prestador</dt><dd>@d.PrestadorNome @d.PrestadorTelefone</dd></div> }
+            @if (c.AgendadoPara is { } ag) { <div><dt>Agendado</dt><dd>@Texto.DataHora(ag)</dd></div> }
+            @if (c.ConcluidoEm is { } ce)
+            {
+                <div><dt>Concluído</dt><dd>@Texto.Data(ce) · @Texto.Moeda(c.ValorFinal) · @Texto.Rotulo(c.Cobranca?.ToString())</dd></div>
+                @if (c.Avaliacao is { } av) { <div><dt>Avaliação</dt><dd>@(new string('★', av))@(new string('☆', 5 - av))</dd></div> }
+                @if (c.Cobranca == CobrancaManutencao.REPASSE)
+                {
+                    <div><dt>Descontado do repasse</dt><dd>@Texto.Moeda(d.AbatidoRepasse) de @Texto.Moeda(c.ValorFinal)</dd></div>
+                }
+            }
+            @if (c.AprovadoPor is not null) { <div><dt>@(c.Status == StatusChamado.RECUSADO ? "Recusado por" : "Aprovado por")</dt><dd>@c.AprovadoPor</dd></div> }
+            @if (c.Motivo is not null) { <div><dt>Motivo</dt><dd>@c.Motivo</dd></div> }
+        </dl>
+        @if (c.Descricao is not null) { <p class="pre-linha">@c.Descricao</p> }
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao"><h2>Orçamentos</h2></div>
+        @if (PrecisaProprietario && FaseOrcamento)
+        {
+            @if (d.Chamado.JustificativaCotacoes is { } jc) { <p class="pequeno">Enviado com menos de 3 cotações: @jc</p> }
+            <p class="pequeno @(d.Orcamentos.Count < ManutencaoService.MinimoCotacoes ? "texto-erro" : "mudo")">
+                Cotações: @d.Orcamentos.Count de @ManutencaoService.MinimoCotacoes. Acima do limite pré-aprovado (@Texto.Moeda(d.LimiteManutencao)),
+                o proprietário escolhe entre elas pelo link de aprovação; com menos, envie com uma justificativa. Anexe o arquivo de cada cotação.</p>
+        }
+        @if (d.Orcamentos.Count == 0) { <p class="vazio">Nenhum orçamento ainda.</p> }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Prestador</th><th class="num">Valor</th><th>Prazo</th><th>Descrição</th><th>Cotação</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var o in d.Orcamentos)
+                        {
+                            <tr>
+                                <td>@o.PrestadorNome @if (o.Escolhido) { <span class="badge">escolhido</span> }
+                                    @if (o.PrestadorTelefone is { } t) { <p class="pequeno mudo">@t</p> }</td>
+                                <td class="num">@Texto.Moeda(o.Valor)</td>
+                                <td>@(o.PrazoDias is { } p ? $"{p} dia(s)" : "—")</td>
+                                <td class="pequeno pre-linha">@o.Descricao</td>
+                                <td class="pequeno">
+                                    @if (o.Cotacao is { } arq) { <span title="Na subpasta Cotações do chamado no Drive">@arq</span> }
+                                    else { <span class="mudo">sem arquivo</span> }
+                                    @if (PodeEditar && FaseOrcamento && Servico.DriveHabilitado)
+                                    {
+                                        var oid = o.Id;
+                                        <label class="btn-ghost mini" title="PDF ou foto da cotação; vai para a subpasta Cotações do chamado">
+                                            @(o.Cotacao is null ? "Anexar" : "Trocar")
+                                            <InputFile OnChange="e => AnexarCotacao(oid, e)" class="oculto" disabled="@Ocupado" />
+                                        </label>
+                                    }
+                                </td>
+                                <td class="nowrap">
+                                    @if (PodeEditar && FaseOrcamento)
+                                    {
+                                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => PedirAprovacao(o)"
+                                                title="Aprova na hora se couber no limite do contrato (ou o custo não for do proprietário); senão envia as cotações para o proprietário escolher, com esta como sugestão.">Escolher</button>
+                                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => RemoverOrcamento(o)">Remover</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (PodeEditar && FaseOrcamento)
+        {
+            <EditForm Model="orc" OnValidSubmit="AdicionarOrcamento" class="formulario">
+                <DataAnnotationsValidator />
+                <div class="grade-3">
+                    <label class="campo col-2">
+                        <span>Prestador</span>
+                        <input class="input" list="prestadores-chamado" value="@prestadorNome" @onchange="e => EscolherPrestador(e.Value?.ToString())"
+                               @onfocus="CarregarPrestadores" placeholder="Digite e escolha da lista" />
+                        <datalist id="prestadores-chamado">@foreach (var p in prestadores) { <option value="@p.Nome" /> }</datalist>
+                        <ValidationMessage For="() => orc.PrestadorId" />
+                    </label>
+                    <label class="campo"><span>Valor</span><InputNumber class="input" step="0.01" @bind-Value="orc.Valor" /><ValidationMessage For="() => orc.Valor" /></label>
+                    <label class="campo"><span>Prazo (dias)</span><InputNumber class="input" @bind-Value="orc.PrazoDias" /></label>
+                    <label class="campo col-2"><span>Descrição</span><InputText class="input" maxlength="2000" @bind-Value="orc.Descricao" /></label>
+                    @if (Servico.DriveHabilitado)
+                    {
+                        <label class="campo">
+                            <span>Arquivo da cotação</span>
+                            <InputFile class="input" OnChange="GuardarCotacao" accept=".pdf,image/*" />
+                            @if (cotacaoNome is not null) { <small class="mudo">@cotacaoNome</small> }
+                        </label>
+                    }
+                </div>
+                <div class="acoes-form"><button type="submit" class="btn-ghost" disabled="@Ocupado">Adicionar orçamento</button></div>
+                <p class="pequeno mudo">Prestadores (perfil Prestador em Pessoas) aparecem primeiro. O arquivo da cotação vai para a subpasta Cotações do chamado no Drive.</p>
+            </EditForm>
+        }
+        @if (c.Status == StatusChamado.AGUARDANDO_APROVACAO)
+        {
+            <div class="aviso-vinculo">
+                <p>Aguardando o proprietário. Link de aprovação: <a href="@d.LinkAprovacao" target="_blank" rel="noopener">@d.LinkAprovacao</a></p>
+                <div class="acoes-topo">
+                    @if (pedido?.LinkWhatsapp is { } wl) { <a class="btn-ghost mini" href="@wl" target="_blank" rel="noopener">Enviar pelo WhatsApp</a> }
+                    else if (WhatsappLocador is { } wl2) { <a class="btn-ghost mini" href="@wl2" target="_blank" rel="noopener">Enviar pelo WhatsApp</a> }
+                    @if (PodeEditar)
+                    {
+                        <button class="btn-ghost mini" @onclick="() => { Erro = null; motivo = null; registrando = true; }">Registrar resposta</button>
+                    }
+                </div>
+            </div>
+        }
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao">
+            <h2>Arquivos</h2>
+            @if (d.LinkPasta is { } pasta) { <a class="btn-ghost mini" href="@pasta" target="_blank" rel="noopener">Abrir pasta no Drive</a> }
+        </div>
+        @if (d.Arquivos.Count == 0) { <p class="vazio">Nenhum arquivo.</p> }
+        else
+        {
+            <ul class="lista-simples">
+                @foreach (var a in d.Arquivos)
+                {
+                    <li>@Texto.Rotulo(a.Tipo) · @a.Nome <span class="pequeno mudo">@Texto.DataHora(a.CriadoEm)@(a.PeloInquilino ? " · enviado pelo inquilino" : "")</span></li>
+                }
+            </ul>
+        }
+        @if (PodeEditar && Servico.DriveHabilitado)
+        {
+            <div class="acoes-topo">
+                <select class="input" @bind="tipoArquivo" aria-label="Tipo do arquivo">
+                    @foreach (var t in Enum.GetValues<TipoArquivoChamado>()) { <option value="@t">@Texto.Rotulo(t)</option> }
+                </select>
+                <label class="btn-ghost">
+                    @(Ocupado ? "Enviando…" : "Enviar arquivo")
+                    <InputFile OnChange="EnviarArquivo" class="oculto" disabled="@Ocupado" />
+                </label>
+            </div>
+        }
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao"><h2>Andamento</h2></div>
+        <ol class="linha-tempo">
+            @foreach (var e in d.Eventos.Reverse())
+            {
+                <li class="evento">
+                    <span class="evento-icone">•</span>
+                    <div><p class="evento-titulo">@e.Descricao</p><p class="pequeno mudo">@Texto.DataHora(e.Data)@(e.Usuario is null ? "" : " · " + e.Usuario)</p></div>
+                </li>
+            }
+        </ol>
+    </section>
+}
+
+@if (editando is not null)
+{
+    <ChamadoModal Form="editando" EditandoId="Id" AoFechar="() => editando = null" AoSalvar="Salvo" />
+}
+
+@if (registrando)
+{
+    <Modal Titulo="Resposta do proprietário" AoFechar="() => registrando = false">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <p class="pequeno">Use quando o proprietário respondeu por telefone ou mensagem, sem abrir o link.</p>
+            <label class="campo"><span>Observação / motivo da recusa</span><input class="input" maxlength="1000" @bind="motivo" /></label>
+            <div class="acoes-form">
+                <button class="btn-ghost" disabled="@Ocupado" @onclick="Recusar">Recusou</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Aprovar">Aprovou</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@if (justificando is not null)
+{
+    <Modal Titulo="Menos de 3 cotações" AoFechar="() => justificando = null">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <p class="pequeno">O proprietário costuma escolher entre @ManutencaoService.MinimoCotacoes cotações e este chamado tem
+                @(d?.Orcamentos.Count ?? 0). Para enviar assim, explique o motivo (ele verá no link de aprovação).</p>
+            <label class="campo"><span>Justificativa</span>
+                <textarea class="input" rows="3" maxlength="1000" @bind="justificativa"
+                          placeholder="Ex.: urgência (vazamento), só um prestador atende a região, serviço de garantia do fabricante"></textarea></label>
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => justificando = null">Voltar</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="() => EnviarPedido(justificando!)">Enviar ao proprietário</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@if (cancelando)
+{
+    <Modal Titulo="Cancelar chamado" AoFechar="() => cancelando = false">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <label class="campo"><span>Motivo</span><input class="input" maxlength="1000" @bind="motivo" /></label>
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => cancelando = false">Voltar</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Cancelar">Cancelar chamado</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@if (agendando is not null)
+{
+    <Modal Titulo="Agendar serviço" AoFechar="() => agendando = null">
+        <EditForm Model="agendando" OnValidSubmit="Agendar" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Dia e hora</span>
+                    <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="agendando.Inicio" />
+                    <ValidationMessage For="() => agendando.Inicio" />
+                </label>
+                <label class="campo"><span>Duração (min)</span><InputNumber class="input" step="15" @bind-Value="agendando.DuracaoMinutos" /></label>
+                <label class="campo">
+                    <span>Acompanha (equipe)</span>
+                    <select class="input" @bind="AgResponsavel">
+                        <option value="">Eu</option>
+                        @foreach (var x in equipe) { <option value="@x.Id">@x.Nome</option> }
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>Entregar chave ao prestador</span>
+                    <select class="input" @bind="AgChave">
+                        <option value="">Não</option>
+                        @foreach (var k in chaves) { <option value="@k.Id">@k.Codigo · @k.Descricao</option> }
+                    </select>
+                </label>
+                @if (agendando.ChaveId is not null)
+                {
+                    <label class="campo">
+                        <span>Devolver chave até</span>
+                        <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="agendando.DevolverChaveAte" />
+                    </label>
+                }
+            </div>
+            <p class="pequeno mudo">Cria o compromisso na agenda (e no Google, se conectado) e registra a saída da chave. Depois aparecem os
+                botões para avisar prestador e inquilino pelo WhatsApp.</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => agendando = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Agendar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (concluindo is not null && d is not null)
+{
+    <Modal Titulo="Concluir serviço" AoFechar="() => concluindo = null">
+        <EditForm Model="concluindo" OnValidSubmit="Concluir" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo"><span>Data do serviço</span><InputDate class="input" @bind-Value="concluindo.Data" /><ValidationMessage For="() => concluindo.Data" /></label>
+                <label class="campo"><span>Valor final</span><InputNumber class="input" step="0.01" @bind-Value="concluindo.ValorFinal" /><ValidationMessage For="() => concluindo.ValorFinal" /></label>
+            </div>
+            <label class="campo">
+                <span>Como lançar o custo</span>
+                <select class="input" @bind="concluindo.Cobranca">
+                    @foreach (var x in Enum.GetValues<CobrancaManutencao>()) { <option value="@x">@RotuloCobranca(x)</option> }
+                </select>
+                <ValidationMessage For="() => concluindo.Cobranca" />
+            </label>
+            <div class="grade-2">
+                @if (concluindo.Cobranca != CobrancaManutencao.DIRETO)
+                {
+                    <label class="campo"><span>Pagar o prestador em</span><InputDate class="input" @bind-Value="concluindo.VencimentoPrestador" />
+                        <ValidationMessage For="() => concluindo.VencimentoPrestador" /></label>
+                }
+                <label class="campo">
+                    <span>Avaliação do prestador</span>
+                    <select class="input" @bind="concluindo.Avaliacao">
+                        <option value="">Sem nota</option>
+                        @for (var n = 5; n >= 1; n--) { var nota = n; <option value="@nota">@(new string('★', nota))</option> }
+                    </select>
+                </label>
+            </div>
+            <label class="campo"><span>Observação</span><InputText class="input" maxlength="1000" @bind-Value="concluindo.Observacao" /></label>
+            <p class="pequeno mudo">@AjudaCobranca(concluindo.Cobranca)</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => concluindo = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Concluir</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ChamadoDetalhe? d;
+    private ChamadoForm? editando;
+    private OrcamentoForm orc = new();
+    private string? prestadorNome;
+    private IReadOnlyList<Opcao> prestadores = [], equipe = [];
+    private IReadOnlyList<ChaveResumo> chaves = [];
+    private PedidoAprovacao? pedido;
+    private AvisosAgendamento? avisos;
+    private AgendamentoForm? agendando;
+    private ConclusaoForm? concluindo;
+    private bool registrando, cancelando;
+    private string? motivo;
+    private TipoArquivoChamado tipoArquivo = TipoArquivoChamado.FOTO;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);
+    private (string Nome, byte[] Dados, string Tipo)? cotacao;
+    private string? cotacaoNome;
+
+    /// <summary>Custo do locador em contrato de administração: acima do limite, quem escolhe é o proprietário (3 cotações).</summary>
+    private bool PrecisaProprietario => d is not null && d.Chamado.Responsavel == ResponsavelManutencao.LOCADOR
+        && d.ContratoCodigo is not null && d.Modalidade == ModalidadeLocacao.ADMINISTRACAO;
+    private bool FaseOrcamento => d?.Chamado.Status is StatusChamado.ABERTO or StatusChamado.ORCAMENTO or StatusChamado.AGUARDANDO_APROVACAO;
+    private bool ModalAberto => editando is not null || registrando || cancelando || agendando is not null || concluindo is not null
+        || justificando is not null;
+    private OrcamentoLinha? justificando;
+    private string? justificativa;
+
+    private string? WhatsappLocador => d?.LocadorTelefone is { } f && Texto.LinkWhatsapp(f) is { } w && d.LinkAprovacao is { } l
+        ? $"{w}?text={Uri.EscapeDataString($"Olá! Aqui é da Inova Bens. Para ver o orçamento do reparo \"{d.Chamado.Titulo}\" e aprovar ou recusar: {l}")}"
+        : null;
+
+    private string AgResponsavel
+    {
+        get => agendando?.ResponsavelId?.ToString() ?? "";
+        set { if (agendando is not null) agendando.ResponsavelId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    private string AgChave
+    {
+        get => agendando?.ChaveId?.ToString() ?? "";
+        set { if (agendando is not null) agendando.ChaveId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    protected override Task OnParametersSetAsync() => Carregar();
+
+    private async Task Carregar() => await Executar(async () => d = await Servico.ObterAsync(Usuario, Id));
+
+    private async Task Editar()
+    {
+        Erro = null;
+        await Executar(async () => editando = await Servico.FormularioAsync(Usuario, Id));
+    }
+
+    private async Task Salvo(Guid _)
+    {
+        editando = null;
+        await Carregar();
+        Sucesso = "Chamado atualizado.";
+    }
+
+    /* ---------- orçamentos e aprovação ---------- */
+
+    private async Task CarregarPrestadores()
+    {
+        if (prestadores.Count == 0) await Executar(async () => prestadores = await Servico.PrestadoresAsync(Usuario));
+    }
+
+    private void EscolherPrestador(string? nome)
+    {
+        prestadorNome = nome;
+        orc.PrestadorId = prestadores.FirstOrDefault(p => string.Equals(p.Nome, nome?.Trim(), StringComparison.OrdinalIgnoreCase))?.Id;
+        Erro = orc.PrestadorId is null && !string.IsNullOrWhiteSpace(nome)
+            ? $"\"{nome}\" não está no cadastro. Escolha da lista ou cadastre o prestador em Pessoas." : null;
+    }
+
+    private async Task AdicionarOrcamento()
+    {
+        if (await Executar(async () =>
+            {
+                var oid = await Servico.AdicionarOrcamentoAsync(Usuario, Id, orc);
+                if (cotacao is { } a) await Servico.AnexarCotacaoAsync(Usuario, oid, a.Nome, a.Dados, a.Tipo);
+            }))
+        {
+            orc = new OrcamentoForm();
+            prestadorNome = null;
+            (cotacao, cotacaoNome) = (null, null);
+            await Carregar();
+            Sucesso = "Orçamento adicionado.";
+        }
+    }
+
+    private static async Task<(string, byte[], string)> Ler(IBrowserFile f)
+    {
+        if (f.Size > ImoveisService.TamanhoMaximoArquivo) throw new RegraNegocioException("arquivo", "Arquivo acima de 25 MB.");
+        await using var s = f.OpenReadStream(ImoveisService.TamanhoMaximoArquivo);
+        using var ms = new MemoryStream();
+        await s.CopyToAsync(ms);
+        return (f.Name, ms.ToArray(), string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType);
+    }
+
+    /// <summary>Arquivo escolhido no formulário: sobe junto com o orçamento.</summary>
+    private async Task GuardarCotacao(InputFileChangeEventArgs e)
+    {
+        if (await Executar(async () => cotacao = await Ler(e.File))) cotacaoNome = e.File.Name;
+    }
+
+    private async Task AnexarCotacao(Guid orcamentoId, InputFileChangeEventArgs e)
+    {
+        if (await Executar(async () =>
+            {
+                var (nome, dados, tipo) = await Ler(e.File);
+                await Servico.AnexarCotacaoAsync(Usuario, orcamentoId, nome, dados, tipo);
+            }))
+        {
+            await Carregar();
+            Sucesso = "Cotação anexada na subpasta Cotações do chamado.";
+        }
+    }
+
+    private async Task RemoverOrcamento(OrcamentoLinha o)
+    {
+        if (await Executar(() => Servico.RemoverOrcamentoAsync(Usuario, o.Id)))
+        {
+            await Carregar();
+            Sucesso = "Orçamento removido.";
+        }
+    }
+
+    /// <summary>Vai para o proprietário com menos de 3 cotações: pede a justificativa antes.</summary>
+    private async Task PedirAprovacao(OrcamentoLinha o)
+    {
+        Erro = null;
+        if (PrecisaProprietario && o.Valor > d!.LimiteManutencao && d.Orcamentos.Count < ManutencaoService.MinimoCotacoes)
+        {
+            justificativa = null;
+            justificando = o;
+            return;
+        }
+        await EnviarPedido(o);
+    }
+
+    private async Task EnviarPedido(OrcamentoLinha o)
+    {
+        if (await Executar(async () => pedido = await Servico.PedirAprovacaoAsync(Usuario, Id, o.Id, justificativa)))
+        {
+            justificando = null;
+            await Carregar();
+            Sucesso = pedido!.AprovadoNaHora
+                ? $"Orçamento de {o.PrestadorNome} aprovado ({pedido.Motivo}). Agora é só agendar."
+                : "Pedido de aprovação gerado. Envie o link ao proprietário pelo WhatsApp.";
+        }
+    }
+
+    private async Task Aprovar()
+    {
+        if (await Executar(() => Servico.AprovarAsync(Usuario, Id, motivo)))
+        {
+            registrando = false;
+            await Carregar();
+            Sucesso = "Aprovação registrada.";
+        }
+    }
+
+    private async Task Recusar()
+    {
+        if (await Executar(() => Servico.RecusarAsync(Usuario, Id, motivo)))
+        {
+            registrando = false;
+            await Carregar();
+            Sucesso = "Recusa registrada.";
+        }
+    }
+
+    private async Task Cancelar()
+    {
+        if (await Executar(() => Servico.CancelarAsync(Usuario, Id, motivo)))
+        {
+            cancelando = false;
+            await Carregar();
+            Sucesso = "Chamado cancelado.";
+        }
+    }
+
+    /* ---------- agenda ---------- */
+
+    private async Task AbrirAgenda()
+    {
+        Erro = null;
+        await Executar(async () =>
+        {
+            if (equipe.Count == 0) equipe = await Opcoes.CorretoresAsync();
+            // chaves: só com permissão de movimentar; sem ela o agendamento segue sem a entrega
+            chaves = Usuario.Pode(Permissoes.ChavesMovimentar)
+                ? [.. (await Chaves.DoImovelAsync(Usuario, d!.Chamado.ImovelId)).Chaves.Where(k => k.Fora is null)]
+                : [];
+            var amanha = DatasBR.Hoje().AddDays(1).ToDateTime(new TimeOnly(9, 0));
+            agendando = new AgendamentoForm { Inicio = amanha };
+        });
+    }
+
+    private async Task Agendar()
+    {
+        if (agendando is null) return;
+        if (await Executar(async () => avisos = await Servico.AgendarAsync(Usuario, Id, agendando)))
+        {
+            agendando = null;
+            await Carregar();
+            Sucesso = "Serviço agendado.";
+        }
+    }
+
+    /* ---------- conclusão ---------- */
+
+    private void AbrirConclusao()
+    {
+        Erro = null;
+        var c = d!.Chamado;
+        concluindo = new ConclusaoForm
+        {
+            Data = DatasBR.Hoje(), ValorFinal = c.Valor, Cobranca = ManutencaoService.CobrancaSugerida(c.Responsavel, d.Modalidade),
+            VencimentoPrestador = DatasBR.Hoje().AddDays(7),
+        };
+    }
+
+    private async Task Concluir()
+    {
+        if (concluindo is null) return;
+        if (await Executar(() => Servico.ConcluirAsync(Usuario, Id, concluindo)))
+        {
+            concluindo = null;
+            await Carregar();
+            Sucesso = "Serviço concluído e custo lançado.";
+        }
+    }
+
+    private static string RotuloCobranca(CobrancaManutencao c) => c switch
+    {
+        CobrancaManutencao.REPASSE => "Descontar do repasse ao proprietário",
+        CobrancaManutencao.FATURA => "Cobrar do inquilino na próxima fatura",
+        CobrancaManutencao.IMOVEL => "Conta do imóvel (financeiro do imóvel)",
+        CobrancaManutencao.IMOBILIARIA => "Despesa da imobiliária",
+        _ => "Pago direto ao prestador (sem lançamento)",
+    };
+
+    private static string AjudaCobranca(CobrancaManutencao? c) => c switch
+    {
+        CobrancaManutencao.REPASSE => "A imobiliária paga o prestador (conta a pagar no Financeiro) e o valor sai dos próximos repasses do proprietário.",
+        CobrancaManutencao.FATURA => "A imobiliária paga o prestador e o valor entra como item na próxima fatura aberta do inquilino, sem ir para o repasse.",
+        CobrancaManutencao.IMOVEL => "Conta a pagar no financeiro do próprio imóvel (imóveis próprios ou de sócios).",
+        CobrancaManutencao.IMOBILIARIA => "Despesa da Inova Bens, na categoria \"Manutenção de imóveis\".",
+        CobrancaManutencao.DIRETO => "Proprietário ou inquilino pagou o prestador; o sistema só registra.",
+        _ => "",
+    };
+
+    /* ---------- arquivos ---------- */
+
+    private async Task EnviarArquivo(InputFileChangeEventArgs e)
+    {
+        var ok = await Executar(async () =>
+        {
+            if (e.File.Size > ImoveisService.TamanhoMaximoArquivo) throw new RegraNegocioException("arquivo", "Arquivo acima de 25 MB.");
+            await using var s = e.File.OpenReadStream(ImoveisService.TamanhoMaximoArquivo);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            await Servico.EnviarArquivoAsync(Usuario, Id, e.File.Name, ms.ToArray(),
+                string.IsNullOrEmpty(e.File.ContentType) ? "application/octet-stream" : e.File.ContentType, tipoArquivo);
+        });
+        if (ok)
+        {
+            await Carregar();
+            Sucesso = $"{e.File.Name} enviado para a pasta do chamado.";
+        }
+    }
+}

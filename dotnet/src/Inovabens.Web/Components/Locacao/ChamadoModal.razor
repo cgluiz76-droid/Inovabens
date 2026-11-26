@@ -1,0 +1,93 @@
+@inherits ComponenteBase
+@inject ManutencaoService Servico
+@inject OpcoesService Opcoes
+
+@* Abertura/edição do chamado de manutenção. O responsável pelo custo vem sugerido pela categoria (Lei do Inquilinato:
+   estrutura, telhado e instalações por desgaste = locador; reparos pequenos do dia a dia = locatário), mas pode mudar. *@
+
+<Modal Titulo="@(EditandoId is null ? "Novo chamado de manutenção" : "Editar chamado")" AoFechar="AoFechar">
+    <EditForm Model="Form" OnValidSubmit="Salvar" class="formulario">
+        <DataAnnotationsValidator />
+        <MensagemErro Texto="@Erro" />
+        <label class="campo">
+            <span>Imóvel</span>
+            <select class="input" @bind="ImovelId" disabled="@(EditandoId is not null || ImovelFixo)">
+                <option value="">Selecione…</option>
+                @foreach (var i in imoveis) { <option value="@i.Id">@i.Nome</option> }
+            </select>
+            <ValidationMessage For="() => Form.ImovelId" />
+        </label>
+        <label class="campo">
+            <span>O que precisa ser feito</span>
+            <InputText class="input" maxlength="200" @bind-Value="Form.Titulo" placeholder="Ex.: vazamento na pia da cozinha" />
+            <ValidationMessage For="() => Form.Titulo" />
+        </label>
+        <label class="campo"><span>Detalhes</span><InputTextArea class="input" rows="3" maxlength="4000" @bind-Value="Form.Descricao" /></label>
+        <div class="grade-3">
+            <label class="campo">
+                <span>Categoria</span>
+                <select class="input" @bind="Form.Categoria" @bind:after="SugerirResponsavel">
+                    @foreach (var c in Enum.GetValues<CategoriaManutencao>()) { <option value="@c">@Texto.Rotulo(c)</option> }
+                </select>
+            </label>
+            <label class="campo">
+                <span>Urgência</span>
+                <select class="input" @bind="Form.Urgencia">
+                    @foreach (var x in Enum.GetValues<UrgenciaManutencao>()) { <option value="@x">@Texto.Rotulo(x)</option> }
+                </select>
+            </label>
+            <label class="campo">
+                <span>Custo por conta do</span>
+                <select class="input" @bind="Form.Responsavel">
+                    @foreach (var x in Enum.GetValues<ResponsavelManutencao>()) { <option value="@x">@Texto.Rotulo(x)</option> }
+                </select>
+            </label>
+        </div>
+        <div class="grade-2">
+            <label class="campo"><span>Quem pediu</span><InputText class="input" maxlength="200" @bind-Value="Form.SolicitanteNome" /></label>
+            <label class="campo"><span>Telefone de quem pediu</span><InputText class="input" maxlength="30" @bind-Value="Form.SolicitanteTelefone" /></label>
+        </div>
+        <p class="pequeno mudo">Sugestão para @Texto.Rotulo(Form.Categoria).ToLowerInvariant():
+            <b>@Texto.Rotulo(ManutencaoService.ResponsavelSugerido(Form.Categoria)).ToLowerInvariant()</b>.
+            Confira o contrato e o laudo de vistoria; danos por mau uso são do locatário.</p>
+        <div class="acoes-form">
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+            <button type="submit" class="btn-primary" disabled="@Ocupado">@(EditandoId is null ? "Abrir chamado" : "Salvar")</button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public ChamadoForm Form { get; set; } = default!;
+    [Parameter] public Guid? EditandoId { get; set; }
+    /// <summary>Aberto a partir do contrato ou do imóvel: o imóvel já vem escolhido.</summary>
+    [Parameter] public bool ImovelFixo { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public EventCallback<Guid> AoSalvar { get; set; }
+
+    private IReadOnlyList<Opcao> imoveis = [];
+
+    private string ImovelId
+    {
+        get => Form.ImovelId?.ToString() ?? "";
+        set => Form.ImovelId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override async Task OnInitializedAsync() => await Executar(async () => imoveis = await Opcoes.ImoveisAsync(Usuario));
+
+    private void SugerirResponsavel()
+    {
+        if (EditandoId is null) Form.Responsavel = ManutencaoService.ResponsavelSugerido(Form.Categoria);
+    }
+
+    private async Task Salvar()
+    {
+        Guid id = default;
+        if (await Executar(async () =>
+            {
+                if (EditandoId is { } e) { await Servico.AtualizarAsync(Usuario, e, Form); id = e; }
+                else id = await Servico.CriarAsync(Usuario, Form);
+            }))
+            await AoSalvar.InvokeAsync(id);
+    }
+}

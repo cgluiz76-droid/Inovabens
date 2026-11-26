@@ -1,0 +1,251 @@
+@page "/manutencao"
+@attribute [Authorize(Policy = Permissoes.LocacaoVer)]
+@inherits ComponenteBase
+@inject ManutencaoService Servico
+@inject OpcoesService Opcoes
+@inject NavigationManager Nav
+
+@* Manutenção dos imóveis (locação, fase 5): chamados abertos pela equipe, pelo inquilino (link do contrato) ou pelas
+   preventivas; orçamentos, aprovação do proprietário, agenda, conclusão e lançamento do custo. Ficha em /manutencao/{id}. *@
+
+<PageTitle>Manutenção · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Manutenção</h1>
+    @if (PodeEditar)
+    {
+        <div class="acoes-topo">
+            @if (Aba == "preventivas") { <button class="btn-primary" @onclick="NovaPreventiva">+ Preventiva</button> }
+            else { <button class="btn-primary" @onclick="Novo">+ Chamado</button> }
+        </div>
+    }
+</div>
+
+<div class="abas" role="tablist">
+    @foreach (var (chave, rotulo) in Abas)
+    {
+        <a class="aba @(Aba == chave ? "ativa" : "")" href="@($"manutencao?aba={chave}")" role="tab" aria-selected="@(Aba == chave)">@rotulo</a>
+    }
+</div>
+
+<MensagemErro Texto="@(form is null && preventiva is null ? Erro : null)" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@if (Aba == "preventivas")
+{
+    <section class="card">
+        <p class="pequeno mudo">Serviços periódicos (limpeza de caixa d'água, dedetização, revisão do ar…). O chamado abre sozinho
+            @ManutencaoService.DiasAntecedenciaPreventiva dias antes da data e a próxima avança pela periodicidade.</p>
+        @if (preventivas is null) { <p class="carregando">Carregando…</p> }
+        else if (preventivas.Count == 0) { <p class="vazio">Nenhuma preventiva cadastrada.</p> }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Próxima</th><th>Imóvel</th><th>Serviço</th><th>A cada</th><th>Prestador</th><th>Custo</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var p in preventivas)
+                        {
+                            <tr class="@(p.Ativa ? "" : "mudo")">
+                                <td class="nowrap">@Texto.Data(p.ProximaEm)</td>
+                                <td>@p.ImovelCodigo</td>
+                                <td>@p.Titulo<p class="pequeno mudo">@Texto.Rotulo(p.Categoria)@(p.Ativa ? "" : " · pausada")</p></td>
+                                <td class="nowrap">@p.PeriodicidadeMeses @(p.PeriodicidadeMeses == 1 ? "mês" : "meses")</td>
+                                <td>@(p.PrestadorNome ?? "—")</td>
+                                <td>@Texto.Rotulo(p.Responsavel)</td>
+                                <td>@if (PodeEditar) { <button class="btn-ghost mini" @onclick="() => EditarPreventiva(p)">Editar</button> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+else
+{
+    <section class="card">
+        <div class="filtros">
+            <input class="input" type="search" placeholder="Buscar por título ou imóvel" @bind="termo" @bind:after="Carregar" />
+            <select class="input" @bind="status" @bind:after="Carregar" aria-label="Situação">
+                <option value="">@(Aba == "todos" ? "Todas as situações" : "Todos os abertos")</option>
+                @foreach (var s in Enum.GetValues<StatusChamado>()) { <option value="@s">@Texto.Rotulo(s)</option> }
+            </select>
+        </div>
+        @if (chamados is null) { <p class="carregando">Carregando…</p> }
+        else if (chamados.Count == 0) { <p class="vazio">@(Aba == "todos" ? "Nenhum chamado." : "Nenhum chamado em aberto.")</p> }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Chamado</th><th>Imóvel</th><th>Urgência</th><th>Situação</th><th>Prestador</th><th class="num">Valor</th><th>Agendado</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in chamados)
+                        {
+                            <tr>
+                                <td><a href="@($"manutencao/{c.Id}")"><b>@c.Codigo</b></a> @c.Titulo
+                                    <p class="pequeno mudo">@Texto.Rotulo(c.Categoria) · custo: @Texto.Rotulo(c.Responsavel).ToLowerInvariant()
+                                        @(c.Origem == OrigemChamado.EQUIPE ? "" : $" · {Texto.Rotulo(c.Origem).ToLowerInvariant()}") · @Texto.DataHora(c.CriadoEm)</p></td>
+                                <td>@c.ImovelCodigo@if (c.ContratoCodigo is { } cc) { <p class="pequeno mudo"><a href="@($"locacao/{c.ContratoId}")">@cc</a></p> }</td>
+                                <td><span class="badge @(c.Urgencia >= UrgenciaManutencao.ALTA ? "badge-exclusao" : "")">@Texto.Rotulo(c.Urgencia)</span></td>
+                                <td><span class="badge">@Texto.Rotulo(c.Status)</span></td>
+                                <td>@(c.PrestadorNome ?? "—")</td>
+                                <td class="num">@(c.Valor is { } v ? Texto.Moeda(v) : "—")</td>
+                                <td class="nowrap">@(c.AgendadoPara is { } a ? Texto.DataHora(a) : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@if (form is not null)
+{
+    <ChamadoModal Form="form" AoFechar="() => form = null" AoSalvar="@(id => Nav.NavigateTo($"manutencao/{id}"))" />
+}
+
+@if (preventiva is not null)
+{
+    <Modal Titulo="@(preventivaId is null ? "Nova manutenção preventiva" : "Editar preventiva")" AoFechar="() => preventiva = null">
+        <EditForm Model="preventiva" OnValidSubmit="SalvarPreventiva" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <label class="campo">
+                <span>Imóvel</span>
+                <select class="input" @bind="PrevImovel" disabled="@(preventivaId is not null)">
+                    <option value="">Selecione…</option>
+                    @foreach (var i in imoveis) { <option value="@i.Id">@i.Nome</option> }
+                </select>
+                <ValidationMessage For="() => preventiva.ImovelId" />
+            </label>
+            <label class="campo">
+                <span>Serviço</span>
+                <InputText class="input" maxlength="200" @bind-Value="preventiva.Titulo" placeholder="Ex.: limpeza da caixa d'água" />
+                <ValidationMessage For="() => preventiva.Titulo" />
+            </label>
+            <div class="grade-3">
+                <label class="campo">
+                    <span>Categoria</span>
+                    <select class="input" @bind="preventiva.Categoria">
+                        @foreach (var c in Enum.GetValues<CategoriaManutencao>()) { <option value="@c">@Texto.Rotulo(c)</option> }
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>Custo por conta do</span>
+                    <select class="input" @bind="preventiva.Responsavel">
+                        @foreach (var x in Enum.GetValues<ResponsavelManutencao>()) { <option value="@x">@Texto.Rotulo(x)</option> }
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>A cada (meses)</span>
+                    <InputNumber class="input" min="1" max="120" @bind-Value="preventiva.PeriodicidadeMeses" />
+                    <ValidationMessage For="() => preventiva.PeriodicidadeMeses" />
+                </label>
+            </div>
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Próximo serviço em</span>
+                    <InputDate class="input" @bind-Value="preventiva.ProximaEm" />
+                    <ValidationMessage For="() => preventiva.ProximaEm" />
+                </label>
+                <label class="campo">
+                    <span>Prestador habitual</span>
+                    <select class="input" @bind="PrevPrestador">
+                        <option value="">Nenhum</option>
+                        @foreach (var p in prestadores) { <option value="@p.Id">@p.Nome</option> }
+                    </select>
+                </label>
+            </div>
+            <label class="campo"><span>Observação</span><InputText class="input" maxlength="1000" @bind-Value="preventiva.Observacao" /></label>
+            <label class="campo-check"><InputCheckbox @bind-Value="preventiva.Ativa" /> Ativa (desmarque para pausar)</label>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => preventiva = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "aba")] public string? AbaQuery { get; set; }
+    /// <summary>Atalho do imóvel/contrato: abre o formulário já com o imóvel.</summary>
+    [SupplyParameterFromQuery(Name = "imovel")] public Guid? ImovelQuery { get; set; }
+
+    private static readonly (string, string)[] Abas = [("abertos", "Em aberto"), ("todos", "Todos"), ("preventivas", "Preventivas")];
+    private string Aba => Abas.Any(a => a.Item1 == AbaQuery) ? AbaQuery! : "abertos";
+    private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);
+
+    private IReadOnlyList<ChamadoLinha>? chamados;
+    private IReadOnlyList<PreventivaLinha>? preventivas;
+    private IReadOnlyList<Opcao> imoveis = [], prestadores = [];
+    private string? termo;
+    private StatusChamado? status;
+    private ChamadoForm? form;
+    private PreventivaForm? preventiva;
+    private Guid? preventivaId;
+
+    private string PrevImovel
+    {
+        get => preventiva?.ImovelId?.ToString() ?? "";
+        set { if (preventiva is not null) preventiva.ImovelId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    private string PrevPrestador
+    {
+        get => preventiva?.PrestadorId?.ToString() ?? "";
+        set { if (preventiva is not null) preventiva.PrestadorId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Carregar();
+        if (form is null && PodeEditar && ImovelQuery is { } im) form = new ChamadoForm { ImovelId = im };
+    }
+
+    private async Task Carregar() => await Executar(async () =>
+    {
+        if (Aba == "preventivas") preventivas = await Servico.PreventivasAsync(Usuario);
+        else chamados = await Servico.ListarAsync(Usuario, new FiltroChamados(SoAbertos: Aba != "todos" && status is null, Status: status, Termo: termo));
+    });
+
+    private void Novo() { Erro = null; form = new ChamadoForm(); }
+
+    private async Task CarregarOpcoes()
+    {
+        if (imoveis.Count == 0) imoveis = await Opcoes.ImoveisAsync(Usuario);
+        if (prestadores.Count == 0) prestadores = await Servico.PrestadoresAsync(Usuario);
+    }
+
+    private async Task NovaPreventiva()
+    {
+        Erro = null;
+        if (await Executar(CarregarOpcoes)) { preventivaId = null; preventiva = new PreventivaForm { ProximaEm = DatasBR.Hoje().AddMonths(1) }; }
+    }
+
+    private async Task EditarPreventiva(PreventivaLinha p)
+    {
+        Erro = null;
+        if (await Executar(CarregarOpcoes))
+        {
+            preventivaId = p.Id;
+            preventiva = new PreventivaForm
+            {
+                ImovelId = p.ImovelId, Titulo = p.Titulo, Categoria = p.Categoria, Responsavel = p.Responsavel,
+                PeriodicidadeMeses = p.PeriodicidadeMeses, ProximaEm = p.ProximaEm, PrestadorId = p.PrestadorId, Observacao = p.Observacao, Ativa = p.Ativa,
+            };
+        }
+    }
+
+    private async Task SalvarPreventiva()
+    {
+        if (preventiva is null) return;
+        if (await Executar(() => Servico.SalvarPreventivaAsync(Usuario, preventivaId, preventiva)))
+        {
+            Sucesso = $"Preventiva \"{preventiva.Titulo}\" salva.";
+            preventiva = null;
+            await Carregar();
+        }
+    }
+}

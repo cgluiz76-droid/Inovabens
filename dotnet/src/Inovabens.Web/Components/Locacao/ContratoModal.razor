@@ -158,6 +158,9 @@
                     <InputNumber class="input" @bind-Value="Form.IntermediacaoValor" step="0.01" placeholder="= 1º aluguel" />
                 </label>
                 <label class="campo"><span>Repasse (dias após receber)</span><InputNumber class="input" @bind-Value="Form.DiasRepasse" /></label>
+                <label class="campo" title="Conserto por conta do locador até este valor é aprovado sem consultar o proprietário">
+                    <span>Manutenção pré-aprovada até (R$)</span><InputNumber class="input" @bind-Value="Form.LimiteManutencao" step="0.01" />
+                </label>
             </div>
         }
         <h3 class="subtitulo-form">Atraso e rescisão</h3>

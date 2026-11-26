@@ -3,6 +3,8 @@
 @inherits ComponenteBase
 @inject LocacaoService Servico
 @inject LocacaoDocumentosService Documentos
+@inject ManutencaoService Manutencao
+@inject NavigationManager Nav
 
 @* Ficha do contrato: dados, partes, faturas mês a mês (receber, ajustar, recibo), repasses aos locadores e, na fase 3,
    reajuste, renovação/aditivo, preferência na venda, rescisão com acerto e o histórico do contrato. *@
@@ -68,6 +70,7 @@ else
                 <div><dt>Taxa de administração</dt><dd>@c.TaxaAdministracaoPct.ToString("0.##")%</dd></div>
                 <div><dt>Intermediação</dt><dd>@Texto.Moeda(c.IntermediacaoValor) (retido @Texto.Moeda(d.IntermediacaoRetida))</dd></div>
                 <div><dt>Repasse</dt><dd>@c.DiasRepasse dia(s) após receber</dd></div>
+                <div><dt>Manutenção pré-aprovada</dt><dd>@(c.LimiteManutencao > 0 ? $"até {Texto.Moeda(c.LimiteManutencao)}" : "sempre pedir ao proprietário")</dd></div>
             }
             <div><dt>Atraso</dt><dd>multa @c.MultaAtrasoPct.ToString("0.##")% + juros @c.JurosMesPct.ToString("0.##")% a.m.</dd></div>
             <div><dt>Multa rescisória</dt><dd>@c.MultaRescisoriaAlugueis.ToString("0.#") aluguel(éis), proporcional</dd></div>
@@ -277,6 +280,37 @@ else
         }
     </section>
 
+    <section class="card">
+        <div class="titulo-secao">
+            <h2>Manutenção</h2>
+            <a class="btn-ghost mini" href="manutencao">Todos os chamados</a>
+        </div>
+        @if (chamados.Count == 0) { <p class="vazio">Nenhum chamado neste contrato.</p> }
+        else
+        {
+            <ul class="lista-simples">
+                @foreach (var m in chamados)
+                {
+                    <li><a href="@($"manutencao/{m.Id}")"><b>@m.Codigo</b></a> @m.Titulo <span class="badge">@Texto.Rotulo(m.Status)</span>
+                        <span class="pequeno mudo">@Texto.DataHora(m.CriadoEm)@(m.Valor is { } mv ? " · " + Texto.Moeda(mv) : "")</span></li>
+                }
+            </ul>
+        }
+        @if (PodeEditar && c.Status == StatusContratoLocacao.ATIVO)
+        {
+            <div class="acoes-topo">
+                <button class="btn-ghost" @onclick="NovoChamado">+ Chamado</button>
+                <button class="btn-ghost" disabled="@Ocupado" @onclick="LinkInquilino"
+                        title="Link fixo deste contrato para o inquilino pedir reparos (com fotos), sem login">Link do inquilino</button>
+            </div>
+            @if (linkInquilino is not null)
+            {
+                <p class="pequeno">Link para o inquilino: <a href="@linkInquilino.Link" target="_blank" rel="noopener">@linkInquilino.Link</a>
+                    @if (linkInquilino.LinkWhatsapp is { } lw) { <a class="btn-ghost mini" href="@lw" target="_blank" rel="noopener">Enviar pelo WhatsApp</a> }</p>
+            }
+        }
+    </section>
+
     @if (c.Modalidade == ModalidadeLocacao.ADMINISTRACAO && d.Repasses.Count > 0)
     {
         <section class="card">
@@ -343,6 +377,11 @@ else
             </div>
         </section>
     }
+}
+
+@if (novoChamado is not null)
+{
+    <ChamadoModal Form="novoChamado" ImovelFixo="true" AoFechar="() => novoChamado = null" AoSalvar="@(id => Nav.NavigateTo($"manutencao/{id}"))" />
 }
 
 @if (editando is not null && d is not null)
@@ -644,6 +683,9 @@ else
     private AcordoCalculo? calculoAcordo;
 
     private ContratoDetalhe? d;
+    private IReadOnlyList<ChamadoLinha> chamados = [];
+    private ChamadoForm? novoChamado;
+    private LinkInquilino? linkInquilino;
     private ContratoForm? editando;
     private FaturaDetalhe? recebendo, itemFatura, cancelando;
     private RecebimentoLocacaoForm receb = new();
@@ -670,6 +712,7 @@ else
     private async Task Carregar() => await Executar(async () =>
     {
         d = await Servico.ObterAsync(Usuario, Id);
+        chamados = await Manutencao.ListarAsync(Usuario, new FiltroChamados(SoAbertos: false, ContratoId: Id));
         if (modelosContrato.Count == 0)
         {
             modelosContrato = await Documentos.ModelosAsync(Usuario, TipoModeloDocumento.CONTRATO_LOCACAO);
@@ -677,6 +720,16 @@ else
             modeloContrato = modelosContrato.FirstOrDefault()?.Id;
         }
     });
+
+    /* ---------- manutenção ---------- */
+
+    private void NovoChamado()
+    {
+        Erro = null;
+        novoChamado = new ChamadoForm { ImovelId = d!.Contrato.ImovelId, ContratoId = Id, SolicitanteNome = d.Partes.FirstOrDefault(p => p.Papel == PapelContratoLocacao.LOCATARIO)?.Nome };
+    }
+
+    private async Task LinkInquilino() => await Executar(async () => linkInquilino = await Manutencao.LinkInquilinoAsync(Usuario, Id));
 
     /* ---------- documentos e Drive ---------- */
 

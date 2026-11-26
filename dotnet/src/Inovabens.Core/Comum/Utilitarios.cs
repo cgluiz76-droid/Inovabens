@@ -26,6 +26,9 @@ public static class Texto
         ["incendio"] = "incêndio", ["caucao"] = "caução", ["capitalizacao"] = "capitalização",
         ["rescisoria"] = "rescisória", ["previo"] = "prévio", ["renovacao"] = "renovação", ["rescisao"] = "rescisão",
         ["preferencia"] = "preferência", ["locador"] = "locador",
+        ["hidraulica"] = "hidráulica", ["eletrica"] = "elétrica", ["eletrodomestico"] = "eletrodoméstico",
+        ["dedetizacao"] = "dedetização", ["media"] = "média", ["emergencia"] = "emergência", ["orcamento"] = "orçamento",
+        ["aprovacao"] = "aprovação", ["imobiliaria"] = "imobiliária", ["imovel"] = "imóvel", ["manutencao"] = "manutenção",
     };
 
     /// <summary>EM_AQUISICAO -> "Em aquisição" (mesma regra do rotulo() da interface web).</summary>

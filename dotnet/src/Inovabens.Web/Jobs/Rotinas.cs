@@ -94,9 +94,11 @@ public sealed class RotinaFinanceiraDiariaJob(IServiceScopeFactory e, InovabensO
         var avisos = await sp.GetRequiredService<Inovabens.Core.Locacao.LocacaoService>().VerificarVencimentosAsync(ct: ct);
         // regra do Drive: "08 - Locação" nos imóveis para alugar e subpasta de cada contrato ativo
         var pastas = await sp.GetRequiredService<Inovabens.Core.Locacao.LocacaoDocumentosService>().CriarPastasPendentesAsync(ct);
+        // manutenções preventivas: abre o chamado 30 dias antes da data e avança a próxima
+        var preventivas = await sp.GetRequiredService<Inovabens.Core.Locacao.ManutencaoService>().GerarPreventivasAsync(ct: ct);
         var r = await sp.GetRequiredService<AlertasService>().VerificarAtrasadosAsync(ct);
-        Log.LogInformation("Rotina financeira: {Gerados} lançamento(s) gerado(s), {Faturas} fatura(s) de aluguel, {Avisos} aviso(s) de locação, {Pastas} pasta(s) no Drive; alertas {Criados} criado(s), {Resolvidos} resolvido(s)",
-            gerados, faturas, avisos, pastas, r.Criados, r.Resolvidos);
+        Log.LogInformation("Rotina financeira: {Gerados} lançamento(s) gerado(s), {Faturas} fatura(s) de aluguel, {Avisos} aviso(s) de locação, {Pastas} pasta(s) no Drive, {Preventivas} preventiva(s); alertas {Criados} criado(s), {Resolvidos} resolvido(s)",
+            gerados, faturas, avisos, pastas, preventivas, r.Criados, r.Resolvidos);
     }
 }
 

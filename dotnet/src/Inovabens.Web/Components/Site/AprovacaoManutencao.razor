@@ -1,0 +1,81 @@
+@* Link enviado ao proprietário (sem login) para aprovar ou recusar o orçamento de um conserto por conta dele.
+   Mostra o problema, os orçamentos (só nome do prestador, valor e prazo) e um formulário simples, sem JavaScript. *@
+
+<SiteMoldura Avulsa Titulo="@($"Aprovação de reparo · {Dados.Codigo}")" Indexavel="false">
+    <main class="miolo" style="padding-block: 28px; max-width: 720px">
+        <section class="bloco">
+            <span class="rotulo">Inova Bens · manutenção do imóvel</span>
+            <h1 style="font-size: 1.5rem">@Dados.Titulo</h1>
+            <p>@Dados.Imovel</p>
+            <p>@Texto.Rotulo(Dados.Categoria) · urgência @Texto.Rotulo(Dados.Urgencia).ToLowerInvariant() · @Dados.Codigo</p>
+            @if (Dados.Descricao is { } d) { <p style="white-space: pre-line">@d</p> }
+        </section>
+
+        @if (Resultado is "ok")
+        {
+            <p class="lp-form-ok" role="status">Resposta registrada. Obrigado! A Inova Bens segue com o atendimento.</p>
+        }
+        else if (Resultado is { } erro)
+        {
+            <p class="lp-form-ok" role="alert" style="border-left-color: var(--erro, #b3261e)">@erro</p>
+        }
+
+        @if (Dados.Status != StatusChamado.AGUARDANDO_APROVACAO)
+        {
+            <section class="bloco">
+                <h2>Pedido já respondido</h2>
+                <p>
+                    @(Dados.Status == StatusChamado.RECUSADO ? "Recusado" : "Aprovado")
+                    @(Dados.AprovadoPor is { } por ? $"por {por}" : "")
+                    @(Dados.RespondidoEm is { } em ? $"em {Texto.DataHora(em)}" : "").
+                </p>
+                @if (Dados.Obs is { } o) { <p>Observação: @o</p> }
+            </section>
+        }
+        else
+        {
+            <section class="bloco">
+                <h2>Cotações</h2>
+                <p>Marque a cotação que deve ser executada e clique em aprovar.</p>
+                @if (Dados.JustificativaCotacoes is { } jc)
+                {
+                    <p><small>Menos de 3 cotações: @jc</small></p>
+                }
+                <form class="lp-form" method="post" action="@($"/aprovacao/{Token}")">
+                    @foreach (var o in Dados.Orcamentos)
+                    {
+                        <label class="lp-check">
+                            <input type="radio" name="orcamento" value="@o.Id" checked="@(o.Id == Dados.Sugerido)" />
+                            <span>
+                                <strong>@Texto.Moeda(o.Valor)</strong> · @o.Prestador
+                                @(o.PrazoDias is { } p ? $" · prazo {p} dia(s)" : "")
+                                @if (o.Descricao is { } od) { <br /><small>@od</small> }
+                                @if (o.TemCotacao) { <br /><a href="@($"/aprovacao/{Token}/cotacao/{o.Id}")" target="_blank" rel="noopener">Ver cotação</a> }
+                                @if (o.Id == Dados.Sugerido) { <br /><small>(sugerido pela Inova Bens)</small> }
+                            </span>
+                        </label>
+                    }
+                    <label>Seu nome
+                        <input name="nome" maxlength="200" autocomplete="name" />
+                    </label>
+                    <label>Observação (opcional)
+                        <textarea name="obs" rows="3" maxlength="1000"></textarea>
+                    </label>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                        <button type="submit" class="btn btn-ouro" name="decisao" value="aprovar">Aprovar o orçamento marcado</button>
+                        <button type="submit" class="btn btn-linha" name="decisao" value="recusar">Recusar</button>
+                    </div>
+                    <p><small>Dúvidas? Fale com a Inova Bens pelo WhatsApp @SiteMoldura.TelefoneTexto.</small></p>
+                </form>
+            </section>
+        }
+    </main>
+</SiteMoldura>
+
+@code {
+    [Parameter, EditorRequired] public AprovacaoPublica Dados { get; set; } = default!;
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    /// <summary>"ok" depois de responder; outro texto = mensagem de erro.</summary>
+    [Parameter] public string? Resultado { get; set; }
+
+}
