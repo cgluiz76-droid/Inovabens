@@ -67,6 +67,10 @@ button { font: inherit; color: inherit; }
 .btn-tema .sol, :root[data-tema="escuro"] .btn-tema .lua { display: none; }
 :root[data-tema="escuro"] .btn-tema .sol { display: block; }
 @media (max-width: 860px) { .nav { display: none; } .topo .btn-zap { margin-left: auto; } .topo .btn-tema { margin-left: auto; } .topo .btn-tema + .btn-zap { margin-left: 0; } }
+/* celular estreito: menos folga entre marca, tema e WhatsApp para o botão não passar da tela (390px) */
+@media (max-width: 480px) { .topo .miolo { gap: 10px; } .topo .btn-zap { padding-inline: 12px; } }
+/* abaixo de 400px (iPhone SE, Android pequeno) fica só o ícone; o nome acessível vem do aria-label */
+@media (max-width: 400px) { .topo .btn-zap span { display: none; } }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px; padding: 11px 18px; font-weight: 600; cursor: pointer; text-decoration: none; }
 .btn-zap { background: #0f7a40; color: #fff; }
