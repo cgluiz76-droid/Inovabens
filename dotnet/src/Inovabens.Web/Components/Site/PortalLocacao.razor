@@ -1,0 +1,164 @@
+@using Inovabens.Core.Locacao
+@* Portal da locação por link secreto (sem login). Inquilino: faturas, boleto/Pix, recibos, quitação e pedido de reparo.
+   Proprietário: contratos, repasses, extratos e informe de rendimentos. Página estática, sem JavaScript: o Pix
+   copia-e-cola fica num campo só de leitura (toque longo para copiar no celular). *@
+
+<SiteMoldura Avulsa Titulo="Portal da locação · Inova Bens" Indexavel="false">
+    <main class="miolo portal" style="padding-block: 28px; max-width: 820px">
+        <section class="bloco">
+            <span class="rotulo">Inova Bens · portal do @(Inquilino ? "inquilino" : "proprietário")</span>
+            <h1 style="font-size: 1.5rem">Olá, @PrimeiroNome</h1>
+            <p><small>Este link é pessoal: não compartilhe. Dúvidas: @SiteMoldura.TelefoneTexto.</small></p>
+        </section>
+
+        @foreach (var c in Dados.Contratos)
+        {
+            <section class="bloco">
+                <h2>@c.Imovel · contrato @c.Codigo</h2>
+                <p>@c.Endereco</p>
+                <p>
+                    @(c.Status == StatusContratoLocacao.ATIVO ? "Em vigor" : "Encerrado") · aluguel @Texto.Moeda(c.Aluguel) · vence dia @c.DiaVencimento
+                    @if (!Inquilino && c.Inquilino is { } inq) { <text> · inquilino @inq</text> }
+                </p>
+            </section>
+        }
+
+        @if (Inquilino)
+        {
+            var abertas = Dados.Faturas.Where(f => f.Status == StatusFaturaLocacao.ABERTA).OrderBy(f => f.Vencimento).ToList();
+            <section class="bloco">
+                <h2>Para pagar</h2>
+                @if (abertas.Count == 0)
+                {
+                    <p>Nenhuma fatura em aberto. Obrigado!</p>
+                }
+                @foreach (var f in abertas)
+                {
+                    <article class="portal-fatura">
+                        <h3>@Competencia(f) · vence @f.Vencimento.ToString("dd/MM/yyyy")@(f.Vencimento < Hoje ? " (vencida)" : "")</h3>
+                        <p>Saldo @Texto.Moeda(f.Saldo) · <a href="@($"/portal/{Token}/fatura/{f.Id}")" target="_blank" rel="noopener">2ª via da fatura (PDF)</a></p>
+                        @if (f.Boleto is { } b)
+                        {
+                            <p><strong>Boleto: @Texto.Moeda(b.Valor), vence @b.Vencimento.ToString("dd/MM/yyyy")</strong>
+                                @if (b.UrlPdf is { } pdf) { <text> · <a href="@pdf" target="_blank" rel="noopener noreferrer">abrir boleto</a></text> }
+                            </p>
+                            @if (b.LinhaDigitavel is { } linha)
+                            {
+                                <label>Linha digitável<input class="input" readonly value="@linha" /></label>
+                            }
+                            @if (b.PixCopiaCola is { } pix)
+                            {
+                                <label>Pix copia e cola<textarea class="input" readonly rows="3">@pix</textarea></label>
+                            }
+                            <p><small>O pagamento é reconhecido sozinho; o recibo aparece aqui em seguida.</small></p>
+                        }
+                        else
+                        {
+                            <p><small>Para receber o boleto ou o Pix, fale com a Inova Bens.</small></p>
+                        }
+                    </article>
+                }
+            </section>
+
+            var pagas = Dados.Faturas.Where(f => f.Recibos.Count > 0).ToList();
+            <section class="bloco">
+                <h2>Recibos</h2>
+                @if (pagas.Count == 0)
+                {
+                    <p>Nenhum pagamento registrado ainda.</p>
+                }
+                else
+                {
+                    <ul>
+                        @foreach (var f in pagas)
+                        {
+                            @foreach (var r in f.Recibos)
+                            {
+                                <li>@Competencia(f) · pago em @r.Data.ToString("dd/MM/yyyy") · @Texto.Moeda(r.Total) ·
+                                    <a href="@($"/portal/{Token}/recibo/{r.Id}")" target="_blank" rel="noopener">recibo nº @r.Numero.ToString("000000")</a></li>
+                            }
+                        }
+                    </ul>
+                }
+            </section>
+
+            @if (Dados.Anos.Count > 0)
+            {
+                <section class="bloco">
+                    <h2>Declaração de quitação anual</h2>
+                    <p>
+                        @foreach (var a in Dados.Anos)
+                        {
+                            <a class="btn" href="@($"/portal/{Token}/quitacao/{a}")" target="_blank" rel="noopener">@a</a>
+                            <text> </text>
+                        }
+                    </p>
+                </section>
+            }
+
+            @if (Dados.LinkChamado is { } chamado)
+            {
+                <section class="bloco">
+                    <h2>Precisa de um reparo?</h2>
+                    <p><a class="btn btn-ouro" href="@chamado">Abrir pedido de manutenção</a></p>
+                </section>
+            }
+        }
+        else
+        {
+            <section class="bloco">
+                <h2>Repasses</h2>
+                @if (Dados.Repasses.Count == 0)
+                {
+                    <p>Nenhum repasse ainda.</p>
+                }
+                else
+                {
+                    <ul>
+                        @foreach (var r in Dados.Repasses)
+                        {
+                            <li>@r.Previsto.ToString("dd/MM/yyyy") · contrato @r.Contrato · líquido @Texto.Moeda(r.Liquido) · @(r.Pago ? "pago" : "a pagar")</li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="bloco">
+                <h2>Extrato mensal</h2>
+                <p>
+                    @foreach (var m in Dados.Meses)
+                    {
+                        <a class="btn" href="@($"/portal/{Token}/extrato/{m:yyyy-MM}")" target="_blank" rel="noopener">@m.ToString("MM/yyyy")</a>
+                        <text> </text>
+                    }
+                </p>
+            </section>
+
+            @if (Dados.Anos.Count > 0)
+            {
+                <section class="bloco">
+                    <h2>Informe de rendimentos (imposto de renda)</h2>
+                    <p>
+                        @foreach (var a in Dados.Anos)
+                        {
+                            <a class="btn" href="@($"/portal/{Token}/informe/{a}")" target="_blank" rel="noopener">@a</a>
+                            <text> </text>
+                        }
+                    </p>
+                </section>
+            }
+        }
+    </main>
+</SiteMoldura>
+
+@code {
+    [Parameter, EditorRequired] public PortalDados Dados { get; set; } = default!;
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+
+    private bool Inquilino => Dados.Tipo == TipoPortal.INQUILINO;
+    private string PrimeiroNome => ManutencaoNome(Dados.Nome);
+    private static DateOnly Hoje => DatasBR.Hoje();
+
+    private static string ManutencaoNome(string nome) => (nome ?? "").Trim().Split(' ', 2)[0];
+    private static string Competencia(PortalFatura f) => (f.Rescisao ? "Acerto de rescisão " : "Aluguel ") + f.Competencia.ToString("MM/yyyy");
+}

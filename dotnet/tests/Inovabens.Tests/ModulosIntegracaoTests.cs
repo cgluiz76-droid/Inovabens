@@ -672,7 +672,8 @@ public class ModulosIntegracaoTests
 
         var servicos = new ServiceCollection();
         foreach (var t in new[] { typeof(MemorandosService), typeof(AgendaService), typeof(OpcoesService), typeof(UsuariosService), typeof(PerfisService),
-                     typeof(LancamentosFinanceirosService), typeof(IndicesService), typeof(CrmService), typeof(AuditoriaService), typeof(ConfiguracoesService) })
+                     typeof(LancamentosFinanceirosService), typeof(IndicesService), typeof(CrmService), typeof(AuditoriaService), typeof(ConfiguracoesService),
+                     typeof(Inovabens.Core.Locacao.CobrancaBancariaService) })
             servicos.AddSingleton(t, a.S<IServiceProvider>().GetRequiredService(t));
         servicos.AddSingleton(a.S<ILoggerFactory>());
         servicos.AddSingleton<IJSRuntime, SemJs>();

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.RegularExpressions;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Dados;
@@ -29,7 +29,7 @@ public sealed record AdministradorPrincipal(Guid Id, string Nome, string Email);
 public sealed partial class ConfiguracoesService(
     IDbContextFactory<InovabensDb> fabrica, InovabensOpcoes op, AuditService audit,
     IArmazenamento armazenamento, IArmazenamentoPublico publico, MagnificCliente magnific,
-    IGeradorTextosPost claude, MetaPublicador meta)
+    IGeradorTextosPost claude, MetaPublicador meta, ICobrancaBancaria cora)
 {
     /// <summary>Chave interna (fora do catálogo): usuário que é o administrador principal.</summary>
     internal const string ChaveAdministrador = "sistema.admin_usuario_id";
@@ -134,6 +134,9 @@ public sealed partial class ConfiguracoesService(
                 case CatalogoConfiguracoes.Claude:
                     if (claude is not ClaudeTextosPost c || !c.Configurado) throw Falta("Informe a chave da API.");
                     return await c.TestarAsync(ct);
+                case CatalogoConfiguracoes.Cora:
+                    if (!cora.Habilitado) throw Falta("Informe o Client ID, o certificado e a chave privada.");
+                    return await cora.TestarAsync(ct);
                 case CatalogoConfiguracoes.Meta:
                     return await meta.TestarAsync(ct);
                 case CatalogoConfiguracoes.GoogleMaps:
@@ -159,7 +162,7 @@ public sealed partial class ConfiguracoesService(
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or Google.GoogleApiException
                                       or Amazon.S3.AmazonS3Exception or Amazon.Runtime.AmazonServiceException
-                                      or MagnificRecusouException or JsonException or MetaRecusouException or ServicoIndisponivelException)
+                                      or MagnificRecusouException or JsonException or MetaRecusouException or ServicoIndisponivelException or CoraRecusouException)
         {
             throw new RegraNegocioException(grupo, "Falha na conexão: " + (e.Message.Length > 300 ? e.Message[..300] : e.Message));
         }
@@ -204,12 +207,15 @@ public sealed partial class ConfiguracoesService(
         await db.SaveChangesAsync();
     }
 
-    private async Task<Usuario?> AdministradorDe(InovabensDb db)
+    private Task<Usuario?> AdministradorDe(InovabensDb db) => AdministradorPrincipalAsync(db, op.SeedAdminEmail);
+
+    /// <summary>Também usado pelas rotinas automáticas (baixa do boleto) para registrar em nome do administrador.</summary>
+    internal static async Task<Usuario?> AdministradorPrincipalAsync(InovabensDb db, string seedEmail)
     {
         var ativos = db.Usuarios.Where(x => x.Ativo && x.ExcluidoEm == null);
         var salvo = await db.Configuracoes.AsNoTracking().Where(c => c.Chave == ChaveAdministrador).Select(c => c.Valor).FirstOrDefaultAsync();
         if (Guid.TryParse(salvo, out var id) && await ativos.FirstOrDefaultAsync(x => x.Id == id) is { } escolhido) return escolhido;
-        var seed = op.SeedAdminEmail.ToLowerInvariant();
+        var seed = seedEmail.ToLowerInvariant();
         return await ativos.FirstOrDefaultAsync(x => x.Email == seed)
             ?? await ativos.Where(x => x.Perfil!.Nome == PerfisService.PerfilAdmin).OrderBy(x => x.CriadoEm).FirstOrDefaultAsync();
     }

@@ -1,4 +1,4 @@
-using Inovabens.Core;
+﻿using Inovabens.Core;
 using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Crm;
@@ -76,6 +76,22 @@ public sealed class AlertasCompromissosJob(IServiceScopeFactory e, InovabensOpco
     {
         var r = await sp.GetRequiredService<AlertasService>().VerificarCompromissosAsync(ct);
         if (r.Criados + r.Resolvidos > 0) Log.LogInformation("Alertas de compromissos: {Criados} criado(s), {Resolvidos} resolvido(s)", r.Criados, r.Resolvidos);
+    }
+}
+
+/// <summary>
+/// De hora em hora (com o Banco Cora configurado): confere os boletos em aberto. Cobre aviso do banco que não chegou,
+/// dá baixa do que foi pago e cancela boleto de fatura quitada à mão.
+/// </summary>
+public sealed class BoletosCoraJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<BoletosCoraJob> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "boletos do Cora";
+    protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 60);
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<Inovabens.Core.Locacao.CobrancaBancariaService>().SincronizarAsync(ct);
+        if (n > 0) Log.LogInformation("Boletos do Cora: {Qtd} atualizado(s)", n);
     }
 }
 

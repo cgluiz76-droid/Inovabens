@@ -74,6 +74,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<ManutencaoPreventiva> ManutencoesPreventivas => Set<ManutencaoPreventiva>();
     public DbSet<Vistoria> Vistorias => Set<Vistoria>();
     public DbSet<PendenciaVistoria> PendenciasVistoria => Set<PendenciaVistoria>();
+    public DbSet<FaturaBoleto> FaturaBoletos => Set<FaturaBoleto>();
+    public DbSet<PortalAcesso> PortalAcessos => Set<PortalAcesso>();
     public DbSet<ExtratoImportacao> ExtratoImportacoes => Set<ExtratoImportacao>();
     public DbSet<ExtratoItem> ExtratoItens => Set<ExtratoItem>();
     public DbSet<RegraConciliacao> RegrasConciliacao => Set<RegraConciliacao>();
@@ -340,6 +342,17 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
             e.Property(x => x.Status).HasConversion<string>();
             e.HasOne<Vistoria>().WithMany().HasForeignKey(x => x.VistoriaId);
             e.HasOne<ChamadoManutencao>().WithMany().HasForeignKey(x => x.ChamadoId);
+        });
+        mb.Entity<FaturaBoleto>(e =>
+        {
+            e.HasOne<FaturaLocacao>().WithMany().HasForeignKey(x => x.FaturaId);
+            e.HasOne<FaturaLocacaoPagamento>().WithMany().HasForeignKey(x => x.PagamentoId);
+        });
+        mb.Entity<PortalAcesso>(e =>
+        {
+            e.Property(x => x.Tipo).HasConversion<string>();
+            e.HasOne<ContratoLocacao>().WithMany().HasForeignKey(x => x.ContratoId);
+            e.HasOne<Pessoa>().WithMany().HasForeignKey(x => x.PessoaId);
         });
         mb.Entity<ManutencaoPreventiva>(e =>
         {

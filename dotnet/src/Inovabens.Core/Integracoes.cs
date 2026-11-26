@@ -23,7 +23,7 @@ public static class CatalogoConfiguracoes
 {
     public const string GoogleDrive = "google_drive", R2 = "r2", Magnific = "magnific", GoogleAgenda = "google_agenda",
         GoogleMaps = "google_maps", Site = "site", Imobibrasil = "imobibrasil", Whatsapp = "whatsapp",
-        Claude = "claude", Meta = "meta", Crm = "crm", GeradorPaginas = "gerador_paginas";
+        Claude = "claude", Meta = "meta", Crm = "crm", GeradorPaginas = "gerador_paginas", Cora = "cora";
 
     /// <summary>Distribuição dos leads novos do WhatsApp: fila aberta (padrão) ou rodízio entre os corretores.</summary>
     public const string DistribuicaoFila = "fila", DistribuicaoRodizio = "rodizio";
@@ -64,6 +64,11 @@ public static class CatalogoConfiguracoes
             "O sistema usa só o Google Maps. No Google Cloud (APIs e serviços), ative a Geocoding API e a Maps JavaScript API e crie " +
             "duas chaves: a da Geocoding API (fica só no servidor; restrinja à Geocoding API) e a do mapa (vai para o navegador; " +
             "restrinja à Maps JavaScript API e aos sites https://SEU-SITE/*). Sem elas, o mapa e o botão Localizar não funcionam.", Testavel: true),
+        new(Cora, "Banco Cora (boleto e Pix da locação)",
+            "Emite boleto com QR Code Pix para as faturas de aluguel e dá baixa sozinho quando o inquilino paga. Exige a " +
+            "Integração Direta do Cora (plano Cora Pro ou cobrança por boleto): no Cora Web, Conta → Integrações via APIs, gere o " +
+            "certificado, a chave privada e o Client ID (o ambiente de testes tem credenciais próprias). Depois de salvar, use " +
+            "\"Testar conexão\" e, na Locação, \"Registrar webhook\" para o Cora avisar os pagamentos.", Testavel: true),
         new(Site, "Site da Inovabens", "Dados de contato exibidos no site e usados nos anúncios."),
         new(Whatsapp, "WhatsApp Business (leads no CRM)",
             "Cada mensagem recebida no WhatsApp da empresa cria um lead na primeira coluna do funil (ou entra no histórico do lead " +
@@ -143,6 +148,19 @@ public static class CatalogoConfiguracoes
         new("gerador_paginas.chave", GeradorPaginas, "Chave de acesso da ferramenta",
             "Texto longo e aleatório (40 caracteres ou mais); o mesmo vai no appsettings.Local.json do GeradorPaginas.",
             Secreto: true, Variavel: "GERADOR_PAGINAS_CHAVE"),
+
+        new("cora.ambiente", Cora, "Ambiente", Tipo: TipoCampoConfig.Selecao, Padrao: "stage",
+            Opcoes: [new("stage", "Testes (stage): boletos sem valor"), new("producao", "Produção: boletos reais")]),
+        new("cora.client_id", Cora, "Client ID", Variavel: "CORA_CLIENT_ID"),
+        new("cora.certificado", Cora, "Certificado (arquivo .pem)", "Conteúdo completo, de -----BEGIN CERTIFICATE----- a -----END CERTIFICATE-----.",
+            Variavel: "CORA_CERTIFICADO", Tipo: TipoCampoConfig.Multilinha),
+        new("cora.chave_privada", Cora, "Chave privada (arquivo .key)", "Conteúdo completo, de -----BEGIN ... PRIVATE KEY----- até o fim.",
+            Secreto: true, Variavel: "CORA_CHAVE_PRIVADA", Tipo: TipoCampoConfig.Multilinha),
+        new("cora.webhook_token", Cora, "Token do webhook",
+            "Texto longo e aleatório (40 caracteres ou mais) criado por você: vai no endereço que o Cora chama ao confirmar um pagamento.",
+            Secreto: true, Variavel: "CORA_WEBHOOK_TOKEN"),
+        new("cora.conta", Cora, "Conta no Financeiro", "Nome da conta bancária (Financeiro da Imobiliária) onde entram os pagamentos.",
+            Padrao: "Cora"),
 
         new("imobibrasil.site", Imobibrasil, "Endereço do site no Imobibrasil", Variavel: "IMOBIBRASIL_SITE",
             Tipo: TipoCampoConfig.Url, Padrao: "https://www.inovabens.com.br"),
@@ -226,6 +244,14 @@ public sealed class Integracoes(IReadOnlyDictionary<string, string> valores)
     public string? MetaPageToken => this["meta.page_token"];
     public string MetaVersao => this["meta.versao"] ?? "v23.0";
     public bool MetaConfigurado => MetaPageToken is not null && (MetaPageId is not null || MetaInstagramId is not null);
+
+    public bool CoraProducao => this["cora.ambiente"] == "producao";
+    public string? CoraClientId => this["cora.client_id"];
+    public string? CoraCertificado => this["cora.certificado"];
+    public string? CoraChavePrivada => this["cora.chave_privada"];
+    public string? CoraWebhookToken => this["cora.webhook_token"];
+    public string CoraConta => this["cora.conta"] ?? "Cora";
+    public bool CoraConfigurado => CoraClientId is not null && CoraCertificado is not null && CoraChavePrivada is not null;
 
     public string? GoogleClientId => this["google_agenda.client_id"];
     public string? GoogleClientSecret => this["google_agenda.client_secret"];

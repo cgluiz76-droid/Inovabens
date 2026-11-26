@@ -1,4 +1,4 @@
-using Inovabens.Core.Admin;
+﻿using Inovabens.Core.Admin;
 using Inovabens.Core.Agenda;
 using Inovabens.Core.Comum;
 using Inovabens.Core.Crm;
@@ -29,6 +29,7 @@ public static class Registro
         services.AddSingleton<IArmazenamento, GoogleDriveArmazenamento>();
         services.AddScoped<PastasDriveService>();
         services.AddSingleton<IArmazenamentoPublico, R2ArmazenamentoPublico>();
+        services.AddSingleton<ICobrancaBancaria, CoraCobranca>(); // Banco Cora: boleto/Pix da locação (fase 7)
         services.AddScoped<PublicacaoFotosService>();
         services.AddScoped<ContextoConexao>();
         services.AddScoped<AuditService>();
@@ -37,6 +38,8 @@ public static class Registro
         services.AddScoped<Locacao.ManutencaoService>();
         services.AddScoped<Locacao.VistoriaService>();
         services.AddScoped<Locacao.LocacaoRelatoriosService>();
+        services.AddScoped<Locacao.CobrancaBancariaService>();
+        services.AddScoped<Locacao.PortalService>();
         services.AddScoped<AuthService>();
         services.AddScoped<OpcoesService>();
         services.AddScoped<ImoveisService>();

@@ -1,6 +1,7 @@
-@inherits ComponenteBase
+﻿@inherits ComponenteBase
 @inject ConfiguracoesService Configuracoes
 @inject IJSRuntime JS
+@inject Inovabens.Core.Locacao.CobrancaBancariaService Cobranca
 
 @* Administrador principal e integrações (Drive, R2, Magnific, Google, site e portais), em Administração → Configurações. *@
 
@@ -111,6 +112,11 @@
                     {
                         <button class="btn-ghost" disabled="@Ocupado" @onclick="() => Testar(g)">Testar conexão</button>
                     }
+                    @if (g.Codigo == CatalogoConfiguracoes.Cora)
+                    {
+                        <button class="btn-ghost" disabled="@Ocupado" @onclick="RegistrarWebhookCora"
+                                title="Cadastra no Cora o endereço que avisa os pagamentos (baixa automática). Faça uma vez, no sistema publicado.">Registrar webhook</button>
+                    }
                     @if (Alterados(g.Codigo).Any())
                     {
                         <button class="btn-ghost" disabled="@Ocupado" @onclick="() => Descartar(g.Codigo)">Descartar alterações</button>
@@ -202,6 +208,15 @@
         grupoMensagem = g.Codigo;
         if (ok)
             Sucesso = Alterados(g.Codigo).Any() ? msg + " (testado com a configuração salva; salve as alterações para testá-las)" : msg;
+    }
+
+    private async Task RegistrarWebhookCora()
+    {
+        grupoMensagem = CatalogoConfiguracoes.Cora;
+        string? msg = null;
+        var ok = await Executar(async () => msg = await Cobranca.RegistrarWebhookAsync(Usuario));
+        grupoMensagem = CatalogoConfiguracoes.Cora;
+        if (ok) Sucesso = msg;
     }
 
     private async Task SalvarEmailAdmin()

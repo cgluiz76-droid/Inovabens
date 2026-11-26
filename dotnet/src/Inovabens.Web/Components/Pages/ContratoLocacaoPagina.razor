@@ -1,10 +1,12 @@
-@page "/locacao/{Id:guid}"
+﻿@page "/locacao/{Id:guid}"
 @attribute [Authorize(Policy = Permissoes.LocacaoVer)]
 @inherits ComponenteBase
 @inject LocacaoService Servico
 @inject LocacaoDocumentosService Documentos
 @inject ManutencaoService Manutencao
 @inject VistoriaService Vistorias
+@inject CobrancaBancariaService Cobranca
+@inject PortalService Portal
 @inject NavigationManager Nav
 
 @* Ficha do contrato: dados, partes, faturas mês a mês (receber, ajustar, recibo), repasses aos locadores e, na fase 3,
@@ -224,6 +226,42 @@ else
         </div>
     </section>
 
+    @if (c.Status is StatusContratoLocacao.ATIVO or StatusContratoLocacao.ENCERRADO)
+    {
+        <section class="card">
+            <div class="titulo-secao"><h2>Portal do inquilino e dos proprietários</h2></div>
+            <p class="pequeno mudo">Link secreto, sem senha. O inquilino vê as faturas, paga por boleto ou Pix, baixa recibos e a quitação anual;
+                o proprietário acompanha repasses e baixa extratos e o informe de rendimentos. Revogar corta o acesso na hora.</p>
+            @if (portais.Count > 0)
+            {
+                <ul class="lista-simples">
+                    @foreach (var l in portais)
+                    {
+                        <li><b>@(l.Tipo == TipoPortal.INQUILINO ? "Inquilino" : "Proprietário")</b> @l.Nome ·
+                            <a href="@l.Link" target="_blank" rel="noopener">abrir</a>
+                            @if (l.LinkWhatsapp is { } pw) { <a class="btn-ghost mini" href="@pw" target="_blank" rel="noopener">Enviar pelo WhatsApp</a> }
+                            <span class="pequeno mudo">@l.Acessos acesso(s)@(l.UltimoAcesso is { } ua ? ", último " + Texto.DataHora(ua) : "")</span>
+                            @if (PodeEditar) { <button class="btn-ghost mini" disabled="@Ocupado" title="O link deixa de funcionar; depois dá para gerar outro" @onclick="() => RevogarPortal(l)">Revogar</button> }
+                        </li>
+                    }
+                </ul>
+            }
+            @if (PodeEditar)
+            {
+                <div class="acoes-topo">
+                    @if (!portais.Any(l => l.Tipo == TipoPortal.INQUILINO) && d.Partes.Any(p => p.Papel == PapelContratoLocacao.LOCATARIO))
+                    {
+                        <button class="btn-ghost" disabled="@Ocupado" @onclick="() => GerarPortal(null)">Link do inquilino</button>
+                    }
+                    @foreach (var p in d.Partes.Where(p => p.Papel == PapelContratoLocacao.LOCADOR && !portais.Any(l => l.PessoaId == p.PessoaId)))
+                    {
+                        <button class="btn-ghost" disabled="@Ocupado" @onclick="() => GerarPortal(p.PessoaId)">Link de @(p.Nome.Trim().Split(' ', 2)[0])</button>
+                    }
+                </div>
+            }
+        </section>
+    }
+
     <section class="card">
         <div class="titulo-secao"><h2>Faturas</h2></div>
         @if (d.Faturas.Count == 0)
@@ -268,6 +306,26 @@ else
                                             }
                                         </div>
                                     }
+                                    @foreach (var b in boletos.Where(b => b.FaturaId == f.Id && (b.Ativo || b.Erro != null)))
+                                    {
+                                        <div class="pequeno @(b.Erro is null ? "" : "texto-erro")">
+                                            Boleto @Texto.Moeda(b.Valor) · vence @Texto.Data(b.Vencimento) · @StatusBoleto(b.Status)
+                                            @if (b.Erro is { } be) { <span> · @be</span> }
+                                            @if (b.Ativo)
+                                            {
+                                                @if (b.UrlPdf is { } up) { <a class="btn-ghost mini" href="@up" target="_blank" rel="noopener noreferrer">PDF</a> }
+                                                <button class="btn-ghost mini" @onclick="() => boletoAberto = boletoAberto == b.Id ? null : b.Id">Linha/Pix</button>
+                                                @if (PodeReceber) { <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => CancelarBoleto(b)">Cancelar boleto</button> }
+                                            }
+                                        </div>
+                                        @if (boletoAberto == b.Id)
+                                        {
+                                            <div class="pequeno">
+                                                <input class="input" readonly value="@b.LinhaDigitavel" aria-label="Linha digitável" />
+                                                <textarea class="input" readonly rows="2" aria-label="Pix copia e cola">@b.PixCopiaCola</textarea>
+                                            </div>
+                                        }
+                                    }
                                     @if (f.Observacao is not null) { <p class="pequeno mudo">@f.Observacao</p> }
                                 </td>
                                 <td class="num">@Texto.Moeda(f.Total)</td>
@@ -286,6 +344,12 @@ else
                                     @if (PodeReceber && f.Status == StatusFaturaLocacao.ABERTA)
                                     {
                                         <button class="btn-primary mini" @onclick="() => AbrirRecebimento(f)">Receber</button>
+                                        @if (Cobranca.Habilitado)
+                                        {
+                                            <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => EmitirBoleto(f)"
+                                                    title="Boleto com Pix no Banco Cora; o pagamento dá baixa sozinho. Vencida: vence hoje, com multa e juros até hoje">
+                                                @(boletos.Any(b => b.FaturaId == f.Id && b.Ativo) ? "Reemitir boleto" : "Boleto")</button>
+                                        }
                                         <button class="btn-ghost mini" @onclick="() => AbrirItem(f)">+ Item</button>
                                         @if (f.Pago == 0)
                                         {
@@ -742,6 +806,9 @@ else
     private VistoriaForm? novaVistoria;
     private DebitosVistoria? debitosVistoria;
     private LinkInquilino? linkInquilino;
+    private IReadOnlyList<FaturaBoleto> boletos = [];
+    private IReadOnlyList<PortalLink> portais = [];
+    private Guid? boletoAberto;
     private ContratoForm? editando;
     private FaturaDetalhe? recebendo, itemFatura, cancelando;
     private RecebimentoLocacaoForm receb = new();
@@ -773,6 +840,8 @@ else
         d = await Servico.ObterAsync(Usuario, Id);
         chamados = await Manutencao.ListarAsync(Usuario, new FiltroChamados(SoAbertos: false, ContratoId: Id));
         vistorias = await Vistorias.ListarAsync(Usuario, Id);
+        boletos = await Cobranca.BoletosAsync(Usuario, Id);
+        portais = await Portal.LinksAsync(Usuario, Id);
         if (modelosContrato.Count == 0)
         {
             modelosContrato = await Documentos.ModelosAsync(Usuario, TipoModeloDocumento.CONTRATO_LOCACAO);
@@ -796,6 +865,48 @@ else
         var temEntrada = vistorias.Any(x => x.Tipo == TipoVistoria.ENTRADA && x.Status != StatusVistoria.CANCELADA);
         novaVistoria = new VistoriaForm { ContratoId = Id, Tipo = temEntrada ? TipoVistoria.SAIDA : TipoVistoria.ENTRADA };
     }
+
+    /* ---------- boleto (Cora) e portal ---------- */
+
+    private async Task EmitirBoleto(FaturaDetalhe f)
+    {
+        FaturaBoleto? b = null;
+        if (await Executar(async () => b = await Cobranca.EmitirAsync(Usuario, f.Id)))
+        {
+            await Carregar();
+            boletoAberto = b!.Id;
+            Sucesso = $"Boleto de {Texto.Moeda(b.Valor)} emitido. Envie o portal do inquilino ou copie a linha/Pix.";
+        }
+    }
+
+    private async Task CancelarBoleto(FaturaBoleto b)
+    {
+        if (await Executar(() => Cobranca.CancelarAsync(Usuario, b.Id)))
+        {
+            await Carregar();
+            Sucesso = "Boleto cancelado no banco.";
+        }
+    }
+
+    private async Task GerarPortal(Guid? pessoaId)
+    {
+        if (await Executar(() => Portal.GerarLinkAsync(Usuario, Id, pessoaId))) await Carregar();
+    }
+
+    private async Task RevogarPortal(PortalLink l)
+    {
+        if (await Executar(() => Portal.RevogarAsync(Usuario, Id, l.Id)))
+        {
+            await Carregar();
+            Sucesso = "Link revogado: deixou de funcionar.";
+        }
+    }
+
+    private static string StatusBoleto(string s) => s switch
+    {
+        "OPEN" or "INITIATED" or "DRAFT" => "em aberto", "LATE" => "vencido", "IN_PAYMENT" => "em pagamento",
+        "PAID" => "pago", "CANCELLED" => "cancelado", _ => s.ToLowerInvariant(),
+    };
 
     private async Task LinkInquilino() => await Executar(async () => linkInquilino = await Manutencao.LinkInquilinoAsync(Usuario, Id));
 

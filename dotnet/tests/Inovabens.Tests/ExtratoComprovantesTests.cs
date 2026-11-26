@@ -39,6 +39,7 @@ public class ExtratoComprovantesTests : IAsyncLifetime
         }).Build(), producao: false);
         var servicos = new ServiceCollection().AddLogging().AddInovabensCore(op);
         servicos.AddSingleton<IArmazenamento>(_drive); // substitui o Google Drive
+        servicos.AddSingleton<ICobrancaBancaria>(CoraSimulado.Instancia); // substitui o Banco Cora
         return servicos.BuildServiceProvider();
     }
 

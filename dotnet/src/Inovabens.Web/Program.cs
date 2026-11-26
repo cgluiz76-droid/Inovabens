@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Inovabens.Core.Crm;
 using Inovabens.Core;
 using Inovabens.Core.Comum;
@@ -28,6 +28,7 @@ builder.Services.AddInovabensCore(opcoes);
 builder.Services.AddHostedService<SincronizacaoIndicesJob>();
 builder.Services.AddHostedService<TaxasFinanciamentoJob>();
 builder.Services.AddHostedService<AlertasCompromissosJob>();
+builder.Services.AddHostedService<BoletosCoraJob>();
 builder.Services.AddHostedService<ExpiracaoPropostasJob>();
 builder.Services.AddHostedService<PrazosEtapasJob>();
 builder.Services.AddHostedService<RotinaFinanceiraDiariaJob>();
@@ -90,7 +91,7 @@ builder.Services.AddRateLimiter(o =>
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(c =>
         // site aberto a visitantes (páginas e fotos sem login): teto generoso por endereço, contra robôs que varrem tudo
         // (a lista pode ter 200 cartões, cada um com a sua foto)
-        !HttpMethods.IsPost(c.Request.Method) ? (c.Request.Path.StartsWithSegments("/site")
+        !HttpMethods.IsPost(c.Request.Method) ? (c.Request.Path.StartsWithSegments("/site") || c.Request.Path.StartsWithSegments("/portal")
             ? RateLimitPartition.GetFixedWindowLimiter("site:" + (c.Connection.RemoteIpAddress?.ToString() ?? "?"),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1) })
             : RateLimitPartition.GetNoLimiter(""))
@@ -738,6 +739,39 @@ app.MapGet("/api/v1/integracoes/google/callback", async (string? code, string? s
         return Results.Redirect("/agenda?google=erro");
     }
 }).AllowAnonymous();
+// Portal da locação (fase 7): link secreto do inquilino ou do proprietário, sem login. Documentos gerados na hora,
+// só depois de conferir que pertencem a quem abriu o link (link inválido ou revogado: 404).
+var portal = app.MapGroup("portal/{token}").AllowAnonymous();
+portal.MapGet("", async (string token, HttpContext c, Inovabens.Core.Locacao.PortalService s) =>
+{
+    var dados = await s.PortalAsync(token, c.RequestAborted);
+    if (dados is null) return Results.NotFound();
+    c.Response.Headers.CacheControl = "private, no-store";
+    c.Response.Headers["Referrer-Policy"] = "no-referrer"; // o token não vaza para o banco ao abrir o boleto
+    return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.PortalLocacao>(new { Dados = dados, Token = token });
+});
+static IResult PdfPortal(HttpContext c, Inovabens.Core.Relatorios.Arquivo? a)
+{
+    if (a is null) return Results.NotFound();
+    c.Response.Headers.CacheControl = "private, no-store";
+    return Results.File(a.Conteudo, a.Tipo, a.Nome);
+}
+portal.MapGet("recibo/{id:guid}", async (string token, Guid id, HttpContext c, Inovabens.Core.Locacao.PortalService s) =>
+    PdfPortal(c, await s.ReciboAsync(token, id, c.RequestAborted)));
+portal.MapGet("fatura/{id:guid}", async (string token, Guid id, HttpContext c, Inovabens.Core.Locacao.PortalService s) =>
+    PdfPortal(c, await s.SegundaViaAsync(token, id, c.RequestAborted)));
+portal.MapGet("quitacao/{ano:int}", async (string token, int ano, HttpContext c, Inovabens.Core.Locacao.PortalService s) =>
+    PdfPortal(c, await s.QuitacaoAsync(token, ano, c.RequestAborted)));
+portal.MapGet("extrato/{mes}", async (string token, string mes, HttpContext c, Inovabens.Core.Locacao.PortalService s) =>
+    DateOnly.TryParseExact(mes + "-01", "yyyy-MM-dd", out var m) ? PdfPortal(c, await s.ExtratoAsync(token, m, c.RequestAborted)) : Results.NotFound());
+portal.MapGet("informe/{ano:int}", async (string token, int ano, HttpContext c, Inovabens.Core.Locacao.PortalService s) =>
+    PdfPortal(c, await s.InformeAsync(token, ano, c.RequestAborted)));
+
+// Banco Cora: aviso de boleto (sem corpo; id no cabeçalho webhook-resource-id). O aviso não é assinado: o token
+// secreto do caminho filtra e a situação vale pela consulta ao próprio banco. Token errado: 404.
+app.MapPost("/api/v1/webhooks/cora/{token}", async (string token, HttpRequest req, Inovabens.Core.Locacao.CobrancaBancariaService s) =>
+    await s.ProcessarWebhookAsync(token, req.Headers["webhook-resource-id"].ToString(), req.HttpContext.RequestAborted) ? Results.Ok() : Results.NotFound())
+    .AllowAnonymous().DisableAntiforgery();
 app.MapPost("/api/v1/webhooks/google/calendar", async (HttpRequest req, GoogleService g) =>
 {
     await g.WebhookAsync(req.Headers["x-goog-channel-id"], req.Headers["x-goog-channel-token"], req.Headers["x-goog-resource-state"]);
