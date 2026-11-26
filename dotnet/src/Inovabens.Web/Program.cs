@@ -398,6 +398,9 @@ app.MapGet("/locacao/{id:guid}/preferencia.pdf", (Guid id, HttpContext c, Inovab
 // Locação: contrato ou acordo preenchido a partir de um modelo Word (?modelo=&acordo=historicoId)
 app.MapGet("/locacao/{id:guid}/documento", (Guid id, Guid modelo, Guid? acordo, HttpContext c, Inovabens.Core.Locacao.LocacaoDocumentosService s) =>
     Baixar(c, u => s.GerarAsync(u, id, modelo, acordo))).RequireAuthorization(Permissoes.LocacaoVer);
+// Locação: laudo da vistoria (PDF da empresa de vistoria, guardado no Drive)
+app.MapGet("/locacao/vistoria/{id:guid}/laudo", (Guid id, HttpContext c, Inovabens.Core.Locacao.VistoriaService s) =>
+    Baixar(c, u => s.LaudoAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 

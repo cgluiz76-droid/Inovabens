@@ -61,7 +61,7 @@ public sealed class ManutencaoService(IDbContextFactory<InovabensDb> fabrica, Au
 
     private string Url(string caminho) => $"{op.WebUrl.TrimEnd('/')}/{caminho}";
 
-    private static string Endereco(Imovel i) =>
+    internal static string Endereco(Imovel i) =>
         string.Join(", ", new[] { i.Logradouro is null ? null : $"{i.Logradouro}{(i.Numero is null ? "" : ", " + i.Numero)}", i.Complemento, i.Bairro,
             i.Cidade is null ? null : $"{i.Cidade}{(i.Uf is null ? "" : "/" + i.Uf)}" }.Where(x => !string.IsNullOrWhiteSpace(x)));
 
@@ -464,73 +464,14 @@ public sealed class ManutencaoService(IDbContextFactory<InovabensDb> fabrica, Au
         var contrato = c.ContratoId is { } cid ? await db.ContratosLocacao.SingleAsync(x => x.Id == cid) : null;
         var cobranca = form.Cobranca!.Value;
         var valor = form.ValorFinal!.Value;
-        switch (cobranca)
-        {
-            case CobrancaManutencao.REPASSE when contrato?.Modalidade != ModalidadeLocacao.ADMINISTRACAO:
-                throw new RegraNegocioException(nameof(form.Cobranca), "Desconto no repasse só em contrato de administração.");
-            case CobrancaManutencao.FATURA when contrato?.Status != StatusContratoLocacao.ATIVO:
-                throw new RegraNegocioException(nameof(form.Cobranca), "Cobrança na fatura só com contrato ativo.");
-        }
+        ValidarCobranca(cobranca, contrato);
         var prestador = c.PrestadorId is { } pid ? await db.Pessoas.AsNoTracking().Where(p => p.Id == pid).Select(p => p.NomeRazao).SingleOrDefaultAsync() : null;
         var desc = $"Manutenção {c.Codigo} — {c.Titulo}";
         if (desc.Length > 200) desc = desc[..200];
         var venc = form.VencimentoPrestador ?? form.Data!.Value;
-
-        if (valor > 0 && cobranca != CobrancaManutencao.DIRETO)
-        {
-            var peloImovel = cobranca == CobrancaManutencao.IMOVEL || contrato?.Modalidade == ModalidadeLocacao.PROPRIO;
-            if (peloImovel)
-            {
-                // imóvel próprio/sócios: despesa no financeiro do imóvel (entra no retorno do investimento)
-                var conta = await db.ContasOrcamentarias.Where(x => x.Nome == ContaManutencaoImovel && x.Tipo == TipoConta.DESPESA)
-                    .Select(x => (Guid?)x.Id).FirstOrDefaultAsync()
-                    ?? throw new RegraNegocioException("_", $"Crie a conta de despesa \"{ContaManutencaoImovel}\" no financeiro dos imóveis.");
-                var l = new LancamentoFinanceiro
-                {
-                    ImovelId = c.ImovelId, Situacao = SituacaoLancamento.ABERTO, Data = venc, Valor = valor, Descricao = desc, ContaId = conta,
-                    PessoaId = c.PrestadorId, PessoaNome = prestador, Competencia = CalculoLocacao.MesDe(form.Data!.Value), CriadoPor = u.Id, AtualizadoPor = u.Id,
-                };
-                l.Numero = await LancamentosFinanceirosService.ProximoNumero(db, c.ImovelId);
-                db.LancamentosFinanceiros.Add(l);
-                audit.Registrar(db, u.Id, "lancamentos_financeiros", l.Id, "CRIAR", depois: l);
-                c.LancamentoImovelId = l.Id;
-            }
-            else
-            {
-                await MesesFechados.Garantir(db, venc);
-                var (cat, grupo) = cobranca switch
-                {
-                    CobrancaManutencao.REPASSE => (CategoriaPagoPeloProprietario, GrupoCategoriaEmpresa.TERCEIROS),
-                    CobrancaManutencao.FATURA => (CategoriaPagoPeloInquilino, GrupoCategoriaEmpresa.TERCEIROS),
-                    _ => (CategoriaManutencaoImobiliaria, GrupoCategoriaEmpresa.DESPESA),
-                };
-                var l = new LancamentoEmpresa
-                {
-                    Descricao = desc, Valor = -valor, Vencimento = venc, Competencia = CalculoLocacao.MesDe(venc),
-                    CategoriaId = await LocacaoService.Categoria(db, cat, TipoCategoriaEmpresa.SAIDA, grupo),
-                    PessoaId = c.PrestadorId, PessoaNome = prestador, ImovelId = c.ImovelId, Documento = "Nota/recibo do prestador",
-                    Observacao = Texto.Limpo(form.Observacao), CriadoPor = u.Id, AtualizadoPor = u.Id,
-                };
-                db.LancamentosEmpresa.Add(l);
-                audit.Registrar(db, u.Id, "lancamentos_empresa", l.Id, "CRIAR", depois: l);
-                c.LancamentoEmpresaId = l.Id;
-            }
-            if (cobranca == CobrancaManutencao.FATURA)
-            {
-                var f = await db.FaturasLocacao.Include(x => x.Itens)
-                    .Where(x => x.ContratoId == contrato!.Id && x.Status == StatusFaturaLocacao.ABERTA && !x.Rescisao && x.Vencimento >= form.Data)
-                    .OrderBy(x => x.Vencimento).FirstOrDefaultAsync()
-                    ?? throw new RegraNegocioException(nameof(form.Cobranca), "Não há fatura em aberto a vencer: gere a próxima fatura do contrato e conclua de novo.");
-                var item = new FaturaLocacaoItem
-                {
-                    FaturaId = f.Id, Tipo = TipoItemFatura.MANUTENCAO, Descricao = desc, Valor = valor,
-                    Ordem = f.Itens.Count == 0 ? 1 : f.Itens.Max(i => i.Ordem) + 1,
-                };
-                db.FaturaLocacaoItens.Add(item);
-                audit.Registrar(db, u.Id, "faturas_locacao", f.Id, "EDITAR", depois: new { item = item.Descricao, item.Valor, tipo = item.Tipo });
-                c.FaturaItemId = item.Id;
-            }
-        }
+        var custo = await LancarCustoAsync(db, audit, u, c.ImovelId, contrato, cobranca, valor, form.Data!.Value, venc, desc,
+            c.PrestadorId, prestador, Texto.Limpo(form.Observacao), CategoriaManutencaoImobiliaria);
+        (c.LancamentoEmpresaId, c.LancamentoImovelId, c.FaturaItemId) = (custo.LancamentoEmpresaId, custo.LancamentoImovelId, custo.FaturaItemId);
 
         c.Status = StatusChamado.CONCLUIDO;
         c.ConcluidoEm = form.Data;
@@ -568,19 +509,108 @@ public sealed class ManutencaoService(IDbContextFactory<InovabensDb> fabrica, Au
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Conserto por conta do locador ainda não descontado (recebimentos estornados não contam).</summary>
+    /* ------------------------------ custo (manutenção e vistoria) ------------------------------ */
+
+    /// <summary>Formas de lançar o custo que dependem do contrato.</summary>
+    internal static void ValidarCobranca(CobrancaManutencao cobranca, ContratoLocacao? contrato)
+    {
+        switch (cobranca)
+        {
+            case CobrancaManutencao.REPASSE when contrato?.Modalidade != ModalidadeLocacao.ADMINISTRACAO:
+                throw new RegraNegocioException("Cobranca", "Desconto no repasse só em contrato de administração.");
+            case CobrancaManutencao.FATURA when contrato?.Status != StatusContratoLocacao.ATIVO:
+                throw new RegraNegocioException("Cobranca", "Cobrança na fatura só com contrato ativo.");
+        }
+    }
+
+    /// <summary>
+    /// Lança o custo de um serviço (conserto ou vistoria). Quem paga o prestador: a imobiliária (conta a pagar no Financeiro;
+    /// REPASSE e FATURA nas categorias de terceiros, IMOBILIARIA como despesa) ou o imóvel (IMOVEL, e qualquer forma em imóvel
+    /// próprio). FATURA também vira item MANUTENCAO na próxima fatura aberta, que volta como reembolso fora do repasse.
+    /// </summary>
+    internal static async Task<CustoLancado> LancarCustoAsync(InovabensDb db, AuditService audit, UsuarioAtual u, Guid imovelId,
+        ContratoLocacao? contrato, CobrancaManutencao cobranca, decimal valor, DateOnly data, DateOnly venc, string desc, Guid? pessoaId,
+        string? pessoaNome, string? obs, string categoriaImobiliaria)
+    {
+        if (valor <= 0 || cobranca == CobrancaManutencao.DIRETO) return new(null, null, null);
+        Guid? empresa = null, doImovel = null, item = null;
+        if (cobranca == CobrancaManutencao.IMOVEL || contrato?.Modalidade == ModalidadeLocacao.PROPRIO)
+        {
+            // imóvel próprio/sócios: despesa no financeiro do imóvel (entra no retorno do investimento)
+            var conta = await db.ContasOrcamentarias.Where(x => x.Nome == ContaManutencaoImovel && x.Tipo == TipoConta.DESPESA)
+                .Select(x => (Guid?)x.Id).FirstOrDefaultAsync()
+                ?? throw new RegraNegocioException("_", $"Crie a conta de despesa \"{ContaManutencaoImovel}\" no financeiro dos imóveis.");
+            var l = new LancamentoFinanceiro
+            {
+                ImovelId = imovelId, Situacao = SituacaoLancamento.ABERTO, Data = venc, Valor = valor, Descricao = desc, ContaId = conta,
+                PessoaId = pessoaId, PessoaNome = pessoaNome, Competencia = CalculoLocacao.MesDe(data), CriadoPor = u.Id, AtualizadoPor = u.Id,
+            };
+            l.Numero = await LancamentosFinanceirosService.ProximoNumero(db, imovelId);
+            db.LancamentosFinanceiros.Add(l);
+            audit.Registrar(db, u.Id, "lancamentos_financeiros", l.Id, "CRIAR", depois: l);
+            doImovel = l.Id;
+        }
+        else
+        {
+            await MesesFechados.Garantir(db, venc);
+            var (cat, grupo) = cobranca switch
+            {
+                CobrancaManutencao.REPASSE => (CategoriaPagoPeloProprietario, GrupoCategoriaEmpresa.TERCEIROS),
+                CobrancaManutencao.FATURA => (CategoriaPagoPeloInquilino, GrupoCategoriaEmpresa.TERCEIROS),
+                _ => (categoriaImobiliaria, GrupoCategoriaEmpresa.DESPESA),
+            };
+            var l = new LancamentoEmpresa
+            {
+                Descricao = desc, Valor = -valor, Vencimento = venc, Competencia = CalculoLocacao.MesDe(venc),
+                CategoriaId = await LocacaoService.Categoria(db, cat, TipoCategoriaEmpresa.SAIDA, grupo),
+                PessoaId = pessoaId, PessoaNome = pessoaNome, ImovelId = imovelId, Documento = "Nota/recibo do prestador",
+                Observacao = obs, CriadoPor = u.Id, AtualizadoPor = u.Id,
+            };
+            db.LancamentosEmpresa.Add(l);
+            audit.Registrar(db, u.Id, "lancamentos_empresa", l.Id, "CRIAR", depois: l);
+            empresa = l.Id;
+        }
+        if (cobranca == CobrancaManutencao.FATURA)
+        {
+            var f = await db.FaturasLocacao.Include(x => x.Itens)
+                .Where(x => x.ContratoId == contrato!.Id && x.Status == StatusFaturaLocacao.ABERTA && !x.Rescisao && x.Vencimento >= data)
+                .OrderBy(x => x.Vencimento).FirstOrDefaultAsync()
+                ?? throw new RegraNegocioException("Cobranca", "Não há fatura em aberto a vencer: gere a próxima fatura do contrato e tente de novo.");
+            var it = new FaturaLocacaoItem
+            {
+                FaturaId = f.Id, Tipo = TipoItemFatura.MANUTENCAO, Descricao = desc, Valor = valor,
+                Ordem = f.Itens.Count == 0 ? 1 : f.Itens.Max(i => i.Ordem) + 1,
+            };
+            db.FaturaLocacaoItens.Add(it);
+            audit.Registrar(db, u.Id, "faturas_locacao", f.Id, "EDITAR", depois: new { item = it.Descricao, it.Valor, tipo = it.Tipo });
+            item = it.Id;
+        }
+        return new(empresa, doImovel, item);
+    }
+
+    /// <summary>Custo por conta do locador (conserto ou vistoria) ainda não descontado do repasse; estornos não contam.</summary>
     internal static async Task<IReadOnlyList<ManutencaoPendente>> PendentesDeAbaterAsync(InovabensDb db, Guid contratoId)
     {
-        var lista = await db.ChamadosManutencao.Where(m => m.ContratoId == contratoId && m.Status == StatusChamado.CONCLUIDO
+        var chamados = await db.ChamadosManutencao.Where(m => m.ContratoId == contratoId && m.Status == StatusChamado.CONCLUIDO
                 && m.Cobranca == CobrancaManutencao.REPASSE && m.ValorFinal > 0)
             .OrderBy(m => m.ConcluidoEm).ThenBy(m => m.Numero)
             .Select(m => new
             {
-                m.Id, m.ValorFinal,
+                m.Id, Valor = m.ValorFinal!.Value,
                 Abatido = db.ManutencaoAbatimentos.Where(a => a.ChamadoId == m.Id
                     && db.FaturaLocacaoPagamentos.Any(p => p.Id == a.PagamentoId && p.EstornadoEm == null)).Sum(a => (decimal?)a.Valor) ?? 0,
             }).ToListAsync();
-        return [.. lista.Where(x => x.ValorFinal > x.Abatido).Select(x => new ManutencaoPendente(x.Id, x.ValorFinal!.Value - x.Abatido))];
+        var vistorias = await db.Vistorias.Where(v => v.ContratoId == contratoId && v.Status == StatusVistoria.REALIZADA
+                && v.Cobranca == CobrancaManutencao.REPASSE && v.Valor > 0)
+            .OrderBy(v => v.RealizadaEm).ThenBy(v => v.Numero)
+            .Select(v => new
+            {
+                v.Id, Valor = v.Valor!.Value,
+                Abatido = db.ManutencaoAbatimentos.Where(a => a.VistoriaId == v.Id
+                    && db.FaturaLocacaoPagamentos.Any(p => p.Id == a.PagamentoId && p.EstornadoEm == null)).Sum(a => (decimal?)a.Valor) ?? 0,
+            }).ToListAsync();
+        return [.. chamados.Where(x => x.Valor > x.Abatido).Select(x => new ManutencaoPendente(x.Id, x.Valor - x.Abatido)),
+            .. vistorias.Where(x => x.Valor > x.Abatido).Select(x => new ManutencaoPendente(null, x.Valor - x.Abatido, x.Id))];
     }
 
     private static Task<decimal> Abatido(InovabensDb db, Guid chamadoId) =>
@@ -843,8 +873,8 @@ public sealed class ManutencaoService(IDbContextFactory<InovabensDb> fabrica, Au
             db.Alertas.Add(new Alerta { Id = Guid.NewGuid(), Tipo = TipoAlerta.MANUTENCAO, UsuarioId = uid, ChamadoManutencaoId = c.Id, Mensagem = mensagem });
     }
 
-    private static string PrimeiroNome(string? nome) => (nome ?? "").Trim().Split(' ', 2)[0];
+    internal static string PrimeiroNome(string? nome) => (nome ?? "").Trim().Split(' ', 2)[0];
 
-    private static string? Whatsapp(string? fone, string texto) =>
+    internal static string? Whatsapp(string? fone, string texto) =>
         Texto.LinkWhatsapp(fone) is { } link ? $"{link}?text={Uri.EscapeDataString(texto)}" : null;
 }

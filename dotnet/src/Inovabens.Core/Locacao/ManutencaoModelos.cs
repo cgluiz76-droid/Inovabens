@@ -182,7 +182,10 @@ public sealed record AprovacaoPublica(string Codigo, string Titulo, string? Desc
 /// <summary>O que o inquilino vê no link de abertura de chamado.</summary>
 public sealed record ContextoChamadoPublico(string Imovel, string Contrato, IReadOnlyList<(string Codigo, string Titulo, StatusChamado Status)> Abertos);
 
-public sealed record ManutencaoPendente(Guid ChamadoId, decimal Pendente);
+/// <summary>Custo do locador ainda não descontado do repasse: de um chamado ou de uma vistoria.</summary>
+public sealed record ManutencaoPendente(Guid? ChamadoId, decimal Pendente, Guid? VistoriaId = null);
+
+public sealed record CustoLancado(Guid? LancamentoEmpresaId, Guid? LancamentoImovelId, Guid? FaturaItemId);
 
 public sealed record PreventivaLinha(Guid Id, Guid ImovelId, string ImovelCodigo, string Titulo, CategoriaManutencao Categoria,
     ResponsavelManutencao Responsavel, int PeriodicidadeMeses, DateOnly ProximaEm, Guid? PrestadorId, string? PrestadorNome, string? Observacao, bool Ativa);

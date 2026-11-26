@@ -72,6 +72,8 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<ChamadoEvento> ChamadoEventos => Set<ChamadoEvento>();
     public DbSet<ManutencaoAbatimento> ManutencaoAbatimentos => Set<ManutencaoAbatimento>();
     public DbSet<ManutencaoPreventiva> ManutencoesPreventivas => Set<ManutencaoPreventiva>();
+    public DbSet<Vistoria> Vistorias => Set<Vistoria>();
+    public DbSet<PendenciaVistoria> PendenciasVistoria => Set<PendenciaVistoria>();
     public DbSet<ExtratoImportacao> ExtratoImportacoes => Set<ExtratoImportacao>();
     public DbSet<ExtratoItem> ExtratoItens => Set<ExtratoItem>();
     public DbSet<RegraConciliacao> RegrasConciliacao => Set<RegraConciliacao>();
@@ -316,7 +318,28 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         mb.Entity<ManutencaoAbatimento>(e =>
         {
             e.HasOne<ChamadoManutencao>().WithMany().HasForeignKey(x => x.ChamadoId);
+            e.HasOne<Vistoria>().WithMany().HasForeignKey(x => x.VistoriaId);
             e.HasOne<FaturaLocacaoPagamento>().WithMany().HasForeignKey(x => x.PagamentoId);
+        });
+        mb.Entity<Vistoria>(e =>
+        {
+            e.Property(x => x.Tipo).HasConversion<string>();
+            e.Property(x => x.Status).HasConversion<string>();
+            e.Property(x => x.Cobranca).HasConversion<string>();
+            e.Property(x => x.Numero).ValueGeneratedOnAdd();
+            e.HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);
+            e.HasOne<ContratoLocacao>().WithMany().HasForeignKey(x => x.ContratoId);
+            e.HasOne<Pessoa>().WithMany().HasForeignKey(x => x.EmpresaId);
+            e.HasOne<LancamentoEmpresa>().WithMany().HasForeignKey(x => x.LancamentoEmpresaId);
+            e.HasOne<LancamentoFinanceiro>().WithMany().HasForeignKey(x => x.LancamentoImovelId);
+            e.HasOne<FaturaLocacaoItem>().WithMany().HasForeignKey(x => x.FaturaItemId);
+        });
+        mb.Entity<PendenciaVistoria>(e =>
+        {
+            e.Property(x => x.Responsavel).HasConversion<string>();
+            e.Property(x => x.Status).HasConversion<string>();
+            e.HasOne<Vistoria>().WithMany().HasForeignKey(x => x.VistoriaId);
+            e.HasOne<ChamadoManutencao>().WithMany().HasForeignKey(x => x.ChamadoId);
         });
         mb.Entity<ManutencaoPreventiva>(e =>
         {

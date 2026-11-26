@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = Permissoes.LocacaoVer)]
 @inherits ComponenteBase
 @inject LocacaoService Servico
+@inject VistoriaService Vistorias
 @inject NavigationManager Nav
 
 @* Locação (fases 1 e 2): contratos, régua de cobrança (mensagens prontas para o WhatsApp) e repasses a pagar.
@@ -103,6 +104,40 @@
                                     <td>@(v.Tipo switch { TipoAvisoLocacao.FIM => "Fim do prazo", TipoAvisoLocacao.GARANTIA => "Garantia", TipoAvisoLocacao.SEGURO_INCENDIO => "Seguro incêndio", TipoAvisoLocacao.PREFERENCIA => "Preferência", _ => "Reajuste" })</td>
                                     <td class="nowrap"><a href="@($"locacao/{v.ContratoId}")">@v.ContratoCodigo</a> · @v.ImovelCodigo</td>
                                     <td class="pequeno">@v.Descricao</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+        break;
+
+    case "vistorias":
+        <section class="card">
+            <div class="titulo-secao">
+                <h2>Vistorias</h2>
+                <label class="check"><input type="checkbox" checked="@vistoriasTodas" @onchange="async e => { vistoriasTodas = (bool)e.Value!; await Carregar(); }" /> Mostrar todas</label>
+            </div>
+            <p class="pequeno mudo">Vistorias terceirizadas: agendadas e realizadas com pendências em aberto. Nova vistoria: na ficha do contrato.</p>
+            @if (vistorias is null) { <p class="carregando">Carregando…</p> }
+            else if (vistorias.Count == 0) { <p class="vazio">Nenhuma vistoria @(vistoriasTodas ? "" : "pendente").</p> }
+            else
+            {
+                <div class="tabela-container">
+                    <table class="tabela">
+                        <thead><tr><th>Vistoria</th><th>Contrato</th><th>Data</th><th>Empresa</th><th>Laudo</th><th>Pendências</th><th>Inquilino</th></tr></thead>
+                        <tbody>
+                            @foreach (var x in vistorias)
+                            {
+                                <tr>
+                                    <td><a href="@($"locacao/vistoria/{x.Id}")"><b>@x.Codigo</b></a> @Texto.Rotulo(x.Tipo) <span class="badge">@Texto.Rotulo(x.Status)</span></td>
+                                    <td><a href="@($"locacao/{x.ContratoId}")">@x.ContratoCodigo</a><p class="pequeno mudo">@x.ImovelCodigo</p></td>
+                                    <td class="nowrap">@(x.RealizadaEm is { } xr ? Texto.Data(xr) : x.AgendadaPara is { } xa ? Texto.DataHora(xa) : "—")</td>
+                                    <td>@(x.Empresa ?? "—")</td>
+                                    <td>@(x.TemLaudo ? "Sim" : "—")</td>
+                                    <td>@(x.PendenciasAbertas > 0 ? x.PendenciasAbertas.ToString() : "—")</td>
+                                    <td>@(x.ContestadaEm is not null ? "Contestou" : x.AceiteEm is not null ? "Aceitou" : x.PrazoContestacao is { } pz ? "prazo " + Texto.Data(pz) : "—")</td>
                                 </tr>
                             }
                         </tbody>
@@ -227,7 +262,7 @@
     [SupplyParameterFromQuery(Name = "proposta")] public Guid? PropostaQuery { get; set; }
     [SupplyParameterFromQuery(Name = "imovel")] public Guid? ImovelQuery { get; set; }
 
-    private static readonly (string, string)[] Abas = [("contratos", "Contratos"), ("cobranca", "Cobrança"), ("vencimentos", "Vencimentos"), ("repasses", "Repasses")];
+    private static readonly (string, string)[] Abas = [("contratos", "Contratos"), ("cobranca", "Cobrança"), ("vencimentos", "Vencimentos"), ("repasses", "Repasses"), ("vistorias", "Vistorias")];
     private string Aba => Abas.Any(a => a.Item1 == AbaQuery) ? AbaQuery! : "contratos";
 
     private PainelLocacao? painel;
@@ -235,6 +270,8 @@
     private IReadOnlyList<CobrancaLinha>? cobrancas;
     private IReadOnlyList<VencimentoLocacao>? vencimentos;
     private IReadOnlyList<RepasseLinha>? repasses;
+    private IReadOnlyList<VistoriaLinha>? vistorias;
+    private bool vistoriasTodas;
     private IReadOnlyList<Opcao> contas = [];
     private string? termo;
     private StatusContratoLocacao? status;
@@ -260,6 +297,7 @@
             {
                 case "cobranca": cobrancas = await Servico.CobrancasAsync(Usuario); break;
                 case "repasses": repasses = await Servico.RepassesAPagarAsync(Usuario); break;
+                case "vistorias": vistorias = await Vistorias.ListarAsync(Usuario, soAgendadas: !vistoriasTodas); break;
                 case "vencimentos": vencimentos = await Servico.VencimentosAsync(Usuario); break;
                 default: contratos = await Servico.ListarAsync(Usuario, status, termo); break;
             }

@@ -4,6 +4,7 @@
 @inject LocacaoService Servico
 @inject LocacaoDocumentosService Documentos
 @inject ManutencaoService Manutencao
+@inject VistoriaService Vistorias
 @inject NavigationManager Nav
 
 @* Ficha do contrato: dados, partes, faturas mês a mês (receber, ajustar, recibo), repasses aos locadores e, na fase 3,
@@ -282,6 +283,28 @@ else
 
     <section class="card">
         <div class="titulo-secao">
+            <h2>Vistorias</h2>
+            <a class="btn-ghost mini" href="locacao?aba=vistorias">Todas</a>
+        </div>
+        @if (vistorias.Count == 0) { <p class="vazio">Nenhuma vistoria neste contrato.</p> }
+        else
+        {
+            <ul class="lista-simples">
+                @foreach (var x in vistorias)
+                {
+                    <li><a href="@($"locacao/vistoria/{x.Id}")"><b>@x.Codigo</b></a> @Texto.Rotulo(x.Tipo) <span class="badge">@Texto.Rotulo(x.Status)</span>
+                        <span class="pequeno mudo">@(x.RealizadaEm is { } xr ? Texto.Data(xr) : x.AgendadaPara is { } xa ? "agendada " + Texto.DataHora(xa) : "sem data")@(x.Empresa is null ? "" : " · " + x.Empresa)@(x.TemLaudo ? " · laudo" : "")@(x.PendenciasAbertas > 0 ? $" · {x.PendenciasAbertas} pendência(s)" : "")</span></li>
+                }
+            </ul>
+        }
+        @if (PodeEditar && c.Status is StatusContratoLocacao.RASCUNHO or StatusContratoLocacao.ATIVO or StatusContratoLocacao.ENCERRADO)
+        {
+            <div class="acoes-topo"><button class="btn-ghost" @onclick="NovaVistoria">+ Vistoria</button></div>
+        }
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao">
             <h2>Manutenção</h2>
             <a class="btn-ghost mini" href="manutencao">Todos os chamados</a>
         </div>
@@ -377,6 +400,11 @@ else
             </div>
         </section>
     }
+}
+
+@if (novaVistoria is not null)
+{
+    <VistoriaModal Form="novaVistoria" AoFechar="() => novaVistoria = null" AoSalvar="@(id => Nav.NavigateTo($"locacao/vistoria/{id}"))" />
 }
 
 @if (novoChamado is not null)
@@ -586,6 +614,10 @@ else
                         <InputDate class="input" @bind-Value="rescisao.AvisoEm" @bind-Value:after="SimularRescisao" />
                     </label>
                 }
+                @if (debitosVistoria is { Total: > 0 } dvs)
+                {
+                    <p class="pequeno mudo">Sugerido pela vistoria de saída: @Texto.Moeda(dvs.Total) (@dvs.Pendencias.Count pendência(s) do inquilino).</p>
+                }
                 <label class="campo"><span>Débitos da vistoria de saída</span><InputNumber class="input" step="0.01" @bind-Value="rescisao.DebitosVistoria" @bind-Value:after="SimularRescisao" /></label>
                 <label class="campo"><span>Descrição da vistoria</span><InputText class="input" maxlength="200" @bind-Value="rescisao.DescricaoVistoria" /></label>
                 <label class="campo"><span>Outros encargos pendentes</span><InputNumber class="input" step="0.01" @bind-Value="rescisao.OutrosDebitos" @bind-Value:after="SimularRescisao" /></label>
@@ -685,6 +717,9 @@ else
     private ContratoDetalhe? d;
     private IReadOnlyList<ChamadoLinha> chamados = [];
     private ChamadoForm? novoChamado;
+    private IReadOnlyList<VistoriaLinha> vistorias = [];
+    private VistoriaForm? novaVistoria;
+    private DebitosVistoria? debitosVistoria;
     private LinkInquilino? linkInquilino;
     private ContratoForm? editando;
     private FaturaDetalhe? recebendo, itemFatura, cancelando;
@@ -713,6 +748,7 @@ else
     {
         d = await Servico.ObterAsync(Usuario, Id);
         chamados = await Manutencao.ListarAsync(Usuario, new FiltroChamados(SoAbertos: false, ContratoId: Id));
+        vistorias = await Vistorias.ListarAsync(Usuario, Id);
         if (modelosContrato.Count == 0)
         {
             modelosContrato = await Documentos.ModelosAsync(Usuario, TipoModeloDocumento.CONTRATO_LOCACAO);
@@ -727,6 +763,14 @@ else
     {
         Erro = null;
         novoChamado = new ChamadoForm { ImovelId = d!.Contrato.ImovelId, ContratoId = Id, SolicitanteNome = d.Partes.FirstOrDefault(p => p.Papel == PapelContratoLocacao.LOCATARIO)?.Nome };
+    }
+
+    /// <summary>Sugere o tipo: entrada no início; saída se já houver entrada realizada.</summary>
+    private void NovaVistoria()
+    {
+        Erro = null;
+        var temEntrada = vistorias.Any(x => x.Tipo == TipoVistoria.ENTRADA && x.Status != StatusVistoria.CANCELADA);
+        novaVistoria = new VistoriaForm { ContratoId = Id, Tipo = temEntrada ? TipoVistoria.SAIDA : TipoVistoria.ENTRADA };
     }
 
     private async Task LinkInquilino() => await Executar(async () => linkInquilino = await Manutencao.LinkInquilinoAsync(Usuario, Id));
@@ -981,6 +1025,9 @@ else
     {
         Erro = null;
         rescisao = new RescisaoForm { EntregaChaves = DatasBR.Hoje() };
+        // pendências do inquilino na vistoria de saída (com valor) entram como débito sugerido; pode ajustar
+        await Executar(async () => debitosVistoria = await Vistorias.DebitosSaidaAsync(Usuario, Id));
+        if (debitosVistoria is { Total: > 0 } dv) (rescisao.DebitosVistoria, rescisao.DescricaoVistoria) = (dv.Total, dv.Descricao);
         rescindindo = true;
         await SimularRescisao();
     }
@@ -994,7 +1041,12 @@ else
 
     private async Task Rescindir()
     {
-        if (await Executar(() => Servico.RescindirAsync(Usuario, Id, rescisao)))
+        if (await Executar(async () =>
+            {
+                await Servico.RescindirAsync(Usuario, Id, rescisao);
+                // débito usado no acerto: as pendências da vistoria ficam como cobradas
+                if (debitosVistoria is { Total: > 0 } dv && rescisao.DebitosVistoria > 0) await Vistorias.MarcarCobradasAsync(Usuario, dv.Pendencias);
+            }))
         {
             rescindindo = false;
             await Carregar();

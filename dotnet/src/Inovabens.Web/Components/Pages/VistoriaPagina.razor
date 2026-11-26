@@ -1,0 +1,561 @@
+@page "/locacao/vistoria/{Id:guid}"
+@attribute [Authorize(Policy = Permissoes.LocacaoVer)]
+@inherits ComponenteBase
+@inject VistoriaService Servico
+@inject OpcoesService Opcoes
+@inject ChavesService Chaves
+@inject NavigationManager Nav
+
+@* Ficha da vistoria terceirizada (locação, fase 4): agenda com a empresa (compromisso + chave + WhatsApp), realização
+   com leituras e chaves, laudo em PDF no Drive, custo, aceite/contestação do inquilino e pendências do laudo, que viram
+   chamado de manutenção ou débito na rescisão. Na saída, compara com a vistoria de entrada. *@
+
+<PageTitle>@(d?.Codigo ?? "Vistoria") · Locação · Inovabens</PageTitle>
+
+<p class="pequeno">@if (d is not null) { <a href="@($"locacao/{d.Vistoria.ContratoId}")">← @d.ContratoCodigo</a> } else { <a href="locacao?aba=vistorias">← Vistorias</a> }</p>
+<MensagemErro Texto="@(ModalAberto ? null : Erro)" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@if (d is null)
+{
+    @if (Erro is null) { <p class="carregando">Carregando…</p> }
+}
+else
+{
+    var v = d.Vistoria;
+    <div class="titulo">
+        <h1>@d.Codigo · Vistoria de @Texto.Rotulo(v.Tipo).ToLowerInvariant() <span class="badge">@Texto.Rotulo(v.Status)</span></h1>
+        @if (PodeEditar && v.Status != StatusVistoria.CANCELADA)
+        {
+            <div class="acoes-topo">
+                <button class="btn-ghost" @onclick="Editar">Editar</button>
+                @if (v.Status == StatusVistoria.AGENDADA)
+                {
+                    <button class="btn-primary" @onclick="AbrirAgenda">@(v.AgendadaPara is null ? "Agendar" : "Reagendar")</button>
+                }
+                <button class="btn-primary" @onclick="AbrirRealizacao">@(v.Status == StatusVistoria.REALIZADA ? "Corrigir leituras" : "Registrar realização")</button>
+                @if (v.Status == StatusVistoria.REALIZADA && v.Cobranca is null)
+                {
+                    <button class="btn-ghost" @onclick="AbrirCusto">Lançar custo</button>
+                }
+                @if (v.Status == StatusVistoria.AGENDADA)
+                {
+                    <button class="btn-ghost" @onclick="() => { Erro = null; motivo = null; cancelando = true; }">Cancelar vistoria</button>
+                }
+            </div>
+        }
+    </div>
+
+    @if (avisos is not null && (avisos.WhatsappPrestador ?? avisos.WhatsappInquilino) is not null)
+    {
+        <section class="card">
+            <p>Avise os envolvidos (abre o WhatsApp com a mensagem pronta; confira e envie):</p>
+            <div class="acoes-topo">
+                @if (avisos.WhatsappPrestador is { } wp) { <a class="btn-ghost" href="@wp" target="_blank" rel="noopener">WhatsApp da empresa</a> }
+                @if (avisos.WhatsappInquilino is { } wi) { <a class="btn-ghost" href="@wi" target="_blank" rel="noopener">WhatsApp do inquilino</a> }
+            </div>
+        </section>
+    }
+
+    <section class="card">
+        <div class="titulo-secao"><h2>@d.ImovelCodigo</h2><a class="btn-ghost mini" href="@($"imoveis/{v.ImovelId}")">Ver imóvel</a></div>
+        <p>@d.ImovelEndereco</p>
+        <dl class="locacao-dados">
+            <div><dt>Contrato</dt><dd><a href="@($"locacao/{v.ContratoId}")">@d.ContratoCodigo</a> · @Texto.Rotulo(d.Modalidade)</dd></div>
+            <div><dt>Inquilino</dt><dd>@(d.LocatarioNome ?? "—") @d.LocatarioTelefone</dd></div>
+            <div><dt>Empresa</dt><dd>@(d.EmpresaNome ?? "—") @d.EmpresaTelefone</dd></div>
+            @if (v.Vistoriador is not null) { <div><dt>Vistoriador</dt><dd>@v.Vistoriador</dd></div> }
+            @if (v.AgendadaPara is { } ag) { <div><dt>Agendada para</dt><dd>@Texto.DataHora(ag)</dd></div> }
+            @if (v.RealizadaEm is { } re)
+            {
+                <div><dt>Realizada em</dt><dd>@Texto.Data(re)</dd></div>
+                <div><dt>Leituras</dt><dd>Água @(v.LeituraAgua ?? "—") · Luz @(v.LeituraLuz ?? "—") · Gás @(v.LeituraGas ?? "—")</dd></div>
+                <div><dt>Chaves</dt><dd>@(v.Chaves?.ToString() ?? "—")</dd></div>
+            }
+            @if (v.Valor is { } val)
+            {
+                <div><dt>Custo</dt><dd>@Texto.Moeda(val) · @RotuloCobranca(v.Cobranca)@(d.AbatidoRepasse > 0 ? $" · {Texto.Moeda(d.AbatidoRepasse)} já descontado" : "")</dd></div>
+            }
+            @if (v.Motivo is not null) { <div><dt>Cancelada</dt><dd>@v.Motivo</dd></div> }
+        </dl>
+        @if (v.Observacao is not null) { <p class="pre-linha">@v.Observacao</p> }
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao">
+            <h2>Laudo</h2>
+            @if (d.LinkPasta is { } lp) { <a class="btn-ghost mini" href="@lp" target="_blank" rel="noopener">Pasta do contrato</a> }
+        </div>
+        @if (v.LaudoNome is not null)
+        {
+            <p><a href="@($"locacao/vistoria/{v.Id}/laudo")" download>@v.LaudoNome</a></p>
+        }
+        else { <p class="vazio">Laudo ainda não enviado.</p> }
+        @if (PodeEditar && v.Status != StatusVistoria.CANCELADA)
+        {
+            @if (Servico.DriveHabilitado)
+            {
+                <label class="btn-ghost">
+                    @(v.LaudoNome is null ? "Enviar laudo (PDF)" : "Trocar laudo")
+                    <InputFile OnChange="EnviarLaudo" class="oculto" accept=".pdf,application/pdf" disabled="@Ocupado" />
+                </label>
+                <p class="pequeno mudo">Vai para a subpasta "Vistorias" da pasta do contrato no Drive.</p>
+            }
+            else { <p class="pequeno mudo">Google Drive não configurado: o laudo não pode ser enviado.</p> }
+        }
+    </section>
+
+    @if (v.Status == StatusVistoria.REALIZADA)
+    {
+        <section class="card">
+            <div class="titulo-secao"><h2>Aceite do inquilino</h2></div>
+            @if (v.AceiteEm is { } ac) { <p>Inquilino aceitou o laudo em <b>@Texto.Data(ac)</b>.</p> }
+            @if (v.ContestadaEm is { } ct)
+            {
+                <p>Contestação em <b>@Texto.Data(ct)</b>:</p>
+                <p class="pre-linha">@v.Contestacao</p>
+            }
+            @if (v.AceiteEm is null && v.ContestadaEm is null)
+            {
+                <p>Prazo para contestar: <b class="@(v.PrazoContestacao < DatasBR.Hoje() ? "texto-erro" : "")">@Texto.Data(v.PrazoContestacao)</b>
+                    @if (v.PrazoContestacao < DatasBR.Hoje()) { <span class="pequeno mudo">(vencido sem contestação: laudo aceito tacitamente)</span> }</p>
+                @if (PodeEditar)
+                {
+                    <div class="acoes-topo">
+                        <button class="btn-ghost" disabled="@Ocupado" @onclick="Aceitar">Inquilino aceitou</button>
+                        <button class="btn-ghost" @onclick="() => { Erro = null; contestacao = null; dataContestacao = DatasBR.Hoje(); contestando = true; }">Registrar contestação</button>
+                    </div>
+                }
+            }
+        </section>
+    }
+
+    <section class="card">
+        <div class="titulo-secao"><h2>Pendências do laudo</h2></div>
+        <p class="pequeno mudo">Itens apontados pela empresa. Por conta do locador ou da imobiliária: abra o chamado de manutenção.
+            Por conta do inquilino, na vistoria de saída: o valor entra como débito no acerto da rescisão.</p>
+        @if (d.Pendencias.Count == 0) { <p class="vazio">Nenhuma pendência registrada.</p> }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Cômodo</th><th>Pendência</th><th>Por conta do</th><th class="num">Valor</th><th>Situação</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var p in d.Pendencias)
+                        {
+                            <tr>
+                                <td>@(p.Comodo ?? "—")</td>
+                                <td>@p.Descricao</td>
+                                <td>@Texto.Rotulo(p.Responsavel)</td>
+                                <td class="num">@(p.Valor is { } pv ? Texto.Moeda(pv) : "—")</td>
+                                <td>@Texto.Rotulo(p.Status)@if (p.ChamadoId is { } ch) { <text> · </text><a href="@($"manutencao/{ch}")">@p.ChamadoCodigo</a> }</td>
+                                <td class="nowrap">
+                                    @if (PodeEditar && p.Status == StatusPendenciaVistoria.ABERTA)
+                                    {
+                                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => AbrirChamado(p)">Abrir chamado</button>
+                                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Resolver(p)">Resolvida</button>
+                                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Remover(p)">Remover</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (d.Pendencias.Where(p => p.Status == StatusPendenciaVistoria.ABERTA && p.Responsavel == ResponsavelManutencao.LOCATARIO).Sum(p => p.Valor ?? 0) is > 0 and var deb)
+            {
+                <p class="pequeno">Em aberto por conta do inquilino: <b>@Texto.Moeda(deb)</b></p>
+            }
+        }
+        @if (PodeEditar && v.Status != StatusVistoria.CANCELADA)
+        {
+            <EditForm Model="pend" OnValidSubmit="AdicionarPendencia" class="formulario">
+                <DataAnnotationsValidator />
+                <div class="grade-4">
+                    <label class="campo"><span>Cômodo</span><InputText class="input" maxlength="100" @bind-Value="pend.Comodo" placeholder="Ex.: cozinha" /></label>
+                    <label class="campo">
+                        <span>Por conta do</span>
+                        <select class="input" @bind="pend.Responsavel">
+                            @foreach (var x in Enum.GetValues<ResponsavelManutencao>()) { <option value="@x">@Texto.Rotulo(x)</option> }
+                        </select>
+                    </label>
+                    <label class="campo"><span>Valor estimado</span><InputNumber class="input" step="0.01" @bind-Value="pend.Valor" /><ValidationMessage For="() => pend.Valor" /></label>
+                </div>
+                <label class="campo"><span>Pendência</span><InputText class="input" maxlength="1000" @bind-Value="pend.Descricao" placeholder="Ex.: pintura da parede manchada" />
+                    <ValidationMessage For="() => pend.Descricao" /></label>
+                <div class="acoes-form"><button type="submit" class="btn-ghost" disabled="@Ocupado">+ Pendência</button></div>
+            </EditForm>
+        }
+    </section>
+
+    @if (Entrada is { } en && v.Tipo != TipoVistoria.ENTRADA)
+    {
+        <section class="card">
+            <div class="titulo-secao"><h2>Comparativo com a entrada (@en.Codigo)</h2></div>
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th></th><th>Entrada @Texto.Data(en.RealizadaEm)</th><th>Esta vistoria @(v.RealizadaEm is { } r ? Texto.Data(r) : "")</th></tr></thead>
+                    <tbody>
+                        <tr><td>Água</td><td>@(en.LeituraAgua ?? "—")</td><td>@(v.LeituraAgua ?? "—")</td></tr>
+                        <tr><td>Luz</td><td>@(en.LeituraLuz ?? "—")</td><td>@(v.LeituraLuz ?? "—")</td></tr>
+                        <tr><td>Gás</td><td>@(en.LeituraGas ?? "—")</td><td>@(v.LeituraGas ?? "—")</td></tr>
+                        <tr class="@(en.Chaves is { } ce && v.Chaves is { } cs && cs < ce ? "texto-erro" : "")"><td>Chaves</td><td>@(en.Chaves?.ToString() ?? "—")</td><td>@(v.Chaves?.ToString() ?? "—")</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            @if (en.LaudoNome is not null) { <p class="pequeno"><a href="@($"locacao/vistoria/{en.Id}/laudo")" download>Laudo de entrada: @en.LaudoNome</a></p> }
+            @if (en.Pendencias.Count > 0)
+            {
+                <p class="pequeno">Já apontado na entrada (não é dano novo):</p>
+                <ul class="lista-simples">
+                    @foreach (var p in en.Pendencias) { <li>@(p.Comodo is null ? "" : p.Comodo + ": ")@p.Descricao</li> }
+                </ul>
+            }
+            <p class="pequeno mudo">Compare os dois laudos: o que piorou além do desgaste natural entra como pendência por conta do inquilino.</p>
+        </section>
+    }
+}
+
+@if (editando is not null)
+{
+    <VistoriaModal Form="editando" EditandoId="Id" AoFechar="() => editando = null" AoSalvar="Salvo" />
+}
+
+@if (cancelando)
+{
+    <Modal Titulo="Cancelar vistoria" AoFechar="() => cancelando = false">
+        <MensagemErro Texto="@Erro" />
+        <label class="campo"><span>Motivo</span><input class="input" maxlength="1000" @bind="motivo" /></label>
+        <p class="pequeno mudo">O compromisso da agenda não é apagado; remova-o na Agenda se precisar.</p>
+        <div class="acoes-form">
+            <button class="btn-ghost" @onclick="() => cancelando = false">Voltar</button>
+            <button class="btn-perigo" disabled="@Ocupado" @onclick="Cancelar">Cancelar vistoria</button>
+        </div>
+    </Modal>
+}
+
+@if (contestando)
+{
+    <Modal Titulo="Contestação do inquilino" AoFechar="() => contestando = false">
+        <MensagemErro Texto="@Erro" />
+        <label class="campo"><span>Data</span><input type="date" class="input" @bind="dataContestacao" /></label>
+        <label class="campo"><span>O que foi contestado</span><textarea class="input" rows="4" maxlength="2000" @bind="contestacao"></textarea></label>
+        <p class="pequeno mudo">Encaminhe à empresa de vistoria. Se o laudo mudar, envie o novo e ajuste as pendências.</p>
+        <div class="acoes-form">
+            <button class="btn-ghost" @onclick="() => contestando = false">Voltar</button>
+            <button class="btn-primary" disabled="@Ocupado" @onclick="Contestar">Registrar</button>
+        </div>
+    </Modal>
+}
+
+@if (agendando is not null)
+{
+    <Modal Titulo="Agendar vistoria" AoFechar="() => agendando = null">
+        <EditForm Model="agendando" OnValidSubmit="Agendar" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo">
+                    <span>Dia e hora</span>
+                    <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="agendando.Inicio" />
+                    <ValidationMessage For="() => agendando.Inicio" />
+                </label>
+                <label class="campo"><span>Duração (min)</span><InputNumber class="input" step="15" @bind-Value="agendando.DuracaoMinutos" /></label>
+                <label class="campo">
+                    <span>Acompanha (equipe)</span>
+                    <select class="input" @bind="AgResponsavel">
+                        <option value="">Eu</option>
+                        @foreach (var x in equipe) { <option value="@x.Id">@x.Nome</option> }
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>Entregar chave à empresa</span>
+                    <select class="input" @bind="AgChave" disabled="@(d?.Vistoria.EmpresaId is null)">
+                        <option value="">Não</option>
+                        @foreach (var k in chaves) { <option value="@k.Id">@k.Codigo · @k.Descricao</option> }
+                    </select>
+                </label>
+                @if (agendando.ChaveId is not null)
+                {
+                    <label class="campo">
+                        <span>Devolver chave até</span>
+                        <InputDate Type="InputDateType.DateTimeLocal" class="input" @bind-Value="agendando.DevolverChaveAte" />
+                    </label>
+                }
+            </div>
+            <p class="pequeno mudo">Cria o compromisso na agenda (e no Google, se conectado) e registra a saída da chave para a empresa.
+                Depois aparecem os botões para avisar a empresa e o inquilino pelo WhatsApp.</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => agendando = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Agendar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (realizando is not null)
+{
+    <Modal Titulo="Vistoria realizada" AoFechar="() => realizando = null">
+        <EditForm Model="realizando" OnValidSubmit="Realizar" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo"><span>Data da vistoria</span><InputDate class="input" @bind-Value="realizando.Data" /><ValidationMessage For="() => realizando.Data" /></label>
+                <label class="campo"><span>Prazo para contestar</span><InputDate class="input" @bind-Value="realizando.PrazoContestacao" /></label>
+            </div>
+            <div class="grade-4">
+                <label class="campo"><span>Leitura de água</span><InputText class="input" maxlength="30" @bind-Value="realizando.LeituraAgua" /></label>
+                <label class="campo"><span>Leitura de luz</span><InputText class="input" maxlength="30" @bind-Value="realizando.LeituraLuz" /></label>
+                <label class="campo"><span>Leitura de gás</span><InputText class="input" maxlength="30" @bind-Value="realizando.LeituraGas" /></label>
+                <label class="campo"><span>Chaves</span><InputNumber class="input" @bind-Value="realizando.Chaves" /><ValidationMessage For="() => realizando.Chaves" /></label>
+            </div>
+            <label class="campo"><span>Vistoriador</span><InputText class="input" maxlength="200" @bind-Value="realizando.Vistoriador" /></label>
+            <p class="pequeno mudo">Chaves: quantas o inquilino recebeu (entrada) ou devolveu (saída). Prazo: se vazio, @VistoriaService.DiasContestacao dias
+                após a vistoria.</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => realizando = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Salvar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (custo is not null)
+{
+    <Modal Titulo="Custo da vistoria" AoFechar="() => custo = null">
+        <EditForm Model="custo" OnValidSubmit="LancarCusto" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo"><span>Valor</span><InputNumber class="input" step="0.01" @bind-Value="custo.Valor" /><ValidationMessage For="() => custo.Valor" /></label>
+                @if (custo.Cobranca != CobrancaManutencao.DIRETO)
+                {
+                    <label class="campo"><span>Pagar a empresa em</span><InputDate class="input" @bind-Value="custo.Vencimento" /><ValidationMessage For="() => custo.Vencimento" /></label>
+                }
+            </div>
+            <label class="campo">
+                <span>Como lançar o custo</span>
+                <select class="input" @bind="custo.Cobranca">
+                    @foreach (var x in Enum.GetValues<CobrancaManutencao>()) { <option value="@x">@RotuloCobranca(x)</option> }
+                </select>
+                <ValidationMessage For="() => custo.Cobranca" />
+            </label>
+            <p class="pequeno mudo">Quem paga a vistoria segue o contrato (costuma ser o inquilino na entrada e o locador na periódica).
+                Na imobiliária, entra na categoria "@VistoriaService.CategoriaVistoriaImobiliaria".</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => custo = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Lançar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private VistoriaDetalhe? d;
+    private VistoriaForm? editando;
+    private AgendamentoVistoriaForm? agendando;
+    private RealizacaoVistoriaForm? realizando;
+    private CustoVistoriaForm? custo;
+    private AvisosAgendamento? avisos;
+    private PendenciaForm pend = new();
+    private IReadOnlyList<Opcao> equipe = [];
+    private IReadOnlyList<ChaveResumo> chaves = [];
+    private bool cancelando, contestando;
+    private string? motivo, contestacao;
+    private DateOnly dataContestacao = DatasBR.Hoje();
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);
+    private bool ModalAberto => editando is not null || agendando is not null || realizando is not null || custo is not null || cancelando || contestando;
+    private VistoriaResumo? Entrada => d?.Anteriores.LastOrDefault(a => a.Tipo == TipoVistoria.ENTRADA);
+
+    private string AgResponsavel
+    {
+        get => agendando?.ResponsavelId?.ToString() ?? "";
+        set { if (agendando is not null) agendando.ResponsavelId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    private string AgChave
+    {
+        get => agendando?.ChaveId?.ToString() ?? "";
+        set { if (agendando is not null) agendando.ChaveId = Guid.TryParse(value, out var g) ? g : null; }
+    }
+
+    protected override Task OnParametersSetAsync() => Carregar();
+
+    private async Task Carregar() => await Executar(async () => d = await Servico.ObterAsync(Usuario, Id));
+
+    private async Task Editar()
+    {
+        Erro = null;
+        await Executar(async () => editando = await Servico.FormularioAsync(Usuario, Id));
+    }
+
+    private async Task Salvo(Guid _)
+    {
+        editando = null;
+        await Carregar();
+        Sucesso = "Vistoria atualizada.";
+    }
+
+    private async Task Cancelar()
+    {
+        if (await Executar(() => Servico.CancelarAsync(Usuario, Id, motivo)))
+        {
+            cancelando = false;
+            await Carregar();
+            Sucesso = "Vistoria cancelada.";
+        }
+    }
+
+    /* ---------- agenda ---------- */
+
+    private async Task AbrirAgenda()
+    {
+        Erro = null;
+        await Executar(async () =>
+        {
+            if (equipe.Count == 0) equipe = await Opcoes.CorretoresAsync();
+            // chaves: só com permissão de movimentar e com a empresa escolhida (a chave sai em nome dela)
+            chaves = Usuario.Pode(Permissoes.ChavesMovimentar) && d!.Vistoria.EmpresaId is not null
+                ? [.. (await Chaves.DoImovelAsync(Usuario, d.Vistoria.ImovelId)).Chaves.Where(k => k.Fora is null)]
+                : [];
+            var amanha = DatasBR.Hoje().AddDays(1).ToDateTime(new TimeOnly(9, 0));
+            agendando = new AgendamentoVistoriaForm { Inicio = amanha };
+        });
+    }
+
+    private async Task Agendar()
+    {
+        if (agendando is null) return;
+        if (await Executar(async () => avisos = await Servico.AgendarAsync(Usuario, Id, agendando)))
+        {
+            agendando = null;
+            await Carregar();
+            Sucesso = "Vistoria agendada.";
+        }
+    }
+
+    /* ---------- realização, laudo e custo ---------- */
+
+    private void AbrirRealizacao()
+    {
+        Erro = null;
+        var v = d!.Vistoria;
+        realizando = new RealizacaoVistoriaForm
+        {
+            Data = v.RealizadaEm ?? (v.AgendadaPara is { } ag ? DateOnly.FromDateTime(DatasBR.DeUtc(ag)) : DatasBR.Hoje()),
+            LeituraAgua = v.LeituraAgua, LeituraLuz = v.LeituraLuz, LeituraGas = v.LeituraGas, Chaves = v.Chaves,
+            Vistoriador = v.Vistoriador, PrazoContestacao = v.PrazoContestacao,
+        };
+        if (realizando.Data > DatasBR.Hoje()) realizando.Data = DatasBR.Hoje();
+    }
+
+    private async Task Realizar()
+    {
+        if (realizando is null) return;
+        if (await Executar(() => Servico.RegistrarRealizacaoAsync(Usuario, Id, realizando)))
+        {
+            realizando = null;
+            await Carregar();
+            Sucesso = "Realização registrada. Envie o laudo e anote as pendências.";
+        }
+    }
+
+    private async Task EnviarLaudo(InputFileChangeEventArgs e)
+    {
+        if (await Executar(async () =>
+            {
+                var f = e.File;
+                if (f.Size > ImoveisService.TamanhoMaximoArquivo) throw new RegraNegocioException("arquivo", "Arquivo acima de 25 MB.");
+                await using var s = f.OpenReadStream(ImoveisService.TamanhoMaximoArquivo);
+                using var ms = new MemoryStream();
+                await s.CopyToAsync(ms);
+                await Servico.EnviarLaudoAsync(Usuario, Id, f.Name, ms.ToArray(), string.IsNullOrEmpty(f.ContentType) ? "application/pdf" : f.ContentType);
+            }))
+        {
+            await Carregar();
+            Sucesso = "Laudo enviado ao Drive.";
+        }
+    }
+
+    private void AbrirCusto()
+    {
+        Erro = null;
+        // padrão: inquilino paga a de entrada (na fatura); locador as demais (desconto no repasse, se administração)
+        var cobranca = d!.Vistoria.Tipo == TipoVistoria.ENTRADA ? CobrancaManutencao.FATURA
+            : d.Modalidade == ModalidadeLocacao.ADMINISTRACAO ? CobrancaManutencao.REPASSE : CobrancaManutencao.IMOBILIARIA;
+        custo = new CustoVistoriaForm { Cobranca = cobranca, Vencimento = DatasBR.Hoje().AddDays(7) };
+    }
+
+    private async Task LancarCusto()
+    {
+        if (custo is null) return;
+        if (await Executar(() => Servico.LancarCustoAsync(Usuario, Id, custo)))
+        {
+            custo = null;
+            await Carregar();
+            Sucesso = "Custo lançado.";
+        }
+    }
+
+    private static string RotuloCobranca(CobrancaManutencao? c) => c switch
+    {
+        CobrancaManutencao.REPASSE => "Descontar do repasse ao proprietário",
+        CobrancaManutencao.FATURA => "Cobrar do inquilino na próxima fatura",
+        CobrancaManutencao.IMOVEL => "Conta do imóvel (financeiro do imóvel)",
+        CobrancaManutencao.IMOBILIARIA => "Despesa da imobiliária",
+        CobrancaManutencao.DIRETO => "Pago direto à empresa (sem lançamento)",
+        _ => "—",
+    };
+
+    /* ---------- aceite e contestação ---------- */
+
+    private async Task Aceitar()
+    {
+        if (await Executar(() => Servico.RegistrarAceiteAsync(Usuario, Id, DatasBR.Hoje())))
+        {
+            await Carregar();
+            Sucesso = "Aceite registrado.";
+        }
+    }
+
+    private async Task Contestar()
+    {
+        if (await Executar(() => Servico.RegistrarContestacaoAsync(Usuario, Id, dataContestacao, contestacao)))
+        {
+            contestando = false;
+            await Carregar();
+            Sucesso = "Contestação registrada.";
+        }
+    }
+
+    /* ---------- pendências ---------- */
+
+    private async Task AdicionarPendencia()
+    {
+        if (await Executar(() => Servico.AdicionarPendenciaAsync(Usuario, Id, pend)))
+        {
+            pend = new PendenciaForm { Comodo = pend.Comodo, Responsavel = pend.Responsavel };
+            await Carregar();
+        }
+    }
+
+    private async Task AbrirChamado(PendenciaLinha p)
+    {
+        Guid chamado = default;
+        if (await Executar(async () => chamado = await Servico.AbrirChamadoAsync(Usuario, p.Id)))
+            Nav.NavigateTo($"manutencao/{chamado}");
+    }
+
+    private async Task Resolver(PendenciaLinha p)
+    {
+        if (await Executar(() => Servico.ResolverPendenciaAsync(Usuario, p.Id))) await Carregar();
+    }
+
+    private async Task Remover(PendenciaLinha p)
+    {
+        if (await Executar(() => Servico.RemoverPendenciaAsync(Usuario, p.Id))) await Carregar();
+    }
+}

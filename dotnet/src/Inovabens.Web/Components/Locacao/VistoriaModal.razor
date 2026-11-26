@@ -1,0 +1,70 @@
+@inherits ComponenteBase
+@inject VistoriaService Servico
+@inject ManutencaoService Manutencao
+
+@* Cadastro/edição da vistoria terceirizada: tipo e empresa de vistoria (cadastro de Pessoas, de preferência com o perfil
+   Prestador). O agendamento, o laudo e as pendências ficam na ficha da vistoria. *@
+
+<Modal Titulo="@(EditandoId is null ? "Nova vistoria" : "Editar vistoria")" AoFechar="AoFechar">
+    <EditForm Model="Form" OnValidSubmit="Salvar" class="formulario">
+        <DataAnnotationsValidator />
+        <MensagemErro Texto="@Erro" />
+        <div class="grade-2">
+            <label class="campo">
+                <span>Tipo</span>
+                <select class="input" @bind="Form.Tipo">
+                    @foreach (var t in Enum.GetValues<TipoVistoria>()) { <option value="@t">@Texto.Rotulo(t)</option> }
+                </select>
+            </label>
+            <label class="campo">
+                <span>Empresa de vistoria</span>
+                <input class="input" list="empresas-vistoria" value="@empresaNome" @onchange="e => EscolherEmpresa(e.Value?.ToString())"
+                       placeholder="Digite e escolha da lista" />
+                <datalist id="empresas-vistoria">@foreach (var p in empresas) { <option value="@p.Nome" /> }</datalist>
+            </label>
+        </div>
+        <label class="campo"><span>Vistoriador (quem vai ao imóvel)</span><InputText class="input" maxlength="200" @bind-Value="Form.Vistoriador" /></label>
+        <label class="campo"><span>Observação</span><InputTextArea class="input" rows="2" maxlength="2000" @bind-Value="Form.Observacao" /></label>
+        <p class="pequeno mudo">A empresa contratada faz a vistoria e entrega o laudo. Aqui ficam o agendamento, o laudo em PDF, as leituras,
+            o custo e as pendências apontadas.</p>
+        <div class="acoes-form">
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+            <button type="submit" class="btn-primary" disabled="@Ocupado">@(EditandoId is null ? "Criar vistoria" : "Salvar")</button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public VistoriaForm Form { get; set; } = default!;
+    [Parameter] public Guid? EditandoId { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public EventCallback<Guid> AoSalvar { get; set; }
+
+    private IReadOnlyList<Opcao> empresas = [];
+    private string? empresaNome;
+
+    protected override async Task OnInitializedAsync() => await Executar(async () =>
+    {
+        empresas = await Manutencao.PrestadoresAsync(Usuario);
+        empresaNome = empresas.FirstOrDefault(p => p.Id == Form.EmpresaId)?.Nome;
+    });
+
+    private void EscolherEmpresa(string? nome)
+    {
+        empresaNome = nome;
+        Form.EmpresaId = empresas.FirstOrDefault(p => string.Equals(p.Nome, nome?.Trim(), StringComparison.OrdinalIgnoreCase))?.Id;
+        Erro = Form.EmpresaId is null && !string.IsNullOrWhiteSpace(nome)
+            ? $"\"{nome}\" não está no cadastro. Escolha da lista ou cadastre a empresa em Pessoas." : null;
+    }
+
+    private async Task Salvar()
+    {
+        Guid id = EditandoId ?? Guid.Empty;
+        if (await Executar(async () =>
+            {
+                if (EditandoId is { } e) await Servico.AtualizarAsync(Usuario, e, Form);
+                else id = await Servico.CriarAsync(Usuario, Form);
+            }))
+            await AoSalvar.InvokeAsync(id);
+    }
+}

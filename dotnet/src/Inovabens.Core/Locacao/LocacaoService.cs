@@ -482,7 +482,7 @@ public sealed partial class LocacaoService(IDbContextFactory<InovabensDb> fabric
             {
                 if (abatido <= 0) break;
                 var v = Math.Min(abatido, m.Pendente);
-                db.ManutencaoAbatimentos.Add(new ManutencaoAbatimento { ChamadoId = m.ChamadoId, PagamentoId = pg.Id, Valor = v });
+                db.ManutencaoAbatimentos.Add(new ManutencaoAbatimento { ChamadoId = m.ChamadoId, VistoriaId = m.VistoriaId, PagamentoId = pg.Id, Valor = v });
                 abatido -= v;
             }
             var reembolso = CalculoLocacao.Reembolso(f.Itens, pg.Principal);

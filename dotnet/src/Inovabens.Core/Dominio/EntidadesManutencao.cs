@@ -123,7 +123,9 @@ public class ChamadoEvento
 public class ManutencaoAbatimento
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid ChamadoId { get; set; }
+    /// <summary>Conserto abatido (ou a vistoria, em <see cref="VistoriaId"/>).</summary>
+    public Guid? ChamadoId { get; set; }
+    public Guid? VistoriaId { get; set; }
     public Guid PagamentoId { get; set; }
     public decimal Valor { get; set; }
 }
