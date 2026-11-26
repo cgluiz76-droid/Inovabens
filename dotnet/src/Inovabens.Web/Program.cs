@@ -770,7 +770,10 @@ portal.MapGet("informe/{ano:int}", async (string token, int ano, HttpContext c, 
 // Banco Cora: aviso de boleto (sem corpo; id no cabeçalho webhook-resource-id). O aviso não é assinado: o token
 // secreto do caminho filtra e a situação vale pela consulta ao próprio banco. Token errado: 404.
 app.MapPost("/api/v1/webhooks/cora/{token}", async (string token, HttpRequest req, Inovabens.Core.Locacao.CobrancaBancariaService s) =>
-    await s.ProcessarWebhookAsync(token, req.Headers["webhook-resource-id"].ToString(), req.HttpContext.RequestAborted) ? Results.Ok() : Results.NotFound())
+{
+    SemPaginaDeErro(req); // 404 puro: a página de erro reexecutada como POST cairia no antiforgery (400)
+    return await s.ProcessarWebhookAsync(token, req.Headers["webhook-resource-id"].ToString(), req.HttpContext.RequestAborted) ? Results.Ok() : Results.NotFound();
+})
     .AllowAnonymous().DisableAntiforgery();
 app.MapPost("/api/v1/webhooks/google/calendar", async (HttpRequest req, GoogleService g) =>
 {
