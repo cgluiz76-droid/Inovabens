@@ -8,7 +8,10 @@ namespace Inovabens.Core.Dominio;
 public class FaturaBoleto
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid FaturaId { get; set; }
+    /// <summary>Fatura do aluguel ou, na temporada, a reserva (um dos dois).</summary>
+    public Guid? FaturaId { get; set; }
+    public Guid? ReservaId { get; set; }
+    public Guid? TemporadaPagamentoId { get; set; }
     public string Provedor { get; set; } = "CORA";
     public string ExternoId { get; set; } = "";
     public Guid Idempotencia { get; set; }

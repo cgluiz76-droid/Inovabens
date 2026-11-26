@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace Inovabens.Core.Dominio;
@@ -165,6 +165,7 @@ public class Alerta
     /// <summary>Aviso de vencimento de contrato de locação (migração 0047).</summary>
     public Guid? LocacaoAvisoId { get; set; }
     public Guid? ChamadoManutencaoId { get; set; }
+    public Guid? TemporadaReservaId { get; set; }
     public string Mensagem { get; set; } = "";
     public DateTime GeradoEm { get; set; } = DateTime.UtcNow;
     public DateTime? LidoEm { get; set; }

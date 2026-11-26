@@ -325,3 +325,19 @@ button { font: inherit; color: inherit; }
 .lp-form-msg { font-size: .9rem; color: var(--ouro-txt); min-height: 1.2em; }
 .lp-form-ok { background: var(--sup-2); border-left: 4px solid var(--ok); border-radius: 10px; padding: 12px 14px; font-weight: 600; }
 .lp-isca { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+/* ================= Temporada (site/temporada/{id}) ================= */
+.temporada-precos { padding-left: 18px; margin: 10px 0 0; }
+.temporada-meses { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 10px; }
+.temporada-mes h3 { font-size: .95rem; text-transform: capitalize; margin-bottom: 6px; }
+.temporada-grade { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; font-size: .85rem; }
+.temporada-grade span { padding: 5px 0; border-radius: 6px; }
+.temporada-grade .cab { color: var(--mudo); font-size: .72rem; font-weight: 600; }
+.temporada-grade .livre, .temporada-leg.livre { background: color-mix(in srgb, var(--ok) 14%, var(--sup)); color: var(--texto); }
+.temporada-grade .ocupado, .temporada-leg.ocupado { background: var(--sup-2); color: var(--mudo); text-decoration: line-through; }
+.temporada-grade .passado { color: var(--mudo); opacity: .5; }
+.temporada-grade .escolhido { outline: 2px solid var(--ouro); outline-offset: -2px; font-weight: 700; }
+.temporada-leg { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-left: 6px; }
+.temporada-calc { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; max-width: none; }
+.texto-indisponivel { color: #b3261e; font-weight: 600; }
+:root[data-tema="escuro"] .texto-indisponivel { color: #ff8a80; }

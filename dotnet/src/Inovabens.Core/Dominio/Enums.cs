@@ -1,4 +1,4 @@
-namespace Inovabens.Core.Dominio;
+﻿namespace Inovabens.Core.Dominio;
 
 // Os nomes dos membros são IGUAIS aos rótulos dos tipos enum do PostgreSQL (ver Dados/Migracoes/0000_init.sql).
 // Não renomeie: o mapeamento é feito sem tradução de nomes (InovabensDb.ConfigurarNpgsql).
@@ -37,7 +37,7 @@ public enum TipoCompromisso { TAREFA, REUNIAO, VISITA, LIGACAO, MENSAGEM }
 
 public enum StatusCompromisso { PENDENTE, CONCLUIDO, CANCELADO }
 
-public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, TITULO_EM_ATRASO, LIMITE_GRATUITO, NOVO_LEAD, PROPOSTA_EXPIRADA, ETAPA_PARADA, LOCACAO_VENCIMENTO, MANUTENCAO }
+public enum TipoAlerta { COMPROMISSO_NAO_CUMPRIDO, TITULO_EM_ATRASO, LIMITE_GRATUITO, NOVO_LEAD, PROPOSTA_EXPIRADA, ETAPA_PARADA, LOCACAO_VENCIMENTO, MANUTENCAO, TEMPORADA }
 
 /// <summary>CAPTACAO: proprietário oferecendo o imóvel (funil de captação).</summary>
 public enum FinalidadeLead { COMPRA, LOCACAO, CAPTACAO }

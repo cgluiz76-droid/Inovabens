@@ -1,0 +1,473 @@
+@page "/temporada"
+@attribute [Authorize(Policy = Permissoes.LocacaoVer)]
+@inherits ComponenteBase
+@inject TemporadaService Servico
+@inject OpcoesService Opcoes
+@inject NavigationManager Nav
+
+@* Temporada (Lei 8.245, art. 48): reservas por diária com calendário por imóvel, iCal com Airbnb/Booking,
+   pedido de reserva pelo site e acerto por reserva (comissão, repasse, limpeza e caução). *@
+
+<PageTitle>Temporada · Inovabens</PageTitle>
+
+<div class="titulo">
+    <h1>Temporada</h1>
+    @if (PodeEditar)
+    {
+        <div class="acoes-topo">
+            <button class="btn-ghost" @onclick="() => AbrirConfig(null)">Colocar imóvel em temporada</button>
+            <button class="btn-primary" disabled="@(imoveis.Count == 0)" @onclick="() => NovaReserva(null, null)"
+                    title="@(imoveis.Count == 0 ? "Coloque um imóvel em temporada primeiro" : null)">Nova reserva</button>
+        </div>
+    }
+</div>
+<MensagemErro Texto="@(ModalAberto ? null : Erro)" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+<div class="kpis">
+    <div class="kpi"><span class="rotulo-kpi">Pedidos do site</span><span class="valor-kpi">@reservas.Count(r => r.Status == StatusReserva.PEDIDO)</span>
+        <span class="contexto-kpi">aguardando confirmação</span></div>
+    <div class="kpi"><span class="rotulo-kpi">Hospedados agora</span><span class="valor-kpi">@reservas.Count(r => r.Status == StatusReserva.EM_CURSO)</span>
+        <span class="contexto-kpi">check-in feito</span></div>
+    <div class="kpi"><span class="rotulo-kpi">Chegadas em 7 dias</span>
+        <span class="valor-kpi">@reservas.Count(r => r.Status == StatusReserva.CONFIRMADA && r.Entrada >= hoje && r.Entrada <= hoje.AddDays(7))</span>
+        <span class="contexto-kpi">confirmadas</span></div>
+    <div class="kpi"><span class="rotulo-kpi">A receber</span><span class="valor-kpi">@Texto.Moeda(reservas.Where(r => r.Status != StatusReserva.PEDIDO).Sum(r => r.Saldo))</span>
+        <span class="contexto-kpi">saldo das reservas abertas</span></div>
+</div>
+
+<div class="abas">
+    <a class="aba @(Aba == "calendario" ? "ativa" : "")" href="temporada">Calendário</a>
+    <a class="aba @(Aba == "reservas" ? "ativa" : "")" href="temporada?aba=reservas">Reservas</a>
+    <a class="aba @(Aba == "imoveis" ? "ativa" : "")" href="temporada?aba=imoveis">Imóveis (@imoveis.Count)</a>
+</div>
+
+@if (carregando) { <p class="carregando">Carregando…</p> }
+else if (Aba == "imoveis")
+{
+    <section class="card">
+        @if (imoveis.Count == 0) { <p class="vazio">Nenhum imóvel em temporada. Use "Colocar imóvel em temporada".</p> }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Imóvel</th><th>Modalidade</th><th class="num">Diária</th><th class="num">Comissão</th><th class="num">Reservas futuras</th>
+                        <th>Calendários (iCal)</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var i in imoveis)
+                        {
+                            <tr>
+                                <td><a href="@($"imoveis/{i.ImovelId}")">@i.Codigo</a> <span class="pequeno mudo">@i.Titulo</span>
+                                    @if (!i.Ativo) { <span class="badge">pausado</span> }</td>
+                                <td>@Texto.Rotulo(i.Modalidade)</td>
+                                <td class="num">@Texto.Moeda(i.Diaria)</td>
+                                <td class="num">@(i.Modalidade == ModalidadeLocacao.ADMINISTRACAO ? $"{i.ComissaoPct:0.##}%" : "—")</td>
+                                <td class="num">@i.ReservasFuturas</td>
+                                <td class="pequeno">
+                                    @foreach (var c in i.Calendarios)
+                                    {
+                                        <div class="@(c.Erro is null ? "" : "texto-erro")" title="@c.Url">
+                                            @Texto.Rotulo(c.Origem) · @(c.UltimaSincronizacao is { } us ? "lido " + Texto.DataHora(us) : "ainda não lido")
+                                            @if (c.Erro is { } ce) { <span> · @ce</span> }
+                                            @if (PodeEditar)
+                                            {
+                                                <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Sincronizar(c)">Ler agora</button>
+                                                <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => RemoverCalendario(c)">Remover</button>
+                                            }
+                                        </div>
+                                    }
+                                    @if (i.Calendarios.Count == 0) { <span class="mudo">nenhum importado</span> }
+                                </td>
+                                <td class="nowrap">
+                                    @if (PodeEditar)
+                                    {
+                                        <button class="btn-ghost mini" @onclick="() => AbrirConfig(i)">Configurar</button>
+                                        <button class="btn-ghost mini" @onclick="() => AbrirCalendario(i)">Importar calendário</button>
+                                    }
+                                    <button class="btn-ghost mini" @onclick="() => linkAberto = linkAberto == i.ImovelId ? null : i.ImovelId">Link para exportar</button>
+                                    <a class="btn-ghost mini" href="@($"site/temporada/{i.ImovelId}")" target="_blank" rel="noopener">Página no site</a>
+                                </td>
+                            </tr>
+                            @if (linkAberto == i.ImovelId)
+                            {
+                                <tr>
+                                    <td colspan="7">
+                                        <p class="pequeno">Cole este link no Airbnb/Booking ("importar calendário") para bloquear lá as datas reservadas aqui.
+                                            Quem tem o link vê só os dias ocupados, sem nomes.</p>
+                                        <input class="input" readonly value="@i.LinkIcal" aria-label="Link do calendário para exportar" />
+                                        @if (PodeEditar)
+                                        {
+                                            <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => NovoLink(i)"
+                                                    title="O link atual para de funcionar; recadastre o novo nas plataformas">Gerar novo link</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="pequeno mudo">Os calendários importados são lidos a cada 30 minutos: cada evento do Airbnb/Booking vira uma reserva da plataforma
+                (sem valores: preencha diárias e taxa da plataforma na reserva). Evento removido na plataforma cancela a reserva aqui.
+                A página no site abre para visitantes só se o imóvel estiver disponível e marcado para divulgar no site.</p>
+        }
+    </section>
+}
+else if (Aba == "reservas")
+{
+    <div class="filtros">
+        <select class="input filtro" aria-label="Imóvel" @bind="filtroImovel" @bind:after="Carregar">
+            <option value="">Todos os imóveis</option>
+            @foreach (var i in imoveis) { <option value="@i.ImovelId">@i.Codigo</option> }
+        </select>
+        <select class="input filtro" aria-label="Período" @bind="periodo" @bind:after="Carregar">
+            <option value="futuras">Atuais e futuras</option>
+            <option value="todas">Todas</option>
+        </select>
+        <label class="check"><input type="checkbox" @bind="incluirCanceladas" @bind:after="Carregar" /> Canceladas</label>
+    </div>
+    <section class="card">
+        @if (reservas.Count == 0) { <p class="vazio">Nenhuma reserva.</p> }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Reserva</th><th>Imóvel</th><th>Hóspede</th><th>Período</th><th>Origem</th><th>Situação</th>
+                        <th class="num">A receber</th><th class="num">Saldo</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in reservas)
+                        {
+                            <tr>
+                                <td><a href="@($"temporada/reserva/{r.Id}")">@r.Codigo</a></td>
+                                <td>@r.ImovelCodigo</td>
+                                <td>@r.Hospede</td>
+                                <td class="nowrap">@Texto.Data(r.Entrada) a @Texto.Data(r.Saida) <span class="pequeno mudo">(@(r.Saida.DayNumber - r.Entrada.DayNumber)n)</span></td>
+                                <td>@Texto.Rotulo(r.Origem)</td>
+                                <td><span class="badge reserva-@r.Status">@Texto.Rotulo(r.Status)</span></td>
+                                <td class="num">@Texto.Moeda(r.AReceber)</td>
+                                <td class="num @(r.Saldo > 0 && r.Entrada <= hoje ? "texto-erro" : "")">@Texto.Moeda(r.Saldo)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+else
+{
+    <div class="filtros">
+        <button class="btn-ghost" @onclick="() => Mudar(-1)" aria-label="Mês anterior">‹</button>
+        <strong class="mes">@mes.ToString("MMMM yyyy", Texto.PtBr)</strong>
+        <button class="btn-ghost" @onclick="() => Mudar(1)" aria-label="Próximo mês">›</button>
+        <button class="btn-ghost" @onclick="MesAtual">Hoje</button>
+    </div>
+    <section class="card">
+        @if (imoveis.Count == 0) { <p class="vazio">Nenhum imóvel em temporada. Use "Colocar imóvel em temporada".</p> }
+        else
+        {
+            var dias = Enumerable.Range(0, DateTime.DaysInMonth(mes.Year, mes.Month)).Select(n => mes.AddDays(n)).ToList();
+            <div class="tabela-container">
+                <table class="tabela calendario-temporada">
+                    <thead>
+                        <tr>
+                            <th>Imóvel</th>
+                            @foreach (var dia in dias)
+                            {
+                                <th class="@(dia == hoje ? "hoje" : "") @(dia.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "fds" : "")">
+                                    @dia.Day<br /><span class="pequeno mudo">@dia.ToString("ddd", Texto.PtBr)[..1]</span></th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var i in imoveis)
+                        {
+                            <tr>
+                                <th scope="row" class="nowrap"><a href="@($"imoveis/{i.ImovelId}")">@i.Codigo</a></th>
+                                @foreach (var dia in dias)
+                                {
+                                    var r = reservas.FirstOrDefault(x => x.ImovelId == i.ImovelId && x.Entrada <= dia && x.Saida > dia);
+                                    if (r is null)
+                                    {
+                                        <td class="livre @(dia == hoje ? "hoje" : "")">
+                                            @if (PodeEditar && dia >= hoje)
+                                            {
+                                                var (im, d0) = (i.ImovelId, dia);
+                                                <button class="dia-livre" title="Nova reserva a partir de @Texto.Data(dia)" @onclick="() => NovaReserva(im, d0)"></button>
+                                            }
+                                        </td>
+                                    }
+                                    else
+                                    {
+                                        <td class="ocupado reserva-@r.Status @(r.Entrada == dia ? "inicio" : "")" title="@r.Codigo · @r.Hospede · @Texto.Data(r.Entrada) a @Texto.Data(r.Saida) · @Texto.Rotulo(r.Status)">
+                                            <a href="@($"temporada/reserva/{r.Id}")" aria-label="@r.Codigo">@(r.Entrada == dia || dia == dias[0] ? Inicial(r.Hospede) : "")</a>
+                                        </td>
+                                    }
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="pequeno mudo legenda-temporada">
+                <span class="badge reserva-PEDIDO">pedido</span> <span class="badge reserva-CONFIRMADA">confirmada</span>
+                <span class="badge reserva-EM_CURSO">hospedado</span> <span class="badge reserva-FINALIZADA">saiu</span>
+                <span class="badge reserva-FECHADA">acertada</span> · cada célula é uma noite; clique num dia livre para reservar.</p>
+        }
+    </section>
+}
+
+@if (config is not null)
+{
+    <Modal Titulo="@(configImovel is null ? "Colocar imóvel em temporada" : $"Temporada · {configImovel.Codigo}")" AoFechar="() => config = null" Largo>
+        <EditForm Model="config" OnValidSubmit="SalvarConfig" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            @if (configImovel is null)
+            {
+                <label class="campo">
+                    <span>Imóvel</span>
+                    <select class="input" @bind="ConfigImovelId" @bind:after="CarregarConfig">
+                        <option value="">Selecione…</option>
+                        @foreach (var o in opcoesImoveis.Where(o => imoveis.All(i => i.ImovelId != o.Id))) { <option value="@o.Id">@o.Nome</option> }
+                    </select>
+                </label>
+            }
+            <div class="grade-4">
+                <label class="campo">
+                    <span>Modalidade</span>
+                    <select class="input" @bind="config.Modalidade">
+                        <option value="@ModalidadeLocacao.ADMINISTRACAO">Administração (de terceiro)</option>
+                        <option value="@ModalidadeLocacao.PROPRIO">Imóvel próprio</option>
+                    </select>
+                </label>
+                <label class="campo"><span>Diária</span><InputNumber class="input" step="0.01" @bind-Value="config.Diaria" /><ValidationMessage For="() => config.Diaria" /></label>
+                <label class="campo" title="Noites de sexta e sábado"><span>Diária fim de semana</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="config.DiariaFimSemana" placeholder="= diária" /></label>
+                <label class="campo"><span>Mínimo de noites</span><InputNumber class="input" @bind-Value="config.MinimoNoites" /><ValidationMessage For="() => config.MinimoNoites" /></label>
+                <label class="campo"><span>Hóspedes (máx.)</span><InputNumber class="input" @bind-Value="config.HospedesMax" /></label>
+                <label class="campo"><span>Taxa de limpeza</span><InputNumber class="input" step="0.01" @bind-Value="config.TaxaLimpeza" /></label>
+                <label class="campo" title="Garantia devolvida após a saída, descontados danos"><span>Caução</span><InputNumber class="input" step="0.01" @bind-Value="config.Caucao" /></label>
+                @if (config.Modalidade == ModalidadeLocacao.ADMINISTRACAO)
+                {
+                    <label class="campo" title="Sobre as diárias (sem limpeza e caução)"><span>Comissão (%)</span><InputNumber class="input" step="0.01" @bind-Value="config.ComissaoPct" />
+                        <ValidationMessage For="() => config.ComissaoPct" /></label>
+                }
+                <label class="campo"><span>Check-in</span><InputText class="input" maxlength="5" @bind-Value="config.Checkin" /><ValidationMessage For="() => config.Checkin" /></label>
+                <label class="campo"><span>Check-out</span><InputText class="input" maxlength="5" @bind-Value="config.Checkout" /><ValidationMessage For="() => config.Checkout" /></label>
+                <label class="campo col-2">
+                    <span>Limpeza feita por</span>
+                    <input class="input" list="temporada-pessoas" value="@config.FaxineiraNome" @onchange="e => EscolherFaxineira(e.Value?.ToString())"
+                           @onfocus="CarregarPessoas" placeholder="Digite e escolha da lista" />
+                    <ValidationMessage For="() => config.FaxineiraId" />
+                </label>
+            </div>
+            <label class="campo"><span>Regras da casa (aparecem no site e no contrato)</span>
+                <InputTextArea class="input" rows="3" maxlength="2000" @bind-Value="config.Regras" /></label>
+            <label class="check"><InputCheckbox @bind-Value="config.Ativo" /> Aceitando reservas (desmarque para pausar e tirar do site)</label>
+            <p class="pequeno mudo">Administração: a comissão sai das diárias; o proprietário recebe o resto menos a taxa da plataforma, em
+                @TemporadaService.DiasRepasse dias após o fechamento. A taxa de limpeza é cobrada do hóspede e paga a quem limpa.</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => config = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@(Ocupado || configImovelId is null)">Salvar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (calendarioDe is not null)
+{
+    <Modal Titulo="@($"Importar calendário · {calendarioDe.Codigo}")" AoFechar="() => calendarioDe = null">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <label class="campo">
+                <span>Plataforma</span>
+                <select class="input" @bind="calOrigem">
+                    @foreach (var o in Enum.GetValues<OrigemCalendario>()) { <option value="@o">@Texto.Rotulo(o)</option> }
+                </select>
+            </label>
+            <label class="campo"><span>Link iCal (.ics) da plataforma</span>
+                <input class="input" type="url" maxlength="1000" @bind="calUrl" placeholder="https://www.airbnb.com.br/calendar/ical/….ics" /></label>
+            <p class="pequeno mudo">No Airbnb: Calendário → Disponibilidade → Conectar calendários → Exportar. No Booking: Tarifas e disponibilidade →
+                Sincronizar calendários → Exportar.</p>
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => calendarioDe = null">Cancelar</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="AdicionarCalendario">Importar</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@if (nova is not null)
+{
+    <ReservaModal Form="nova" Imoveis="imoveis" AoFechar="() => nova = null" AoSalvar="ReservaCriada" />
+}
+
+<datalist id="temporada-pessoas">@foreach (var p in pessoas) { <option value="@p.Nome" /> }</datalist>
+
+@code {
+    [SupplyParameterFromQuery(Name = "aba")] public string? AbaQuery { get; set; }
+    private string Aba => AbaQuery is "reservas" or "imoveis" ? AbaQuery : "calendario";
+
+    private readonly DateOnly hoje = DatasBR.Hoje();
+    private DateOnly mes = new(DatasBR.Hoje().Year, DatasBR.Hoje().Month, 1);
+    private IReadOnlyList<TemporadaImovelLinha> imoveis = [];
+    private IReadOnlyList<ReservaLinha> reservas = [];
+    private IReadOnlyList<Opcao> opcoesImoveis = [], pessoas = [];
+    private bool carregando = true, incluirCanceladas;
+    private string filtroImovel = "", periodo = "futuras";
+    private Guid? linkAberto;
+
+    private TemporadaConfigForm? config;
+    private TemporadaImovelLinha? configImovel;
+    private Guid? configImovelId;
+    private TemporadaImovelLinha? calendarioDe;
+    private OrigemCalendario calOrigem = OrigemCalendario.AIRBNB;
+    private string? calUrl;
+    private ReservaForm? nova;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);
+    private bool ModalAberto => config is not null || calendarioDe is not null || nova is not null;
+
+    private string ConfigImovelId
+    {
+        get => configImovelId?.ToString() ?? "";
+        set => configImovelId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        carregando = true;
+        await Carregar();
+        carregando = false;
+    }
+
+    private async Task Carregar() => await Executar(async () =>
+    {
+        imoveis = await Servico.ImoveisAsync(Usuario);
+        // calendário: o mês inteiro; reservas: atuais/futuras (ou todas); KPIs vêm da mesma lista
+        reservas = Aba switch
+        {
+            "calendario" => await Servico.ReservasAsync(Usuario, null, mes, mes.AddMonths(1).AddDays(-1)),
+            "reservas" => await Servico.ReservasAsync(Usuario, Guid.TryParse(filtroImovel, out var g) ? g : null,
+                periodo == "futuras" ? hoje : null, null, incluirCanceladas),
+            _ => await Servico.ReservasAsync(Usuario, null, hoje),
+        };
+    });
+
+    private async Task Mudar(int meses) { mes = mes.AddMonths(meses); await Carregar(); }
+    private async Task MesAtual() { mes = new DateOnly(hoje.Year, hoje.Month, 1); await Carregar(); }
+
+    private static string Inicial(string nome) => string.IsNullOrWhiteSpace(nome) ? "•" : nome.Trim()[..1].ToUpperInvariant();
+
+    /* ---------- configuração do imóvel ---------- */
+
+    private async Task AbrirConfig(TemporadaImovelLinha? i)
+    {
+        Erro = null;
+        configImovel = i;
+        configImovelId = i?.ImovelId;
+        if (i is null)
+        {
+            if (await Executar(async () => opcoesImoveis = await Opcoes.ImoveisAsync(Usuario))) config = new TemporadaConfigForm();
+            return;
+        }
+        await Executar(async () => config = await Servico.ConfigAsync(Usuario, i.ImovelId));
+    }
+
+    /// <summary>Imóvel escolhido: sugere a diária pelo aluguel mensal.</summary>
+    private async Task CarregarConfig()
+    {
+        if (configImovelId is { } id) await Executar(async () => config = await Servico.ConfigAsync(Usuario, id));
+    }
+
+    private async Task CarregarPessoas()
+    {
+        if (pessoas.Count == 0) await Executar(async () => pessoas = await Opcoes.PessoasAsync(Usuario, 5000));
+    }
+
+    private void EscolherFaxineira(string? nome)
+    {
+        if (config is null) return;
+        config.FaxineiraNome = nome;
+        config.FaxineiraId = pessoas.FirstOrDefault(p => string.Equals(p.Nome, nome?.Trim(), StringComparison.OrdinalIgnoreCase))?.Id;
+        Erro = config.FaxineiraId is null && !string.IsNullOrWhiteSpace(nome)
+            ? $"\"{nome}\" não está no cadastro. Escolha da lista ou cadastre em Pessoas." : null;
+    }
+
+    private async Task SalvarConfig()
+    {
+        if (configImovelId is not { } id || config is null) return;
+        if (await Executar(() => Servico.SalvarConfigAsync(Usuario, id, config)))
+        {
+            config = null;
+            await Carregar();
+            Sucesso = "Configuração da temporada salva.";
+        }
+    }
+
+    private async Task NovoLink(TemporadaImovelLinha i)
+    {
+        if (await Executar(() => Servico.NovoLinkIcalAsync(Usuario, i.ImovelId)))
+        {
+            await Carregar();
+            Sucesso = "Novo link gerado. Atualize-o no Airbnb/Booking: o antigo parou de funcionar.";
+        }
+    }
+
+    /* ---------- calendários importados ---------- */
+
+    private void AbrirCalendario(TemporadaImovelLinha i)
+    {
+        Erro = null;
+        calUrl = null;
+        calOrigem = OrigemCalendario.AIRBNB;
+        calendarioDe = i;
+    }
+
+    private async Task AdicionarCalendario()
+    {
+        if (calendarioDe is null) return;
+        if (await Executar(() => Servico.AdicionarCalendarioAsync(Usuario, calendarioDe.ImovelId, calOrigem, calUrl ?? "")))
+        {
+            calendarioDe = null;
+            await Carregar();
+            Sucesso = "Calendário cadastrado. Use \"Ler agora\" ou aguarde a leitura automática (30 min).";
+        }
+    }
+
+    private async Task Sincronizar(CalendarioLinha c)
+    {
+        var n = 0;
+        if (await Executar(async () => n = await Servico.SincronizarAsync(Usuario, c.Id)))
+        {
+            await Carregar();
+            Sucesso = $"Leitura concluída: {n} evento(s) aplicado(s). Falha na leitura aparece na linha do calendário.";
+        }
+        else await Carregar();
+    }
+
+    private async Task RemoverCalendario(CalendarioLinha c)
+    {
+        if (await Executar(() => Servico.RemoverCalendarioAsync(Usuario, c.Id)))
+        {
+            await Carregar();
+            Sucesso = "Calendário removido.";
+        }
+    }
+
+    /* ---------- reservas ---------- */
+
+    private void NovaReserva(Guid? imovelId, DateOnly? entrada)
+    {
+        Erro = null;
+        var im = imovelId ?? (imoveis.Count == 1 ? imoveis[0].ImovelId : null);
+        nova = new ReservaForm { ImovelId = im, Entrada = entrada, Saida = entrada?.AddDays(2) };
+    }
+
+    private void ReservaCriada(Guid id)
+    {
+        nova = null;
+        Nav.NavigateTo($"temporada/reserva/{id}");
+    }
+}

@@ -95,6 +95,19 @@ public sealed class BoletosCoraJob(IServiceScopeFactory e, InovabensOpcoes o, IL
     }
 }
 
+/// <summary>A cada 30 min: lê os calendários iCal (Airbnb/Booking) dos imóveis de temporada.</summary>
+public sealed class TemporadaIcalJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<TemporadaIcalJob> log) : Rotina(e, o, log)
+{
+    protected override string Nome => "calendários de temporada";
+    protected internal override DateTime ProximaBR(DateTime agoraBR) => ACada(agoraBR, 30);
+
+    protected override async Task Rodar(IServiceProvider sp, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<Inovabens.Core.Locacao.TemporadaService>().SincronizarTodosAsync(ct);
+        if (n > 0) Log.LogInformation("Temporada: {Qtd} evento(s) de calendário aplicado(s)", n);
+    }
+}
+
 /// <summary>Todo dia às 06:00: gera os lançamentos previstos das recorrências e alerta os títulos a pagar/receber em atraso.</summary>
 public sealed class RotinaFinanceiraDiariaJob(IServiceScopeFactory e, InovabensOpcoes o, ILogger<RotinaFinanceiraDiariaJob> log) : Rotina(e, o, log)
 {

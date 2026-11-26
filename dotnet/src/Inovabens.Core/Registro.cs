@@ -40,6 +40,7 @@ public static class Registro
         services.AddScoped<Locacao.LocacaoRelatoriosService>();
         services.AddScoped<Locacao.CobrancaBancariaService>();
         services.AddScoped<Locacao.PortalService>();
+        services.AddScoped<Locacao.TemporadaService>();
         services.AddScoped<AuthService>();
         services.AddScoped<OpcoesService>();
         services.AddScoped<ImoveisService>();

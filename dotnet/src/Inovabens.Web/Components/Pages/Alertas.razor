@@ -55,6 +55,10 @@ else
                 {
                     <a class="pequeno" href="imoveis/@im">Abrir imóvel</a>
                 }
+                @if (a.Dados.TemporadaReservaId is { } res)
+                {
+                    <a class="pequeno" href="temporada/reserva/@res">Abrir reserva de temporada</a>
+                }
                 @if (a.Dados.ChamadoManutencaoId is { } man)
                 {
                     <a class="pequeno" href="manutencao/@man">Abrir chamado de manutenção</a>

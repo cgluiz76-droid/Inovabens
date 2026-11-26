@@ -29,6 +29,7 @@ builder.Services.AddHostedService<SincronizacaoIndicesJob>();
 builder.Services.AddHostedService<TaxasFinanciamentoJob>();
 builder.Services.AddHostedService<AlertasCompromissosJob>();
 builder.Services.AddHostedService<BoletosCoraJob>();
+builder.Services.AddHostedService<TemporadaIcalJob>();
 builder.Services.AddHostedService<ExpiracaoPropostasJob>();
 builder.Services.AddHostedService<PrazosEtapasJob>();
 builder.Services.AddHostedService<RotinaFinanceiraDiariaJob>();
@@ -102,6 +103,7 @@ builder.Services.AddRateLimiter(o =>
         : (c.Request.Path.StartsWithSegments("/" + PaginasImovelService.Prefixo) && c.Request.Path.Value!.EndsWith("/formulario", StringComparison.Ordinal))
             // links públicos da manutenção (inquilino abre chamado, proprietário aprova): mesmo teto
             || c.Request.Path.StartsWithSegments("/chamado") || c.Request.Path.StartsWithSegments("/aprovacao")
+            || c.Request.Path.StartsWithSegments("/site/temporada")
             ? RateLimitPartition.GetFixedWindowLimiter("form:" + (c.Connection.RemoteIpAddress?.ToString() ?? "?"),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) })
             : RateLimitPartition.GetNoLimiter(""));
@@ -109,6 +111,7 @@ builder.Services.AddRateLimiter(o =>
     o.OnRejected = (ctx, ct) => new ValueTask(ctx.HttpContext.Response.WriteAsync(
         ctx.HttpContext.Request.Path.Value?.EndsWith("/formulario") == true
             || ctx.HttpContext.Request.Path.StartsWithSegments("/chamado") || ctx.HttpContext.Request.Path.StartsWithSegments("/aprovacao")
+            || ctx.HttpContext.Request.Path.StartsWithSegments("/site/temporada")
             ? "Muitos envios a partir deste endereço. Aguarde alguns minutos ou fale conosco pelo WhatsApp."
             : "Muitas tentativas de login a partir deste endereço. Aguarde um minuto e tente de novo.", ct));
 });
@@ -415,6 +418,19 @@ app.MapGet("/locacao/dimob.xlsx", (int ano, HttpContext c, Inovabens.Core.Locaca
     Baixar(c, u => s.DimobExcelAsync(u, ano))).RequireAuthorization(Permissoes.LocacaoVer);
 app.MapGet("/locacao/gerencial.xlsx", (int ano, HttpContext c, Inovabens.Core.Locacao.LocacaoRelatoriosService s) =>
     Baixar(c, u => s.GerencialExcelAsync(u, ano))).RequireAuthorization(Permissoes.LocacaoVer);
+// Locação, fase 8 (temporada): contrato de temporada (art. 48) e acerto da reserva
+app.MapGet("/temporada/reserva/{id:guid}/contrato.pdf", (Guid id, HttpContext c, TemporadaService s) =>
+    Baixar(c, u => s.ContratoPdfAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
+app.MapGet("/temporada/reserva/{id:guid}/acerto.pdf", (Guid id, HttpContext c, TemporadaService s) =>
+    Baixar(c, u => s.AcertoPdfAsync(u, id))).RequireAuthorization(Permissoes.LocacaoVer);
+// Calendário exportado (Airbnb/Booking importam): só os dias ocupados, sem nomes; o token é o segredo do link
+app.MapGet("/temporada/ical/{token}.ics", async (string token, HttpContext c, TemporadaService s) =>
+{
+    var ics = await s.IcalAsync(token, c.RequestAborted);
+    if (ics is null) return Results.NotFound();
+    c.Response.Headers.CacheControl = "private, max-age=300";
+    return Results.Text(ics, "text/calendar; charset=utf-8");
+}).AllowAnonymous();
 app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, PessoasService s) =>
     Baixar(c, u => s.ExcelListaAsync(u, new FiltroPessoas(termo, papel)))).RequireAuthorization(Permissoes.PessoasExportarLista);
 
@@ -422,8 +438,8 @@ app.MapGet("/pessoas/lista.xlsx", (string? termo, string? papel, HttpContext c, 
 // Aberto a visitantes sem login: só imóveis disponíveis e marcados para divulgar, com fotos e características públicas.
 // Usuário do sistema também abre a ficha de imóvel que ainda não está no site (botão "Ver no site"), com a faixa de avisos.
 // Enquanto SITE_PUBLICO_URL estiver vazio, segue fora do Google (noindex, Seo.cs).
-Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp) => PaginaImovelSite(id, c, s, emp, null);
-async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService? taxas)
+Task<IResult> FichaSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TemporadaService t) => PaginaImovelSite(id, c, s, emp, null, t);
+async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService? taxas, TemporadaService t)
 {
     try
     {
@@ -439,7 +455,7 @@ async Task<IResult> PaginaImovelSite(Guid id, HttpContext c, ImoveisService s, E
         else return Results.NotFound();
         CacheSite(c);
         return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.FichaSite>(
-            new { Detalhe = d, LinkImobibrasil = linkAtual, Quadro = quadro, SoSimulador = taxas is not null, Taxas = taxas is null ? null : await taxas.AtuaisAsync(c.RequestAborted) });
+            new { Detalhe = d, LinkImobibrasil = linkAtual, Quadro = quadro, SoSimulador = taxas is not null, Temporada = await t.AtivoAsync(id, c.RequestAborted), Taxas = taxas is null ? null : await taxas.AtuaisAsync(c.RequestAborted) });
     }
     catch (AcessoNegadoException e) { return Results.Problem(e.Message, statusCode: 403); }
     catch (NaoEncontradoException e) { return Results.Problem(e.Message, statusCode: 404); }
@@ -467,7 +483,43 @@ app.MapGet("/admin/modelos/{id:guid}/arquivo", (Guid id, HttpContext c, Document
 
 var site = app.MapGroup("/site").AllowAnonymous();
 site.MapGet("imovel/{id:guid}", FichaSite);
-site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService t) => PaginaImovelSite(id, c, s, emp, t));
+// Temporada no site: dias livres, estimativa (?entrada=&saida=) e pedido de reserva (POST volta com ?ok= ou ?erro=)
+site.MapGet("temporada/{id:guid}", async (Guid id, DateOnly? entrada, DateOnly? saida, string? ok, string? erro, HttpContext c,
+    ImoveisService s, TemporadaService t) =>
+{
+    var u = UsuarioAtual.De(c.User);
+    ImovelDetalhe? d = u is not null && u.Pode(Permissoes.ImoveisVer)
+        ? await s.DetalheAsync(u, id)
+        : (await s.DetalhePublicoAsync(id, c.RequestAborted))?.Detalhe;
+    if (d is null || await t.PublicaAsync(id, d, c.RequestAborted) is not { } pub) return Results.NotFound();
+    Cotacao? cot = entrada is { } e && saida is { } sa && sa > e && sa.DayNumber - e.DayNumber <= 366
+        ? await t.CotarAsync(id, e, sa, null, c.RequestAborted) : null;
+    c.Response.Headers.CacheControl = "private, no-store"; // dias livres mudam a cada reserva
+    return new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<Inovabens.Web.Components.Site.TemporadaSite>(
+        new { T = pub, Entrada = entrada, Saida = saida, Cotacao = cot, Codigo = ok, Erro = erro });
+});
+site.MapPost("temporada/{id:guid}", async (Guid id, HttpContext c, TemporadaService t) =>
+{
+    var f = await c.Request.ReadFormAsync(c.RequestAborted);
+    var form = new PedidoReservaForm
+    {
+        Nome = f["nome"].ToString(), Telefone = f["telefone"].ToString(), Email = NuloSeVazio(f["email"].ToString()),
+        Mensagem = NuloSeVazio(f["mensagem"].ToString()), Site = f["site"].ToString(),
+        Hospedes = short.TryParse(f["hospedes"].ToString(), out var h) ? h : (short)0,
+        Entrada = DateOnly.TryParse(f["entrada"].ToString(), System.Globalization.CultureInfo.InvariantCulture, out var e) ? e : null,
+        Saida = DateOnly.TryParse(f["saida"].ToString(), System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : null,
+    };
+    var volta = $"/site/temporada/{id}?entrada={form.Entrada:yyyy-MM-dd}&saida={form.Saida:yyyy-MM-dd}";
+    try
+    {
+        var codigo = await t.PedidoAsync(id, form, c.RequestAborted);
+        if (codigo is null && SemPaginaDeErro(c.Request)) return Results.NotFound();
+        return Results.Redirect($"{volta}&ok={Uri.EscapeDataString(codigo!)}");
+    }
+    catch (RegraNegocioException ex) { return Results.Redirect($"{volta}&erro={Uri.EscapeDataString(ex.Message)}"); }
+}).DisableAntiforgery();
+static string? NuloSeVazio(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+site.MapGet("imovel/{id:guid}/simulador", (Guid id, HttpContext c, ImoveisService s, EmpreendimentosService emp, TaxasFinanciamentoService t, TemporadaService tp) => PaginaImovelSite(id, c, s, emp, t, tp));
 // início e busca: a mesma vitrine para todos (visitante ou usuário), a que o site realmente mostra
 site.MapGet("", async (HttpContext c, ImoveisService s) =>
 {

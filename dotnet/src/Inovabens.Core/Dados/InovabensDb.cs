@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 using Inovabens.Core.Dominio;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
@@ -67,6 +67,10 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
     public DbSet<ContratoLocacaoHistorico> ContratoLocacaoHistorico => Set<ContratoLocacaoHistorico>();
     public DbSet<LocacaoAviso> LocacaoAvisos => Set<LocacaoAviso>();
     public DbSet<ChamadoManutencao> ChamadosManutencao => Set<ChamadoManutencao>();
+    public DbSet<TemporadaImovel> TemporadaImoveis => Set<TemporadaImovel>();
+    public DbSet<TemporadaCalendario> TemporadaCalendarios => Set<TemporadaCalendario>();
+    public DbSet<TemporadaReserva> TemporadaReservas => Set<TemporadaReserva>();
+    public DbSet<TemporadaPagamento> TemporadaPagamentos => Set<TemporadaPagamento>();
     public DbSet<OrcamentoManutencao> OrcamentosManutencao => Set<OrcamentoManutencao>();
     public DbSet<ChamadoArquivo> ChamadoArquivos => Set<ChamadoArquivo>();
     public DbSet<ChamadoEvento> ChamadoEventos => Set<ChamadoEvento>();
@@ -347,7 +351,36 @@ public class InovabensDb(DbContextOptions<InovabensDb> options) : DbContext(opti
         {
             e.HasOne<FaturaLocacao>().WithMany().HasForeignKey(x => x.FaturaId);
             e.HasOne<FaturaLocacaoPagamento>().WithMany().HasForeignKey(x => x.PagamentoId);
+            e.HasOne<TemporadaReserva>().WithMany().HasForeignKey(x => x.ReservaId);
+            e.HasOne<TemporadaPagamento>().WithMany().HasForeignKey(x => x.TemporadaPagamentoId).OnDelete(DeleteBehavior.SetNull);
         });
+        mb.Entity<TemporadaImovel>(e =>
+        {
+            e.Property(x => x.Modalidade).HasConversion<string>();
+            e.HasOne(x => x.Imovel).WithMany().HasForeignKey(x => x.ImovelId);
+            e.HasOne<Pessoa>().WithMany().HasForeignKey(x => x.FaxineiraId).OnDelete(DeleteBehavior.SetNull);
+        });
+        mb.Entity<TemporadaCalendario>(e =>
+        {
+            e.Property(x => x.Origem).HasConversion<string>();
+            e.HasOne<TemporadaImovel>().WithMany().HasForeignKey(x => x.ImovelId);
+        });
+        mb.Entity<TemporadaReserva>(e =>
+        {
+            e.Property(x => x.Origem).HasConversion<string>();
+            e.Property(x => x.Status).HasConversion<string>();
+            e.Property(x => x.Numero).ValueGeneratedOnAdd();
+            e.HasOne<TemporadaImovel>().WithMany().HasForeignKey(x => x.ImovelId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Pessoa>().WithMany().HasForeignKey(x => x.HospedeId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<TemporadaCalendario>().WithMany().HasForeignKey(x => x.CalendarioId).OnDelete(DeleteBehavior.SetNull);
+        });
+        mb.Entity<TemporadaPagamento>(e =>
+        {
+            e.HasOne<TemporadaReserva>().WithMany().HasForeignKey(x => x.ReservaId);
+            e.HasOne<LancamentoEmpresa>().WithMany().HasForeignKey(x => x.LancamentoEmpresaId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<LancamentoFinanceiro>().WithMany().HasForeignKey(x => x.LancamentoImovelId).OnDelete(DeleteBehavior.SetNull);
+        });
+        mb.Entity<Alerta>().HasOne<TemporadaReserva>().WithMany().HasForeignKey(x => x.TemporadaReservaId);
         mb.Entity<PortalAcesso>(e =>
         {
             e.Property(x => x.Tipo).HasConversion<string>();

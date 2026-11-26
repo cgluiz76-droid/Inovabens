@@ -336,6 +336,10 @@
                     {
                         <a class="btn btn-linha" href="site/imovel/@Im.Id/simulador" target="_blank" rel="noopener" style="width:100%"><svg class="ico"><use href="#i-calc" /></svg> Simular financiamento</a>
                     }
+                    @if (Temporada)
+                    {
+                        <a class="btn btn-ouro" href="site/temporada/@Im.Id" style="width:100%">Reservar por temporada</a>
+                    }
                 </aside>
             </div>
         </main>
@@ -395,6 +399,8 @@
     [Parameter] public IReadOnlyList<TaxaBanco>? Taxas { get; set; }
     /// <summary>Empreendimento em lotes: quadro dos lotes e preço "a partir de" (o lote disponível mais barato).</summary>
     [Parameter] public QuadroLotes? Quadro { get; set; }
+    /// <summary>Imóvel com temporada ativa: mostra o botão de reserva.</summary>
+    [Parameter] public bool Temporada { get; set; }
     [CascadingParameter] public HttpContext? Http { get; set; }
     private bool Logado => Http?.User.Identity?.IsAuthenticated == true;
 

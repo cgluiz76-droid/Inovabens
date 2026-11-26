@@ -151,9 +151,9 @@ public sealed class PortalService(
             .Where(f => f.ContratoId == c.Id && f.Status != StatusFaturaLocacao.CANCELADA && (f.Status == StatusFaturaLocacao.ABERTA || f.Competencia >= desde))
             .OrderByDescending(f => f.Competencia).ToListAsync(ct);
         var ids = faturas.Select(f => f.Id).ToList();
-        var boletos = (await db.FaturaBoletos.AsNoTracking().Where(b => ids.Contains(b.FaturaId) && b.CanceladoEm == null
+        var boletos = (await db.FaturaBoletos.AsNoTracking().Where(b => b.FaturaId != null && ids.Contains(b.FaturaId.Value) && b.CanceladoEm == null
                 && b.Status != "PAID" && b.Status != "CANCELLED").OrderByDescending(b => b.CriadoEm).ToListAsync(ct))
-            .GroupBy(b => b.FaturaId).ToDictionary(g => g.Key, g => g.First());
+            .GroupBy(b => b.FaturaId!.Value).ToDictionary(g => g.Key, g => g.First());
         var lista = faturas.Select(f =>
         {
             var pagos = f.Pagamentos.Where(p => p.EstornadoEm == null).ToList();

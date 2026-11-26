@@ -1,0 +1,103 @@
+@* Imóvel de temporada no site: preço, regras, dias livres dos próximos meses e pedido de reserva (sem login).
+   Sem JavaScript: "Calcular" refaz a página com a estimativa (GET); "Pedir reserva" envia (POST) e volta com o código.
+   O pedido não bloqueia as datas: a equipe confirma e combina o pagamento. *@
+
+<SiteMoldura Avulsa Titulo="@($"Temporada · {T.Titulo} · Inova Bens")" Descricao="@($"Aluguel por temporada em {T.Cidade}: diária a partir de {Texto.Moeda(T.Diaria)}.")"
+             Canonico="@($"site/temporada/{T.ImovelId}")" MensagemWhatsapp="@($"Olá! Vi no site o imóvel {T.Codigo} para temporada e gostaria de reservar.")">
+    <main class="miolo" style="padding-block: 28px; max-width: 860px">
+        <section class="bloco">
+            <span class="rotulo">Aluguel por temporada · @T.Codigo</span>
+            <h1 style="font-size: 1.5rem">@T.Titulo</h1>
+            @if (T.Cidade is not null) { <p class="mudo">@T.Cidade</p> }
+            <p><a href="@($"site/imovel/{T.ImovelId}")">Ver fotos e detalhes do imóvel</a></p>
+            <ul class="temporada-precos">
+                <li><b>@Texto.Moeda(T.Diaria)</b> a diária@(T.DiariaFimSemana is { } fs && fs != T.Diaria ? $" · {Texto.Moeda(fs)} sexta e sábado" : "")</li>
+                <li>Mínimo de @T.MinimoNoites noite(s) · até @T.HospedesMax hóspede(s)</li>
+                <li>Check-in a partir das @T.Checkin · check-out até @T.Checkout</li>
+                @if (T.TaxaLimpeza > 0) { <li>Taxa de limpeza: @Texto.Moeda(T.TaxaLimpeza)</li> }
+                @if (T.Caucao > 0) { <li>Caução (devolvida após a saída): @Texto.Moeda(T.Caucao)</li> }
+            </ul>
+            @if (T.Regras is { } regras) { <h2 style="font-size: 1.05rem; margin-top: 12px">Regras da casa</h2><p style="white-space: pre-line">@regras</p> }
+        </section>
+
+        @if (Codigo is { } cod)
+        {
+            <p class="lp-form-ok" role="status">Pedido @cod enviado! A Inova Bens vai confirmar a disponibilidade e combinar o pagamento pelo telefone informado.</p>
+        }
+        else if (Erro is { } erro)
+        {
+            <p class="lp-form-ok" role="alert" style="border-left-color: #b3261e">@erro</p>
+        }
+
+        <section class="bloco">
+            <h2>Disponibilidade</h2>
+            <p class="mudo"><span class="temporada-leg livre"></span> livre <span class="temporada-leg ocupado"></span> ocupado
+                · cada dia é uma noite (a saída pode ser num dia ocupado)</p>
+            <div class="temporada-meses">
+                @for (var m = 0; m < 3; m++)
+                {
+                    var mes = new DateOnly(hoje.Year, hoje.Month, 1).AddMonths(m);
+                    var vazios = ((int)mes.DayOfWeek + 6) % 7; // semana começa na segunda
+                    <div class="temporada-mes">
+                        <h3>@mes.ToString("MMMM yyyy", Texto.PtBr)</h3>
+                        <div class="temporada-grade" role="list" aria-label="@mes.ToString("MMMM", Texto.PtBr)">
+                            @foreach (var s in new[] { "S", "T", "Q", "Q", "S", "S", "D" }) { <span class="cab" aria-hidden="true">@s</span> }
+                            @for (var v = 0; v < vazios; v++) { <span aria-hidden="true"></span> }
+                            @for (var dia = mes; dia.Month == mes.Month; dia = dia.AddDays(1))
+                            {
+                                var passado = dia <= hoje;
+                                var ocupado = T.Ocupados.Contains(dia);
+                                var noPedido = Entrada is { } e && Saida is { } sa && dia >= e && dia < sa;
+                                <span role="listitem" class="@(passado ? "passado" : ocupado ? "ocupado" : "livre") @(noPedido ? "escolhido" : "")"
+                                      title="@Texto.Data(dia) · @(passado ? "indisponível" : ocupado ? "ocupado" : "livre")">@dia.Day</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="bloco">
+            <h2>Calcular estadia</h2>
+            <form class="lp-form temporada-calc" method="get" action="@($"site/temporada/{T.ImovelId}")">
+                <label>Entrada <input type="date" name="entrada" required value="@Entrada?.ToString("yyyy-MM-dd")" min="@hoje.AddDays(1).ToString("yyyy-MM-dd")" /></label>
+                <label>Saída <input type="date" name="saida" required value="@Saida?.ToString("yyyy-MM-dd")" min="@hoje.AddDays(2).ToString("yyyy-MM-dd")" /></label>
+                <button type="submit" class="btn btn-linha">Calcular</button>
+            </form>
+            @if (Cotacao is { } c)
+            {
+                <p class="@(c.Disponivel ? "" : "texto-indisponivel")">
+                    @c.Noites noite(s): diárias @Texto.Moeda(c.Diarias)@(c.Limpeza > 0 ? $" + limpeza {Texto.Moeda(c.Limpeza)}" : "")@(c.Caucao > 0 ? $" + caução {Texto.Moeda(c.Caucao)}" : "")
+                    = <b>@Texto.Moeda(c.Total)</b>. @(c.Disponivel ? "Datas livres." : c.Motivo)</p>
+            }
+        </section>
+
+        <section class="bloco">
+            <h2>Pedir reserva</h2>
+            <form class="lp-form" method="post" action="@($"site/temporada/{T.ImovelId}")">
+                <label>Entrada * <input type="date" name="entrada" required value="@Entrada?.ToString("yyyy-MM-dd")" min="@hoje.AddDays(1).ToString("yyyy-MM-dd")" /></label>
+                <label>Saída * <input type="date" name="saida" required value="@Saida?.ToString("yyyy-MM-dd")" min="@hoje.AddDays(2).ToString("yyyy-MM-dd")" /></label>
+                <label>Hóspedes * <input type="number" name="hospedes" required min="1" max="@T.HospedesMax" value="2" /></label>
+                <label>Seu nome * <input name="nome" required maxlength="200" autocomplete="name" /></label>
+                <label>Telefone / WhatsApp * <input name="telefone" required maxlength="30" autocomplete="tel" inputmode="tel" /></label>
+                <label>E-mail <input type="email" name="email" maxlength="200" autocomplete="email" /></label>
+                <label>Mensagem <textarea name="mensagem" rows="3" maxlength="1000" placeholder="Horário de chegada, pet, dúvidas…"></textarea></label>
+                @* campo escondido contra robôs *@
+                <input name="site" tabindex="-1" autocomplete="off" style="position: absolute; left: -9999px" aria-hidden="true" />
+                <button type="submit" class="btn btn-ouro">Pedir reserva</button>
+                <small class="mudo">O pedido não garante as datas: confirmamos a disponibilidade e enviamos o contrato de temporada e o Pix ou boleto.</small>
+            </form>
+        </section>
+    </main>
+</SiteMoldura>
+
+@code {
+    [Parameter, EditorRequired] public TemporadaPublica T { get; set; } = default!;
+    [Parameter] public DateOnly? Entrada { get; set; }
+    [Parameter] public DateOnly? Saida { get; set; }
+    [Parameter] public Cotacao? Cotacao { get; set; }
+    [Parameter] public string? Codigo { get; set; }
+    [Parameter] public string? Erro { get; set; }
+
+    private readonly DateOnly hoje = DatasBR.Hoje();
+}

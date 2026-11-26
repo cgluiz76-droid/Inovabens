@@ -18,7 +18,7 @@ namespace Inovabens.Core.Locacao;
 /// </summary>
 public sealed class CobrancaBancariaService(
     IDbContextFactory<InovabensDb> fabrica, AuditService audit, InovabensOpcoes op, ICobrancaBancaria banco,
-    LocacaoService locacao, ILogger<CobrancaBancariaService> log)
+    LocacaoService locacao, TemporadaService temporada, ILogger<CobrancaBancariaService> log)
 {
     /// <summary>Uma baixa por vez: o webhook e a conferência podem chegar juntos para o mesmo boleto.</summary>
     private static readonly SemaphoreSlim TravaBaixa = new(1, 1);
@@ -34,6 +34,59 @@ public sealed class CobrancaBancariaService(
             .Where(b => db.FaturasLocacao.Any(f => f.Id == b.FaturaId && f.ContratoId == contratoId
                 && db.Imoveis.VisiveisPara(u).Any(i => i.Id == f.Contrato!.ImovelId)))
             .OrderByDescending(b => b.CriadoEm).ToListAsync();
+    }
+
+    /// <summary>Boletos da reserva de temporada (o mais novo primeiro).</summary>
+    public async Task<IReadOnlyList<FaturaBoleto>> BoletosReservaAsync(UsuarioAtual u, Guid reservaId)
+    {
+        u.Exigir(P.LocacaoVer);
+        await using var db = await fabrica.CreateDbContextAsync();
+        return await db.FaturaBoletos.AsNoTracking()
+            .Where(b => b.ReservaId == reservaId && db.TemporadaReservas.Any(r => r.Id == reservaId && db.Imoveis.VisiveisPara(u).Any(i => i.Id == r.ImovelId)))
+            .OrderByDescending(b => b.CriadoEm).ToListAsync();
+    }
+
+    /// <summary>
+    /// Boleto com Pix do saldo da reserva (sinal ou restante: o valor pode ser menor que o saldo). Vence em 2 dias,
+    /// nunca depois da entrada. Pede o CPF/CNPJ do hóspede.
+    /// </summary>
+    public async Task<FaturaBoleto> EmitirReservaAsync(UsuarioAtual u, Guid reservaId, decimal? valor = null, CancellationToken ct = default)
+    {
+        u.Exigir(P.LocacaoReceber);
+        if (!banco.Habilitado) throw new RegraNegocioException("_", "Configure o Banco Cora em Administração → Integrações para emitir boletos.");
+        var d = await temporada.ObterAsync(u, reservaId);
+        var r = d.Reserva;
+        if (r.Status is StatusReserva.CANCELADA or StatusReserva.FECHADA) throw new RegraNegocioException("_", "Reserva cancelada ou fechada.");
+        if (d.Saldo <= 0) throw new RegraNegocioException("_", "A reserva não tem saldo a cobrar.");
+        var cobrar = decimal.Round(valor ?? d.Saldo, 2);
+        if (cobrar > d.Saldo) throw new RegraNegocioException("valor", $"O saldo é {Texto.Moeda(d.Saldo)}.");
+        if (cobrar < 5) throw new RegraNegocioException("valor", "O banco só emite boleto a partir de R$ 5,00.");
+        var doc = Texto.Digitos(r.HospedeDocumento);
+        if (doc.Length is not (11 or 14)) throw new RegraNegocioException("_", "Informe o CPF ou CNPJ do hóspede na reserva para emitir o boleto.");
+        var hoje = DatasBR.Hoje();
+        var venc = hoje.AddDays(2);
+        if (venc > r.Entrada) venc = r.Entrada > hoje ? r.Entrada : hoje;
+
+        await using var db = await fabrica.CreateDbContextAsync();
+        var anteriores = await db.FaturaBoletos.Where(b => b.ReservaId == r.Id && b.CanceladoEm == null && b.Status != "PAID" && b.Status != "CANCELLED").ToListAsync(ct);
+        foreach (var a in anteriores) await CancelarNoBanco(db, a, u.Id, ct);
+        var pedido = new BoletoPedido(r.Codigo, r.HospedeNome, doc, r.HospedeEmail,
+            $"Temporada {r.Entrada:dd/MM} a {r.Saida:dd/MM/yyyy} - imóvel {d.ImovelCodigo}", cobrar, venc, 0, 0, Guid.NewGuid());
+        BoletoBanco res;
+        try { res = await banco.EmitirAsync(pedido, ct); }
+        catch (Exception e) when (e is CoraRecusouException or HttpRequestException or TaskCanceledException)
+        {
+            throw new RegraNegocioException("_", "O banco não emitiu o boleto: " + e.Message);
+        }
+        var b = new FaturaBoleto
+        {
+            ReservaId = r.Id, ExternoId = res.Id, Idempotencia = pedido.Idempotencia, Status = res.Status, Valor = cobrar, Vencimento = venc,
+            LinhaDigitavel = res.LinhaDigitavel, CodigoBarras = res.CodigoBarras, PixCopiaCola = res.PixCopiaCola, UrlPdf = res.UrlPdf, CriadoPor = u.Id,
+        };
+        db.FaturaBoletos.Add(b);
+        audit.Registrar(db, u.Id, "fatura_boletos", b.Id, "EMITIR", depois: new { b.ReservaId, b.ExternoId, b.Valor, b.Vencimento });
+        await db.SaveChangesAsync(ct);
+        return b;
     }
 
     /// <summary>
@@ -94,8 +147,9 @@ public sealed class CobrancaBancariaService(
     {
         u.Exigir(P.LocacaoReceber);
         await using var db = await fabrica.CreateDbContextAsync();
-        var b = await db.FaturaBoletos.Where(x => x.Id == boletoId && db.FaturasLocacao.Any(f => f.Id == x.FaturaId
-                && db.Imoveis.VisiveisPara(u).Any(i => i.Id == f.Contrato!.ImovelId))).SingleOrDefaultAsync(ct)
+        var b = await db.FaturaBoletos.Where(x => x.Id == boletoId && (db.FaturasLocacao.Any(f => f.Id == x.FaturaId
+                && db.Imoveis.VisiveisPara(u).Any(i => i.Id == f.Contrato!.ImovelId))
+                || db.TemporadaReservas.Any(r => r.Id == x.ReservaId && db.Imoveis.VisiveisPara(u).Any(i => i.Id == r.ImovelId)))).SingleOrDefaultAsync(ct)
             ?? throw new NaoEncontradoException("Boleto não encontrado.");
         if (!b.Ativo) throw new RegraNegocioException("_", "Este boleto já foi pago ou cancelado.");
         await CancelarNoBanco(db, b, u.Id, ct);
@@ -156,7 +210,13 @@ public sealed class CobrancaBancariaService(
         await using var db = await fabrica.CreateDbContextAsync();
         var pendentes = await db.FaturaBoletos.AsNoTracking()
             .Where(b => b.CanceladoEm == null && ((b.Status != "PAID" && b.Status != "CANCELLED") || (b.Status == "PAID" && b.PagamentoId == null && b.Erro == null)))
-            .Select(b => new { b.Id, b.ExternoId, Fatura = db.FaturasLocacao.Where(f => f.Id == b.FaturaId).Select(f => f.Status).Single() })
+            .Select(b => new
+            {
+                b.Id, b.ExternoId,
+                Aberto = b.FaturaId != null
+                    ? db.FaturasLocacao.Any(f => f.Id == b.FaturaId && f.Status == StatusFaturaLocacao.ABERTA)
+                    : db.TemporadaReservas.Any(r => r.Id == b.ReservaId && r.Status != StatusReserva.CANCELADA && r.Status != StatusReserva.FECHADA),
+            })
             .ToListAsync(ct);
         var n = 0;
         foreach (var p in pendentes)
@@ -165,7 +225,7 @@ public sealed class CobrancaBancariaService(
             {
                 var mudou = await AtualizarAsync(p.ExternoId, ct);
                 // quitada à mão (ou cancelada) e boleto ainda aberto no banco: cancela para o inquilino não pagar duas vezes
-                if (p.Fatura != StatusFaturaLocacao.ABERTA)
+                if (!p.Aberto)
                 {
                     var b = await db.FaturaBoletos.SingleAsync(x => x.Id == p.Id, ct);
                     if (b.Ativo)
@@ -196,7 +256,7 @@ public sealed class CobrancaBancariaService(
         {
             await using var db = await fabrica.CreateDbContextAsync();
             var b = await db.FaturaBoletos.SingleOrDefaultAsync(x => x.ExternoId == externoId, ct);
-            if (b is null || b.PagamentoId is not null) return false;
+            if (b is null || b.PagamentoId is not null || b.TemporadaPagamentoId is not null) return false;
             var r = await banco.ConsultarAsync(externoId, ct);
             if (r is null) return false;
             var mudou = b.Status != r.Status;
@@ -222,6 +282,11 @@ public sealed class CobrancaBancariaService(
         b.PagoEm = data;
         b.ValorPago = pago;
         b.FormaPagamento = r.Forma == "PIX" ? "PIX" : "BOLETO";
+        if (b.ReservaId is { } reservaId)
+        {
+            await BaixarReserva(db, b, reservaId, pago, data, ct);
+            return;
+        }
         var f = await db.FaturasLocacao.AsNoTracking().Include(x => x.Itens).Include(x => x.Pagamentos).Include(x => x.Contrato)
             .SingleAsync(x => x.Id == b.FaturaId, ct);
         if (f.Status != StatusFaturaLocacao.ABERTA)
@@ -266,6 +331,35 @@ public sealed class CobrancaBancariaService(
             });
             b.Erro = null;
             audit.Registrar(db, robo.Id, "fatura_boletos", b.Id, "BAIXA_AUTOMATICA", depois: new { b.ExternoId, pago, principal, multa, juros, data });
+        }
+        catch (RegraNegocioException e)
+        {
+            b.Erro = "Pago no banco, mas a baixa automática falhou: " + e.Message;
+        }
+    }
+
+    /// <summary>Boleto de reserva pago: lança o recebimento na reserva (temporada).</summary>
+    private async Task BaixarReserva(InovabensDb db, FaturaBoleto b, Guid reservaId, decimal pago, DateOnly data, CancellationToken ct)
+    {
+        var robo = await Robo(db, ct);
+        if (robo is null)
+        {
+            b.Erro = "Pago no banco, mas não há administrador ativo para registrar a baixa: dê baixa manual.";
+            return;
+        }
+        var nomeConta = op.Integracoes.CoraConta;
+        var conta = await db.ContasBancarias.AsNoTracking()
+            .Where(x => x.Ativa && x.Tipo != TipoContaBancaria.CARTAO_CREDITO && x.Nome.ToLower() == nomeConta.ToLower())
+            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+        try
+        {
+            b.TemporadaPagamentoId = await temporada.ReceberAsync(robo, reservaId, new RecebimentoReservaForm
+            {
+                Data = data, Valor = pago, ContaBancariaId = conta, Forma = b.FormaPagamento == "PIX" ? "Pix (Cora)" : "Boleto (Cora)",
+                Observacao = $"Baixa automática do boleto {b.ExternoId}.",
+            });
+            b.Erro = null;
+            audit.Registrar(db, robo.Id, "fatura_boletos", b.Id, "BAIXA_AUTOMATICA", depois: new { b.ExternoId, pago, data, reservaId });
         }
         catch (RegraNegocioException e)
         {

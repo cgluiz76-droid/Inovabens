@@ -1,0 +1,136 @@
+@inherits ComponenteBase
+@inject TemporadaService Servico
+@inject OpcoesService Opcoes
+
+@* Nova reserva ou edição. A cotação usa as regras do imóvel; diárias em branco = calcula pela diária
+   (reserva de plataforma: informe o valor que ela mostrou e a taxa que ela cobra). *@
+
+<Modal Titulo="@(EditandoId is null ? "Nova reserva" : "Editar reserva")" AoFechar="AoFechar" Largo>
+    <EditForm Model="Form" OnValidSubmit="Salvar" class="formulario">
+        <DataAnnotationsValidator />
+        <MensagemErro Texto="@Erro" />
+        <div class="grade-4">
+            <label class="campo col-2">
+                <span>Imóvel</span>
+                <select class="input" @bind="ImovelTexto" @bind:after="Cotar" disabled="@(EditandoId is not null)">
+                    <option value="">Selecione…</option>
+                    @foreach (var i in Imoveis.Where(i => i.Ativo || i.ImovelId == Form.ImovelId)) { <option value="@i.ImovelId">@i.Codigo · @i.Titulo</option> }
+                </select>
+            </label>
+            <label class="campo">
+                <span>Origem</span>
+                <select class="input" @bind="Form.Origem">
+                    @foreach (var o in Enum.GetValues<OrigemReserva>()) { <option value="@o">@Texto.Rotulo(o)</option> }
+                </select>
+            </label>
+            <label class="campo"><span>Hóspedes</span><InputNumber class="input" @bind-Value="Form.Hospedes" /><ValidationMessage For="() => Form.Hospedes" /></label>
+            <label class="campo"><span>Entrada</span><InputDate class="input" @bind-Value="Form.Entrada" @bind-Value:after="Cotar" /><ValidationMessage For="() => Form.Entrada" /></label>
+            <label class="campo"><span>Saída</span><InputDate class="input" @bind-Value="Form.Saida" @bind-Value:after="Cotar" /><ValidationMessage For="() => Form.Saida" /></label>
+        </div>
+        @if (cotacao is { } c)
+        {
+            <p class="pequeno @(c.Disponivel ? "texto-ok" : "texto-erro")">
+                @c.Noites noite(s) · diárias @Texto.Moeda(c.Diarias) · limpeza @Texto.Moeda(c.Limpeza) · caução @Texto.Moeda(c.Caucao)
+                · total <b>@Texto.Moeda(c.Total)</b> @(c.Disponivel ? "· datas livres" : "· " + c.Motivo)</p>
+        }
+
+        <h3 class="subtitulo-form">Hóspede</h3>
+        <div class="grade-4">
+            <label class="campo col-2">
+                <span>Nome</span>
+                <input class="input" list="reserva-pessoas" maxlength="200" value="@Form.HospedeNome" @onchange="e => EscolherHospede(e.Value?.ToString())"
+                       @onfocus="CarregarPessoas" placeholder="Nome (ou escolha um cadastro)" />
+                <datalist id="reserva-pessoas">@foreach (var p in pessoas) { <option value="@p.Nome" /> }</datalist>
+                <ValidationMessage For="() => Form.HospedeNome" />
+            </label>
+            <label class="campo"><span>Telefone</span><InputText class="input" maxlength="40" @bind-Value="Form.HospedeTelefone" /></label>
+            <label class="campo"><span>E-mail</span><InputText class="input" maxlength="200" @bind-Value="Form.HospedeEmail" /><ValidationMessage For="() => Form.HospedeEmail" /></label>
+            <label class="campo" title="Vai para o contrato; obrigatório para emitir boleto"><span>CPF/CNPJ</span>
+                <InputText class="input" maxlength="20" @bind-Value="Form.HospedeDocumento" /></label>
+        </div>
+        @if (Form.HospedeId is not null) { <p class="pequeno mudo">Vinculado ao cadastro em Pessoas.</p> }
+
+        <h3 class="subtitulo-form">Valores</h3>
+        <div class="grade-4">
+            <label class="campo"><span>Diárias (total)</span>
+                <InputNumber class="input" step="0.01" @bind-Value="Form.Diarias" placeholder="@(cotacao is { } c1 ? c1.Diarias.ToString("0.00") : "calcula")" />
+                <ValidationMessage For="() => Form.Diarias" /></label>
+            <label class="campo"><span>Desconto</span><InputNumber class="input" step="0.01" @bind-Value="Form.Desconto" /><ValidationMessage For="() => Form.Desconto" /></label>
+            <label class="campo"><span>Limpeza</span>
+                <InputNumber class="input" step="0.01" @bind-Value="Form.Limpeza" placeholder="@(cotacao is { } c2 ? c2.Limpeza.ToString("0.00") : "padrão")" /></label>
+            <label class="campo"><span>Caução</span>
+                <InputNumber class="input" step="0.01" @bind-Value="Form.Caucao" placeholder="@(cotacao is { } c3 ? c3.Caucao.ToString("0.00") : "padrão")" /></label>
+            @if (Form.Origem is not (OrigemReserva.DIRETA or OrigemReserva.SITE))
+            {
+                <label class="campo" title="Descontada do proprietário"><span>Taxa da plataforma</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="Form.TaxaPlataforma" /><ValidationMessage For="() => Form.TaxaPlataforma" /></label>
+            }
+            @if (Administracao)
+            {
+                <label class="campo" title="Sobre as diárias menos o desconto"><span>Comissão (%)</span>
+                    <InputNumber class="input" step="0.01" @bind-Value="Form.ComissaoPct" placeholder="@(Imovel?.ComissaoPct.ToString("0.##") ?? "")" />
+                    <ValidationMessage For="() => Form.ComissaoPct" /></label>
+            }
+        </div>
+        <label class="campo"><span>Observações</span><InputTextArea class="input" rows="2" maxlength="2000" @bind-Value="Form.Observacoes" /></label>
+        <p class="pequeno mudo">Campos de valor em branco usam a configuração do imóvel. Airbnb/Booking: informe as diárias e a taxa que a plataforma
+            mostrou; limpeza e caução ficam zeradas se a plataforma não repassa.</p>
+
+        <div class="acoes-form">
+            <button type="button" class="btn-ghost" @onclick="AoFechar">Cancelar</button>
+            <button type="submit" class="btn-primary" disabled="@Ocupado">@(Ocupado ? "Salvando…" : "Salvar")</button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public ReservaForm Form { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<TemporadaImovelLinha> Imoveis { get; set; } = [];
+    [Parameter] public Guid? EditandoId { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public EventCallback<Guid> AoSalvar { get; set; }
+
+    private Cotacao? cotacao;
+    private IReadOnlyList<Opcao> pessoas = [];
+
+    private TemporadaImovelLinha? Imovel => Imoveis.FirstOrDefault(i => i.ImovelId == Form.ImovelId);
+    private bool Administracao => Imovel?.Modalidade != ModalidadeLocacao.PROPRIO;
+
+    private string ImovelTexto
+    {
+        get => Form.ImovelId?.ToString() ?? "";
+        set => Form.ImovelId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override Task OnInitializedAsync() => Cotar();
+
+    private async Task Cotar()
+    {
+        cotacao = null;
+        if (Form.ImovelId is { } im && Form.Entrada is { } e && Form.Saida is { } s)
+            await Executar(async () => cotacao = await Servico.CotarAsync(im, e, s, EditandoId));
+    }
+
+    private async Task CarregarPessoas()
+    {
+        if (pessoas.Count == 0) await Executar(async () => pessoas = await Opcoes.PessoasAsync(Usuario, 5000));
+    }
+
+    /// <summary>Nome livre (hóspede de passagem) ou um cadastro existente.</summary>
+    private void EscolherHospede(string? nome)
+    {
+        Form.HospedeNome = nome?.Trim() ?? "";
+        Form.HospedeId = pessoas.FirstOrDefault(p => string.Equals(p.Nome, Form.HospedeNome, StringComparison.OrdinalIgnoreCase))?.Id;
+    }
+
+    private async Task Salvar()
+    {
+        var id = EditandoId ?? Guid.Empty;
+        if (await Executar(async () =>
+            {
+                if (EditandoId is { } e) await Servico.AtualizarAsync(Usuario, e, Form);
+                else id = await Servico.CriarAsync(Usuario, Form);
+            }))
+            await AoSalvar.InvokeAsync(id);
+    }
+}

@@ -1,0 +1,404 @@
+@page "/temporada/reserva/{Id:guid}"
+@attribute [Authorize(Policy = Permissoes.LocacaoVer)]
+@inherits ComponenteBase
+@inject TemporadaService Servico
+@inject LocacaoService Locacao
+@inject CobrancaBancariaService Cobranca
+
+@* Ficha da reserva: pedido → confirmada → check-in → check-out (caução retida) → fechamento (comissão, repasse,
+   limpeza e devolução da caução viram lançamentos no financeiro da imobiliária). *@
+
+<PageTitle>@(d?.Reserva.Codigo ?? "Reserva") · Temporada · Inovabens</PageTitle>
+
+<p class="pequeno"><a href="temporada">← Temporada</a></p>
+<MensagemErro Texto="@(ModalAberto ? null : Erro)" />
+@if (Sucesso is not null) { <p class="aviso-vinculo" role="status">@Sucesso</p> }
+
+@if (d is null)
+{
+    @if (Erro is null) { <p class="carregando">Carregando…</p> }
+}
+else
+{
+    var r = d.Reserva;
+    var a = d.Acerto;
+    var adm = d.Config.Modalidade == ModalidadeLocacao.ADMINISTRACAO;
+    <div class="titulo">
+        <h1>@r.Codigo · @r.HospedeNome <span class="badge reserva-@r.Status">@Texto.Rotulo(r.Status)</span></h1>
+        <div class="acoes-topo">
+            @if (PodeEditar && r.Status is not (StatusReserva.FECHADA or StatusReserva.CANCELADA))
+            {
+                <button class="btn-ghost" @onclick="Editar">Editar</button>
+            }
+            @if (PodeEditar && r.Status == StatusReserva.PEDIDO)
+            {
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Confirmar">Confirmar reserva</button>
+            }
+            @if (PodeEditar && r.Status == StatusReserva.CONFIRMADA)
+            {
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Checkin">Check-in</button>
+            }
+            @if (PodeEditar && r.Status is StatusReserva.CONFIRMADA or StatusReserva.EM_CURSO)
+            {
+                <button class="btn-ghost" @onclick="AbrirCheckout">Check-out</button>
+            }
+            @if (PodeReceber && r.Status == StatusReserva.FINALIZADA)
+            {
+                <button class="btn-primary" disabled="@(Ocupado || d.Saldo > 0)" title="@(d.Saldo > 0 ? $"Falta receber {Texto.Moeda(d.Saldo)}" : null)"
+                        @onclick="() => { Erro = null; fechando = true; }">Fechar acerto</button>
+            }
+            @if (PodeReceber && r.Status == StatusReserva.FECHADA)
+            {
+                <button class="btn-ghost" disabled="@Ocupado" @onclick="Reabrir">Reabrir acerto</button>
+            }
+            @if (r.Status != StatusReserva.PEDIDO)
+            {
+                <a class="btn-ghost" href="@($"temporada/reserva/{r.Id}/contrato.pdf")" download>Contrato</a>
+            }
+            @if (r.Status is StatusReserva.FINALIZADA or StatusReserva.FECHADA)
+            {
+                <a class="btn-ghost" href="@($"temporada/reserva/{r.Id}/acerto.pdf")" download>Acerto</a>
+            }
+            @if (PodeEditar && r.Status is StatusReserva.PEDIDO or StatusReserva.CONFIRMADA or StatusReserva.EM_CURSO)
+            {
+                <button class="btn-ghost" @onclick="() => { Erro = null; motivo = null; cancelando = true; }">Cancelar reserva</button>
+            }
+        </div>
+    </div>
+
+    @if (r.Status == StatusReserva.PEDIDO)
+    {
+        <div class="aviso-vinculo">
+            <p>Pedido feito pelo site. Confira as datas e o hóspede, combine o pagamento e confirme: só então as datas ficam bloqueadas.
+                @if (WhatsappHospede is { } w) { <a class="btn-ghost mini" href="@w" target="_blank" rel="noopener">WhatsApp do hóspede</a> }</p>
+        </div>
+    }
+
+    <section class="card">
+        <div class="titulo-secao"><h2>@d.ImovelCodigo · @d.ImovelTitulo</h2><a class="btn-ghost mini" href="@($"imoveis/{r.ImovelId}")">Ver imóvel</a></div>
+        <p>@d.Endereco</p>
+        <dl class="locacao-dados">
+            <div><dt>Período</dt><dd>@Texto.Data(r.Entrada) a @Texto.Data(r.Saida) · @r.Noites noite(s)</dd></div>
+            <div><dt>Horários</dt><dd>check-in @d.Config.Checkin · check-out @d.Config.Checkout</dd></div>
+            <div><dt>Origem</dt><dd>@Texto.Rotulo(r.Origem)</dd></div>
+            <div><dt>Hóspedes</dt><dd>@r.Hospedes</dd></div>
+            <div><dt>Contato</dt><dd>@(r.HospedeTelefone ?? "—") @if (WhatsappHospede is { } w2) { <a href="@w2" target="_blank" rel="noopener">WhatsApp</a> } @r.HospedeEmail</dd></div>
+            <div><dt>CPF/CNPJ</dt><dd>@(r.HospedeDocumento is { } doc ? Formatos.Documento(doc) : "—")</dd></div>
+            <div><dt>Modalidade</dt><dd>@Texto.Rotulo(d.Config.Modalidade)</dd></div>
+            @if (d.Faxineira is not null) { <div><dt>Limpeza</dt><dd>@d.Faxineira</dd></div> }
+            @if (r.CheckinEm is { } ci) { <div><dt>Check-in</dt><dd>@Texto.DataHora(ci)</dd></div> }
+            @if (r.CheckoutEm is { } co) { <div><dt>Check-out</dt><dd>@Texto.DataHora(co)</dd></div> }
+            @if (r.MotivoCancelamento is { } mc) { <div><dt>Motivo do cancelamento</dt><dd>@mc</dd></div> }
+            @if (r.ExternoUid is not null) { <div><dt>Calendário</dt><dd>importada da plataforma</dd></div> }
+        </dl>
+        @if (r.Observacoes is not null) { <p class="pre-linha">@r.Observacoes</p> }
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao"><h2>Valores</h2></div>
+        <dl class="locacao-dados">
+            <div><dt>Diárias</dt><dd>@Texto.Moeda(r.Diarias)</dd></div>
+            @if (r.Desconto > 0) { <div><dt>Desconto</dt><dd>− @Texto.Moeda(r.Desconto)</dd></div> }
+            <div><dt>Limpeza</dt><dd>@Texto.Moeda(r.Limpeza)</dd></div>
+            <div><dt>Caução</dt><dd>@Texto.Moeda(r.Caucao)@(r.CaucaoRetida > 0 ? $" (retido {Texto.Moeda(r.CaucaoRetida)})" : "")</dd></div>
+            <div><dt>Total do hóspede</dt><dd><b>@Texto.Moeda(r.Total)</b></dd></div>
+            @if (r.TaxaPlataforma > 0) { <div><dt>Taxa da plataforma</dt><dd>− @Texto.Moeda(r.TaxaPlataforma)</dd></div> }
+            <div><dt>A receber</dt><dd>@Texto.Moeda(d.AReceber)</dd></div>
+            <div><dt>Recebido</dt><dd>@Texto.Moeda(d.Recebido)</dd></div>
+            <div><dt>Saldo</dt><dd class="@(d.Saldo > 0 ? "texto-erro" : "texto-ok")">@Texto.Moeda(d.Saldo)</dd></div>
+        </dl>
+        @if (adm)
+        {
+            <h3 class="subtitulo-form">Acerto @(r.Status == StatusReserva.FECHADA ? "(lançado no financeiro)" : "(previsão)")</h3>
+            <div class="tabela-container">
+                <table class="tabela">
+                    <tbody>
+                        <tr><td>Diárias menos desconto</td><td class="num">@Texto.Moeda(a.Base)</td></tr>
+                        <tr><td>Comissão da imobiliária (@r.ComissaoPct.ToString("0.##")%)</td><td class="num">− @Texto.Moeda(a.Comissao)</td></tr>
+                        @if (a.TaxaPlataforma > 0) { <tr><td>Taxa da plataforma</td><td class="num">− @Texto.Moeda(a.TaxaPlataforma)</td></tr> }
+                        @if (a.CaucaoRetida > 0) { <tr><td>Caução retida (danos)</td><td class="num">+ @Texto.Moeda(a.CaucaoRetida)</td></tr> }
+                        <tr><td><b>Repasse ao proprietário</b> <span class="pequeno mudo">(@TemporadaService.DiasRepasse dias após o fechamento)</span></td>
+                            <td class="num"><b>@Texto.Moeda(a.Repasse)</b></td></tr>
+                        @foreach (var p in a.Repasses.Where(_ => a.Repasses.Count > 1))
+                        {
+                            <tr><td class="pequeno">· @p.Nome (@p.Percentual.ToString("0.##")%)</td><td class="num pequeno">@Texto.Moeda(p.Valor)</td></tr>
+                        }
+                        <tr><td>Limpeza @(d.Faxineira is { } fx ? "para " + fx : "")</td><td class="num">@Texto.Moeda(a.Limpeza)</td></tr>
+                        @if (a.CaucaoDevolver > 0) { <tr><td>Caução a devolver ao hóspede</td><td class="num">@Texto.Moeda(a.CaucaoDevolver)</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+            @if (a.Repasses.Count == 0) { <p class="pequeno texto-erro">O imóvel não tem proprietário cadastrado: o repasse não será lançado.</p> }
+        }
+    </section>
+
+    <section class="card">
+        <div class="titulo-secao">
+            <h2>Recebimentos</h2>
+            @if (PodeReceber && d.Saldo > 0 && r.Status is not (StatusReserva.CANCELADA or StatusReserva.FECHADA))
+            {
+                <div class="acoes-topo">
+                    @if (Cobranca.Habilitado)
+                    {
+                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="EmitirBoleto"
+                                title="Boleto com Pix no Banco Cora (vence em 2 dias, nunca depois da entrada); o pagamento dá baixa sozinho">
+                            @(boletos.Any(b => b.Ativo) ? "Reemitir boleto" : "Boleto/Pix")</button>
+                    }
+                    <button class="btn-primary mini" @onclick="AbrirRecebimento">Registrar recebimento</button>
+                </div>
+            }
+        </div>
+        @if (Cobranca.Habilitado && PodeReceber && d.Saldo > 0 && r.Status is not (StatusReserva.CANCELADA or StatusReserva.FECHADA))
+        {
+            <p class="pequeno mudo">Valor do boleto:
+                <input class="input mini-input" type="number" step="0.01" min="5" @bind="valorBoleto" placeholder="@d.Saldo.ToString("0.00")" aria-label="Valor do boleto" />
+                (em branco = saldo; use para cobrar só o sinal)</p>
+        }
+        @foreach (var b in boletos.Where(b => b.Ativo || b.Erro != null))
+        {
+            <div class="pequeno @(b.Erro is null ? "" : "texto-erro")">
+                Boleto @Texto.Moeda(b.Valor) · vence @Texto.Data(b.Vencimento) · @StatusBoleto(b.Status)
+                @if (b.Erro is { } be) { <span> · @be</span> }
+                @if (b.Ativo)
+                {
+                    @if (b.UrlPdf is { } up) { <a class="btn-ghost mini" href="@up" target="_blank" rel="noopener noreferrer">PDF</a> }
+                    <button class="btn-ghost mini" @onclick="() => boletoAberto = boletoAberto == b.Id ? null : b.Id">Linha/Pix</button>
+                    @if (PodeReceber) { <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => CancelarBoleto(b)">Cancelar boleto</button> }
+                }
+            </div>
+            @if (boletoAberto == b.Id)
+            {
+                <div class="pequeno">
+                    <input class="input" readonly value="@b.LinhaDigitavel" aria-label="Linha digitável" />
+                    <textarea class="input" readonly rows="2" aria-label="Pix copia e cola">@b.PixCopiaCola</textarea>
+                </div>
+            }
+        }
+        @if (d.Pagamentos.Count == 0) { <p class="vazio">Nenhum recebimento.</p> }
+        else
+        {
+            <div class="tabela-container">
+                <table class="tabela">
+                    <thead><tr><th>Data</th><th class="num">Valor</th><th>Forma</th><th>Conta</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var p in d.Pagamentos)
+                        {
+                            <tr class="@(p.Estornado ? "mudo" : "")">
+                                <td>@Texto.Data(p.Data)</td>
+                                <td class="num">@Texto.Moeda(p.Valor)</td>
+                                <td>@(p.Forma ?? "—")@(p.Estornado ? " · estornado" : "")</td>
+                                <td>@(p.Conta ?? "—")</td>
+                                <td>
+                                    @if (PodeReceber && !p.Estornado && r.Status != StatusReserva.FECHADA)
+                                    {
+                                        <button class="btn-ghost mini" disabled="@Ocupado" @onclick="() => Estornar(p)">Estornar</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@if (editando is not null && d is not null)
+{
+    <ReservaModal Form="editando" Imoveis="imoveis" EditandoId="Id" AoFechar="() => editando = null" AoSalvar="Salvo" />
+}
+
+@if (recebendo is not null)
+{
+    <Modal Titulo="Registrar recebimento" AoFechar="() => recebendo = null">
+        <EditForm Model="recebendo" OnValidSubmit="Receber" class="formulario">
+            <DataAnnotationsValidator />
+            <MensagemErro Texto="@Erro" />
+            <div class="grade-2">
+                <label class="campo"><span>Data</span><InputDate class="input" @bind-Value="recebendo.Data" /><ValidationMessage For="() => recebendo.Data" /></label>
+                <label class="campo"><span>Valor</span><InputNumber class="input" step="0.01" @bind-Value="recebendo.Valor" /><ValidationMessage For="() => recebendo.Valor" /></label>
+                <label class="campo">
+                    <span>Entrou na conta</span>
+                    <select class="input" @bind="recebendo.ContaBancariaId">
+                        <option value="">@(d?.Config.Modalidade == ModalidadeLocacao.PROPRIO ? "Não informar" : "Selecione…")</option>
+                        @foreach (var x in contas) { <option value="@x.Id">@x.Nome</option> }
+                    </select>
+                </label>
+                <label class="campo">
+                    <span>Forma</span>
+                    <InputText class="input" list="formas-reserva" maxlength="30" @bind-Value="recebendo.Forma" />
+                    <datalist id="formas-reserva"><option value="Pix" /><option value="Boleto" /><option value="Transferência" /><option value="Cartão" /><option value="Airbnb" /><option value="Booking" /></datalist>
+                </label>
+            </div>
+            <label class="campo"><span>Observação</span><InputText class="input" maxlength="500" @bind-Value="recebendo.Observacao" /></label>
+            <p class="pequeno mudo">Sinal, saldo ou caução: registre cada entrada. Plataforma: o valor que ela depositou (já sem a taxa dela).</p>
+            <div class="acoes-form">
+                <button type="button" class="btn-ghost" @onclick="() => recebendo = null">Cancelar</button>
+                <button type="submit" class="btn-primary" disabled="@Ocupado">Registrar</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+@if (saindo && d is not null)
+{
+    <Modal Titulo="Check-out" AoFechar="() => saindo = false">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <label class="campo"><span>Caução retida (danos, regras descumpridas)</span>
+                <input class="input" type="number" step="0.01" min="0" max="@d.Reserva.Caucao" @bind="caucaoRetida" /></label>
+            <label class="campo"><span>Observação (vai para a reserva)</span><input class="input" maxlength="1000" @bind="motivo" /></label>
+            <p class="pequeno mudo">Caução de @Texto.Moeda(d.Reserva.Caucao). O que ficar retido vai para o proprietário no acerto; o resto é devolvido ao hóspede.</p>
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => saindo = false">Voltar</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Checkout">Registrar check-out</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@if (fechando && d is not null)
+{
+    <Modal Titulo="Fechar acerto" AoFechar="() => fechando = false">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            @if (d.Config.Modalidade == ModalidadeLocacao.ADMINISTRACAO)
+            {
+                <p>Lança no financeiro da imobiliária: comissão @Texto.Moeda(d.Acerto.Comissao) (receita), repasse @Texto.Moeda(d.Acerto.Repasse) a pagar ao
+                    proprietário, limpeza @Texto.Moeda(d.Acerto.Limpeza)@(d.Acerto.CaucaoDevolver > 0 ? $" e devolução de caução {Texto.Moeda(d.Acerto.CaucaoDevolver)}" : "").</p>
+            }
+            else { <p>Imóvel próprio: o recebido já está no financeiro do imóvel. Fechar só encerra a reserva.</p> }
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => fechando = false">Voltar</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Fechar">Fechar acerto</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@if (cancelando)
+{
+    <Modal Titulo="Cancelar reserva" AoFechar="() => cancelando = false">
+        <div class="formulario">
+            <MensagemErro Texto="@Erro" />
+            <label class="campo"><span>Motivo</span><input class="input" maxlength="1000" @bind="motivo" /></label>
+            <p class="pequeno mudo">Com recebimento registrado, estorne antes; a devolução ao hóspede é lançada no financeiro.</p>
+            <div class="acoes-form">
+                <button class="btn-ghost" @onclick="() => cancelando = false">Voltar</button>
+                <button class="btn-primary" disabled="@Ocupado" @onclick="Cancelar">Cancelar reserva</button>
+            </div>
+        </div>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ReservaDetalhe? d;
+    private IReadOnlyList<TemporadaImovelLinha> imoveis = [];
+    private IReadOnlyList<FaturaBoleto> boletos = [];
+    private IReadOnlyList<Opcao> contas = [];
+    private ReservaForm? editando;
+    private RecebimentoReservaForm? recebendo;
+    private bool saindo, fechando, cancelando;
+    private decimal caucaoRetida;
+    private decimal? valorBoleto;
+    private string? motivo;
+    private Guid? boletoAberto;
+
+    private bool PodeEditar => Usuario.Pode(Permissoes.LocacaoEditar);
+    private bool PodeReceber => Usuario.Pode(Permissoes.LocacaoReceber);
+    private bool ModalAberto => editando is not null || recebendo is not null || saindo || fechando || cancelando;
+
+    private string? WhatsappHospede => d?.Reserva.HospedeTelefone is { } t && Texto.LinkWhatsapp(t) is { } w
+        ? $"{w}?text={Uri.EscapeDataString($"Olá, {d.Reserva.HospedeNome.Split(' ')[0]}! Aqui é da Inova Bens, sobre a sua reserva {d.Reserva.Codigo} de {Texto.Data(d.Reserva.Entrada)} a {Texto.Data(d.Reserva.Saida)}.")}"
+        : null;
+
+    protected override Task OnParametersSetAsync() => Carregar();
+
+    private async Task Carregar() => await Executar(async () =>
+    {
+        d = await Servico.ObterAsync(Usuario, Id);
+        boletos = Cobranca.Habilitado ? await Cobranca.BoletosReservaAsync(Usuario, Id) : [];
+    });
+
+    private async Task Acao(Func<Task> acao, string mensagem)
+    {
+        Erro = null;
+        if (await Executar(acao))
+        {
+            (saindo, fechando, cancelando) = (false, false, false);
+            await Carregar();
+            Sucesso = mensagem;
+        }
+    }
+
+    private async Task Editar()
+    {
+        Erro = null;
+        if (await Executar(async () => imoveis = await Servico.ImoveisAsync(Usuario))) editando = TemporadaService.Formulario(d!.Reserva);
+    }
+
+    private async Task Salvo(Guid _)
+    {
+        editando = null;
+        await Carregar();
+        Sucesso = "Reserva atualizada.";
+    }
+
+    private Task Confirmar() => Acao(() => Servico.ConfirmarAsync(Usuario, Id), "Reserva confirmada: as datas estão bloqueadas.");
+    private Task Checkin() => Acao(() => Servico.CheckinAsync(Usuario, Id), "Check-in registrado.");
+
+    private void AbrirCheckout()
+    {
+        Erro = null;
+        caucaoRetida = 0;
+        motivo = null;
+        saindo = true;
+    }
+
+    private Task Checkout() => Acao(() => Servico.CheckoutAsync(Usuario, Id, caucaoRetida, motivo), "Check-out registrado. Confira o acerto e feche.");
+    private Task Fechar() => Acao(() => Servico.FecharAsync(Usuario, Id), "Acerto fechado: lançamentos criados no financeiro.");
+    private Task Reabrir() => Acao(() => Servico.ReabrirAsync(Usuario, Id), "Acerto reaberto: lançamentos do fechamento removidos.");
+    private Task Cancelar() => Acao(() => Servico.CancelarAsync(Usuario, Id, motivo), "Reserva cancelada: as datas foram liberadas.");
+    private Task Estornar(PagamentoReservaLinha p) => Acao(() => Servico.EstornarAsync(Usuario, p.Id), "Recebimento estornado.");
+
+    private async Task AbrirRecebimento()
+    {
+        Erro = null;
+        if (await Executar(async () => { if (contas.Count == 0) contas = await Locacao.ContasBancariasAsync(Usuario); }))
+            recebendo = new RecebimentoReservaForm { Data = DatasBR.Hoje(), Valor = d?.Saldo, ContaBancariaId = contas.FirstOrDefault()?.Id };
+    }
+
+    private async Task Receber()
+    {
+        if (recebendo is null) return;
+        if (await Executar(() => Servico.ReceberAsync(Usuario, Id, recebendo)))
+        {
+            recebendo = null;
+            await Carregar();
+            Sucesso = "Recebimento registrado.";
+        }
+    }
+
+    private async Task EmitirBoleto()
+    {
+        Erro = null;
+        FaturaBoleto? b = null;
+        if (await Executar(async () => b = await Cobranca.EmitirReservaAsync(Usuario, Id, valorBoleto)))
+        {
+            valorBoleto = null;
+            await Carregar();
+            boletoAberto = b!.Id;
+            Sucesso = $"Boleto de {Texto.Moeda(b.Valor)} emitido. Envie ao hóspede o PDF ou o Pix copia e cola.";
+        }
+    }
+
+    private Task CancelarBoleto(FaturaBoleto b) => Acao(() => Cobranca.CancelarAsync(Usuario, b.Id), "Boleto cancelado no banco.");
+
+    private static string StatusBoleto(string s) => s switch
+    {
+        "OPEN" or "INITIATED" or "DRAFT" => "em aberto", "LATE" => "vencido", "IN_PAYMENT" => "em pagamento",
+        "PAID" => "pago", "CANCELLED" => "cancelado", _ => s.ToLowerInvariant(),
+    };
+}

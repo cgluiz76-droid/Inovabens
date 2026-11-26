@@ -1349,3 +1349,25 @@ fieldset.recebimentos { margin-top: var(--e-4); }
 /* prévia do reajuste e do acerto da rescisão */
 .previa-reajuste { margin-top: var(--e-3); padding: var(--e-3); border: 1px solid var(--borda); border-radius: var(--raio-p); display: flex; flex-direction: column; gap: var(--e-2); align-items: flex-start; }
 .pre-linha { white-space: pre-line; }
+
+/* ================= Temporada ================= */
+.reserva-PEDIDO { background: var(--alerta-fundo); color: var(--alerta); border-color: var(--alerta-borda); }
+.reserva-CONFIRMADA { background: var(--acento-suave); color: var(--acento-forte); border-color: var(--acento-borda); }
+.reserva-EM_CURSO { background: var(--ok-fundo); color: var(--ok); border-color: var(--ok-borda); }
+.reserva-FINALIZADA { background: var(--ouro-fundo); color: var(--ouro-texto); border-color: var(--ouro-borda); }
+.reserva-FECHADA, .reserva-CANCELADA { background: var(--neutro-fundo); color: var(--mudo); border-color: var(--borda); }
+/* grade do mês: uma linha por imóvel, uma coluna por noite; a primeira coluna fica presa ao rolar */
+.tabela.calendario-temporada { border-collapse: separate; border-spacing: 2px; width: 100%; }
+.tabela.calendario-temporada th, .tabela.calendario-temporada td { padding: 0; min-width: 1.45rem; height: 2rem; text-align: center; font-size: .75rem; border: 0; }
+.tabela.calendario-temporada thead th { padding: 2px 0; line-height: 1.1; text-transform: none; letter-spacing: 0; }
+.calendario-temporada th:first-child { position: sticky; left: 0; z-index: 1; background: var(--superficie); text-align: left; padding-inline: var(--e-2); }
+.calendario-temporada .fds { background: var(--superficie-2); }
+.calendario-temporada .hoje { box-shadow: inset 0 -3px 0 var(--ouro); }
+.calendario-temporada td.livre { background: var(--superficie-2); border-radius: 4px; }
+.calendario-temporada td.ocupado { border-radius: 0; border: 0; }
+.calendario-temporada td.ocupado.inicio { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+.calendario-temporada td a { display: block; width: 100%; height: 100%; line-height: 2rem; color: inherit; font-weight: 700; text-decoration: none; }
+.dia-livre { display: block; width: 100%; height: 2rem; border: 0; background: transparent; cursor: pointer; border-radius: 4px; }
+.dia-livre:hover, .dia-livre:focus-visible { background: var(--acento-suave); }
+.legenda-temporada .badge { margin-right: var(--e-1); }
+.mini-input { display: inline-block; width: 8rem; padding-block: 2px; }

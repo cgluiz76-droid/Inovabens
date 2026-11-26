@@ -51,6 +51,7 @@
             @if (usuario?.Pode(Permissoes.LocacaoVer) == true)
             {
                 <NavLink class="nav-item" href="locacao" title="Locação"><Icone Nome="chave" /><span class="nav-texto">Locação</span></NavLink>
+                <NavLink class="nav-item" href="temporada" title="Temporada"><Icone Nome="temporada" /><span class="nav-texto">Temporada</span></NavLink>
                 <NavLink class="nav-item" href="manutencao" title="Manutenção"><Icone Nome="ferramenta" /><span class="nav-texto">Manutenção</span></NavLink>
             }
             @if (usuario?.Pode(Permissoes.FinanceiroEmpresaVer) == true)
